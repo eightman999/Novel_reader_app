@@ -87,7 +87,8 @@ fun WebViewScreen(
         return Pair(null, false)
     }
     // WebViewScreen.kt - registerNovelメソッドを修正
-    fun registerNovel(ncode: String, isR18: Boolean) {
+    // Change the registerNovel function definition to accept a callback parameter
+    fun registerNovel(ncode: String, isR18: Boolean, callback: (Boolean, String) -> Unit) {
         isLoading = true
         loadingMessage = "小説情報を取得中..."
 
@@ -97,7 +98,7 @@ fun WebViewScreen(
                 if (NovelApiUtils.isNovelAlreadyRegistered(repository, ncode)) {
                     withContext(Dispatchers.Main) {
                         isLoading = false
-                        Toast.makeText(context, "この小説は既に登録されています", Toast.LENGTH_SHORT).show()
+                        callback(false, "この小説は既に登録されています")
                         showAddDialog = false
                     }
                     return@launch
@@ -125,11 +126,7 @@ fun WebViewScreen(
                         showAddDialog = false
 
                         // 成功メッセージを表示
-                        Toast.makeText(
-                            context,
-                            "小説「${novelEntity.title}」を登録しました",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        callback(true, "小説「${novelEntity.title}」を登録しました")
 
                         // ダウンロードサービスを開始
                         val intent = Intent(context, UpdateService::class.java).apply {
@@ -147,14 +144,14 @@ fun WebViewScreen(
                 } else {
                     withContext(Dispatchers.Main) {
                         isLoading = false
-                        loadingMessage = "小説情報が取得できませんでした"
+                        callback(false, "小説情報が取得できませんでした")
                     }
                 }
             } catch (e: Exception) {
                 Log.e("WebViewScreen", "小説登録エラー", e)
                 withContext(Dispatchers.Main) {
                     isLoading = false
-                    loadingMessage = "エラー: ${e.message}"
+                    callback(false, "エラー: ${e.message}")
                 }
             }
         }

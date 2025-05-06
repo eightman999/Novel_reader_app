@@ -380,6 +380,21 @@ fun EpisodeViewScreen(
         }
     }
 }
+// Add these utility functions
+private fun isHtmlContent(content: String): Boolean {
+    // Simple check for HTML tags
+    return content.contains("<[^>]*>".toRegex())
+}
+
+private fun convertPlainTextToHtml(plainText: String): String {
+    return plainText.split("\n").joinToString("\n") { line ->
+        if (line.trim().isNotEmpty()) {
+            "<p>$line</p>"
+        } else {
+            "<p>&nbsp;</p>" // Empty paragraph for blank lines
+        }
+    }
+}
 
 @Composable
 fun EnhancedHtmlRubyWebView(
@@ -393,6 +408,13 @@ fun EnhancedHtmlRubyWebView(
     textOrientation: String = "Horizontal"
 ) {
     val context = LocalContext.current
+
+    // Process the content - if not HTML, convert to HTML with paragraph tags
+    val processedContent = if (isHtmlContent(htmlContent)) {
+        htmlContent
+    } else {
+        convertPlainTextToHtml(htmlContent)
+    }
 
     // HTMLを修正する関数
     fun fixRubyTags(html: String): String {
@@ -490,7 +512,7 @@ fun EnhancedHtmlRubyWebView(
     """.trimIndent()
 
     // HTMLを修正
-    val fixedHtml = fixRubyTags(htmlContent)
+    val fixedHtml = fixRubyTags(processedContent)
 
     // HTMLコンテンツを整形
     val formattedHtml = """
