@@ -31,19 +31,36 @@ import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.ui.theme.Novel_readerTheme
 import com.shunlight_library.novel_reader.ui.theme.LightOrange
 import androidx.activity.compose.BackHandler
+import com.shunlight_library.novel_reader.navigation.NavigationManager
+import com.shunlight_library.novel_reader.navigation.Screen
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private lateinit var navigationManager: NavigationManager
+    // R18ダイアログの表示状態
+    private val _showR18Dialog = mutableStateOf(false)
+    val showR18Dialog: Boolean
+        get() = _showR18Dialog.value
+
+    // R18ダイアログを表示するメソッド
+    fun showR18Dialog() {
+        _showR18Dialog.value = true
+    }
+
+    // R18ダイアログを非表示にするメソッド
+    fun hideR18Dialog() {
+        _showR18Dialog.value = false
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ステータスバーを完全に非表示にする
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
+        // ナビゲーションマネージャーの作成
+        navigationManager = NavigationManager()
+
+        // ステータスバーを表示する（設定修正）
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
 
         // エッジツーエッジ表示を有効化
         enableEdgeToEdge()
@@ -53,15 +70,26 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             Novel_readerTheme {
-                NovelReaderApp()
+                // ナビゲーションマネージャーをコンポーザブルに提供
+                NovelReaderApp(navigationManager = navigationManager)
             }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // まずナビゲーションマネージャーにバック処理を任せる
+        if (!navigationManager.navigateBack()) {
+            // ナビゲーションマネージャーが処理できなければデフォルト動作を使用
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NovelReaderApp() {
+fun NovelReaderApp(navigationManager: NavigationManager) {
     var showSettings by remember { mutableStateOf(false) }
     // WebView用の状態変数を追加
     var showWebView by remember { mutableStateOf(false) }
@@ -172,341 +200,116 @@ fun NovelReaderApp() {
         }
     }
 
-    when {
-        showWebView -> {
-            WebViewScreen(
-                url = currentUrl,
-                onBack = { showWebView = false }
+when (val currentScreen = navigationManager.currentScreen) {
+        is Screen.Main -> {
+            MainScreen(
+                onNavigate = { screen -> navigationManager.navigateTo(screen) }
             )
         }
-        showRecentlyReadNovels -> {
-            RecentlyReadNovelsScreen(
-                onBack = { showRecentlyReadNovels = false },
-                onNovelClick = { ncode, episodeNo ->
-                    currentNcode = ncode
-                    currentEpisodeNo = episodeNo
-                    showEpisodeView = true
-                    showRecentlyReadNovels = false
-                }
+
+        is Screen.Settings -> {
+            SettingsScreenUpdated(
+                onBack = { navigationManager.navigateBack() }
             )
         }
-        showRecentlyUpdatedNovelsScreen -> {
-            RecentlyUpdatedNovelsScreen(
-                onBack = { showRecentlyUpdatedNovelsScreen = false },
-                onNovelClick = { ncode ->
-                    currentNcode = ncode
-                    showRecentlyUpdatedNovelsScreen = false
-                    showEpisodeList = true
-                }
-            )
-        }
-        showSettings -> {
-            SettingsScreenUpdated(onBack = { showSettings = false })
-        }
-        showNovelList -> {
+
+        is Screen.NovelList -> {
             NovelListScreen(
-                onBack = { showNovelList = false },
+                onBack = { navigationManager.navigateBack() },
                 onNovelClick = { ncode ->
-                    currentNcode = ncode
-                    showNovelList = false
-                    showEpisodeList = true
-                }
-            )
-
-        }
-        // 追加: 更新情報画面
-        showUpdateInfo -> {
-            UpdateInfoScreen(
-                onBack = { showUpdateInfo = false },
-                onNovelClick = { ncode ->
-                    currentNcode = ncode
-                    showUpdateInfo = false
-                    showEpisodeList = true
+                    navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
                 }
             )
         }
 
-        showEpisodeList -> {
+        is Screen.EpisodeList -> {
             EpisodeListScreen(
-                ncode = currentNcode,
+                ncode = currentScreen.ncode,
                 onBack = {
-                    showEpisodeList = false
-                    showNovelList = true
+                    // ソース画面が指定されている場合、そこまで戻る
+                    if (currentScreen.source != null) {
+                        navigationManager.navigateBackTo(currentScreen.source)
+                    } else {
+                        navigationManager.navigateBack()
+                    }
                 },
                 onEpisodeClick = { ncode, episodeNo ->
-                    currentNcode = ncode
-                    currentEpisodeNo = episodeNo
-                    showEpisodeView = true
-                    showEpisodeList = false
+                    navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo))
                 }
             )
         }
-        showEpisodeView -> {
 
+        is Screen.EpisodeView -> {
             EpisodeViewScreen(
-
-                ncode = currentNcode,
-                episodeNo = currentEpisodeNo,
-                onBack = {
-                    showEpisodeView = false
-                    showEpisodeList = true
-                },
+                ncode = currentScreen.ncode,
+                episodeNo = currentScreen.episodeNo,
+                onBack = { navigationManager.navigateBack() },
                 onPrevious = {
-                    val prevEpisodeNo = currentEpisodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
+                    val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
                     if (prevEpisodeNo.toInt() >= 1) {
-                        currentEpisodeNo = prevEpisodeNo
+                        navigationManager.navigateTo(Screen.EpisodeView(currentScreen.ncode, prevEpisodeNo))
                     }
                 },
                 onNext = {
-                    scope.launch {
-                        val nextEpisodeNo = currentEpisodeNo.toIntOrNull()?.let { it + 1 }?.toString() ?: "1"
-                        try {
-                            val novel = repository.getNovelByNcode(currentNcode)
-                            if (novel != null && nextEpisodeNo.toInt() <= novel.total_ep) {
-                                currentEpisodeNo = nextEpisodeNo
-                            }
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "小説情報取得エラー: ${e.message}")
-                        }
-                    }
+                    // 次のエピソードへのロジック
                 }
             )
         }
-        else -> {
-            // メイン画面（既存のコード）
-            Scaffold { innerPadding ->
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    // 新着・更新情報セクション
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(LightOrange)
-                                .padding(8.dp)
-                        ) {
-                            Text(
-                                text = "新着・更新情報",
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Normal
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
 
-                            // 新着・更新情報をボタンに変更
-                            Button(
-                                onClick = {
-                                    // 新着・更新情報画面に遷移
-                                    showUpdateInfo = true
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = LightOrange
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = updateInfoText,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+        is Screen.WebView -> {
+            WebViewScreen(
+                url = currentScreen.url,
+                onBack = { navigationManager.navigateBack() }
+            )
+        }
 
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Text(
-                                text = "最後に開いていた小説",
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Normal
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // 最後に読んだ小説の情報をボタンに変更
-                            Button(
-                                onClick = {
-                                    if (lastReadNovel != null) {
-                                        // 最後に読んだエピソードを開く
-                                        currentNcode = lastReadNovel!!.ncode
-                                        currentEpisodeNo = lastReadNovel!!.episode_no.toString()
-                                        showEpisodeView = true
-                                    }
-                                },
-                                enabled = novelInfo != null,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = if (novelInfo != null) LightOrange else Color.Gray,
-                                    disabledContainerColor = Color.LightGray,
-                                    disabledContentColor = Color.DarkGray
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = if (novelInfo != null)
-                                        "${novelInfo!!.title} ${lastReadNovel!!.episode_no}話"
-                                    else
-                                        "まだ小説を読んでいません",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-                        }
-                    }
-
-                    // 小説をさがすセクション
-                    item {
-                        SectionHeader(title = "小説をさがす")
-                    }
-
-                    // ランキングとPickup
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            MenuButton(
-                                icon = "⚪",
-                                text = "ランキング",
-                                onClick = { openUrl("https://yomou.syosetu.com/rank/top/") }
-                            )
-                            MenuButton(
-                                icon = "📢",
-                                text = "PickUp!",
-                                onClick = { openUrl("https://syosetu.com/pickup/list/") }
-                            )
-                        }
-                    }
-
-                    // キーワード検索と詳細検索
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            MenuButton(
-                                icon = "🔍",
-                                text = "キーワード",
-                                onClick = { openUrl("https://yomou.syosetu.com/search/keyword/") }
-                            )
-                            MenuButton(
-                                icon = ">",
-                                text = "詳細検索",
-                                onClick = { openUrl("https://yomou.syosetu.com/search.php") }
-                            )
-                        }
-                    }
-                    //カクヨム＆R18セクション
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-//                            MenuButton(
-//                                icon = ">",
-//                                text = "カクヨム",
-//                                onClick = { openUrl("https://kakuyomu.jp/") }
-//                            )
-
-                            MenuButton(
-                                icon = "<",
-                                text = "R18",
-                                onClick = { showR18Dialog = true }
-                            )
-                        }
-                    }
-
-                    // 小説を読むセクション
-                    item {
-                        SectionHeader(title = "小説を読む")
-                    }
-
-                    // 小説一覧と最近更新された小説
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            MenuButton(
-                                icon = "📚",
-                                text = "小説一覧",
-                                onClick = { showNovelList = true }
-                            )
-                            MenuButton(
-                                icon = ">",
-                                text = "最近更新された小説",
-                                onClick = {
-                                    showRecentlyUpdatedNovelsScreen = true
-                                }
-                            )
-                        }
-                    }
-
-                    // 最近読んだ小説と作者別・シリーズ別
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            MenuButton(
-                                icon = ">",
-                                text = "最近読んだ小説",
-                                onClick = { showRecentlyReadNovels = true }
-                            )
-
-                        }
-                    }
-
-
-                    // オプションセクション
-                    item {
-                        SectionHeader(title = "オプション")
-                    }
-
-                    // ダウンロード状況と設定
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            MenuButton(
-                                icon = "⚙",
-                                text = "設定",
-                                onClick = { showSettings = true }
-                            )
-                            MenuButton(
-                                icon = "",
-                                text = "DB同期",
-                                onClick = {
-                                    val intent = Intent(context, DatabaseSyncActivity::class.java)
-                                    context.startActivity(intent)
-                                }
-                            )
-                        }
-                    }
+        is Screen.RecentlyReadNovels -> {
+            RecentlyReadNovelsScreen(
+                onBack = { navigationManager.navigateBack() },
+                onNovelClick = { ncode, episodeNo ->
+                    navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo))
                 }
+            )
+        }
+
+        is Screen.RecentlyUpdatedNovels -> {
+            RecentlyUpdatedNovelsScreen(
+                onBack = { navigationManager.navigateBack() },
+                onNovelClick = { ncode ->
+                    navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
+                }
+            )
+        }
+
+        is Screen.UpdateInfo -> {
+            UpdateInfoScreen(
+                onBack = { navigationManager.navigateBack() },
+                onNovelClick = { ncode ->
+                    navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
+                }
+            )
+        }
+
+        is Screen.DatabaseSync -> {
+            // アクティビティを起動するが、ナビゲーションバックは機能する
+            val context = LocalContext.current
+            LaunchedEffect(Unit) {
+                val intent = Intent(context, DatabaseSyncActivity::class.java)
+                context.startActivity(intent)
+                // アクティビティが上に表示される間すぐに戻る
+                navigationManager.navigateBack()
             }
-            BackHandler {
-                Log.d("NovelReaderApp", "Back button pressed")
+            // アクティビティが起動している間、ローディングまたは空の画面を表示
+            Box(modifier = Modifier.fillMaxSize()) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }
+
+
     }
 }
+
+
 
 @Composable
 fun SectionHeader(title: String) {
@@ -546,5 +349,271 @@ fun MenuButton(
             text = text,
             fontSize = 16.sp
         )
+    }
+}
+
+// MainActivity.kt - MainScreen関数を更新
+@Composable
+fun MainScreen(onNavigate: (Screen) -> Unit) {
+    val repository = NovelReaderApplication.getRepository()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 状態変数
+    var lastReadNovel by remember { mutableStateOf<LastReadNovelEntity?>(null) }
+    var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
+    var updateInfoText by remember { mutableStateOf("新着0件・更新あり0件") }
+
+    // 最後に読んだ小説と更新情報の取得
+    LaunchedEffect(Unit) {
+        lastReadNovel = repository.getMostRecentlyReadNovel()
+        if (lastReadNovel != null) {
+            novelInfo = repository.getNovelByNcode(lastReadNovel!!.ncode)
+        }
+
+        // 更新情報も取得
+        val (newCount, updateCount) = repository.getUpdateCounts()
+        updateInfoText = "新着${newCount}件・更新あり${updateCount}件"
+    }
+
+    Scaffold { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // 新着・更新情報セクション
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(LightOrange)
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = "新着・更新情報",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 新着・更新情報ボタン
+                    Button(
+                        onClick = {
+                            // 新着・更新情報画面に遷移
+                            onNavigate(Screen.UpdateInfo)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = LightOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = updateInfoText,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "最後に開いていた小説",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 最後に読んだ小説の情報ボタン
+                    Button(
+                        onClick = {
+                            if (lastReadNovel != null) {
+                                // 最後に読んだエピソードを開く
+                                onNavigate(Screen.EpisodeView(
+                                    ncode = lastReadNovel!!.ncode,
+                                    episodeNo = lastReadNovel!!.episode_no.toString()
+                                ))
+                            }
+                        },
+                        enabled = novelInfo != null,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = if (novelInfo != null) LightOrange else Color.Gray,
+                            disabledContainerColor = Color.LightGray,
+                            disabledContentColor = Color.DarkGray
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (novelInfo != null)
+                                "${novelInfo!!.title} ${lastReadNovel!!.episode_no}話"
+                            else
+                                "まだ小説を読んでいません",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+            }
+
+            // 小説をさがすセクション
+            item {
+                SectionHeader(title = "小説をさがす")
+            }
+
+            // ランキングとPickup
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = "⚪",
+                        text = "ランキング",
+                        onClick = {
+                            onNavigate(Screen.WebView("https://yomou.syosetu.com/rank/top/"))
+                        }
+                    )
+                    MenuButton(
+                        icon = "📢",
+                        text = "PickUp!",
+                        onClick = {
+                            onNavigate(Screen.WebView("https://syosetu.com/pickup/list/"))
+                        }
+                    )
+                }
+            }
+
+            // キーワード検索と詳細検索
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = "🔍",
+                        text = "キーワード",
+                        onClick = {
+                            onNavigate(Screen.WebView("https://yomou.syosetu.com/search/keyword/"))
+                        }
+                    )
+                    MenuButton(
+                        icon = ">",
+                        text = "詳細検索",
+                        onClick = {
+                            onNavigate(Screen.WebView("https://yomou.syosetu.com/search.php"))
+                        }
+                    )
+                }
+            }
+
+            //カクヨム＆R18セクション
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = "<",
+                        text = "R18",
+                        onClick = {
+                            // R18ダイアログを表示する代わりに、ダイアログを表示する関数を呼ぶ
+                            // この例ではMainActivityで管理している状態を使うため、関数を通じて操作
+                            (context as? MainActivity)?.showR18Dialog()
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(160.dp)) // 右側は空欄
+                }
+            }
+
+            // 小説を読むセクション
+            item {
+                SectionHeader(title = "小説を読む")
+            }
+
+            // 小説一覧と最近更新された小説
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = "📚",
+                        text = "小説一覧",
+                        onClick = {
+                            onNavigate(Screen.NovelList(source = Screen.Main))
+                        }
+                    )
+                    MenuButton(
+                        icon = ">",
+                        text = "最近更新された小説",
+                        onClick = {
+                            onNavigate(Screen.RecentlyUpdatedNovels)
+                        }
+                    )
+                }
+            }
+
+            // 最近読んだ小説
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = ">",
+                        text = "最近読んだ小説",
+                        onClick = {
+                            onNavigate(Screen.RecentlyReadNovels)
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(160.dp)) // 右側は空欄
+                }
+            }
+
+            // オプションセクション
+            item {
+                SectionHeader(title = "オプション")
+            }
+
+            // 設定とDB同期
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = "⚙",
+                        text = "設定",
+                        onClick = {
+                            onNavigate(Screen.Settings)
+                        }
+                    )
+                    MenuButton(
+                        icon = "",
+                        text = "DB同期",
+                        onClick = {
+                            onNavigate(Screen.DatabaseSync)
+                        }
+                    )
+                }
+            }
+        }
     }
 }

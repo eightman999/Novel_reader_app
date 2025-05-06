@@ -26,4 +26,35 @@ interface EpisodeDao {
 
     @Query("DELETE FROM episodes WHERE ncode = :ncode")
     suspend fun deleteEpisodesByNcode(ncode: String)
+// EpisodeDao.kt - 追加メソッド
+
+    /**
+     * エピソードの既読状態を更新
+     */
+    @Query("UPDATE episodes SET is_read = :isRead WHERE ncode = :ncode AND episode_no = :episodeNo")
+    suspend fun updateReadStatus(ncode: String, episodeNo: String, isRead: Boolean)
+
+    /**
+     * エピソードのしおり状態を更新
+     */
+    @Query("UPDATE episodes SET is_bookmark = :isBookmark WHERE ncode = :ncode AND episode_no = :episodeNo")
+    suspend fun updateBookmarkStatus(ncode: String, episodeNo: String, isBookmark: Boolean)
+
+    /**
+     * 指定されたエピソードまでを既読に設定
+     */
+    @Query("UPDATE episodes SET is_read = 1 WHERE ncode = :ncode AND CAST(episode_no AS INTEGER) <= :episodeNo")
+    suspend fun markEpisodesAsReadUpTo(ncode: String, episodeNo: Int)
+
+    /**
+     * しおりが付いたエピソードを取得
+     */
+    @Query("SELECT * FROM episodes WHERE ncode = :ncode AND is_bookmark = 1 ORDER BY CAST(episode_no AS INTEGER)")
+    fun getBookmarkedEpisodes(ncode: String): Flow<List<EpisodeEntity>>
+
+    /**
+     * 既読エピソードを取得
+     */
+    @Query("SELECT * FROM episodes WHERE ncode = :ncode AND is_read = 1 ORDER BY CAST(episode_no AS INTEGER)")
+    fun getReadEpisodes(ncode: String): Flow<List<EpisodeEntity>>
 }

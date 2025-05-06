@@ -136,4 +136,29 @@ class NovelRepository(
             updateQueueDao.getAllUpdateQueueList()
         }
     }
+
+    suspend fun updateEpisodeReadStatus(ncode: String, episodeNo: String, isRead: Boolean) {
+        episodeDao.updateReadStatus(ncode, episodeNo, isRead)
+    }
+
+    /**
+     * エピソードのしおり状態を更新
+     */
+    suspend fun updateEpisodeBookmarkStatus(ncode: String, episodeNo: String, isBookmark: Boolean) {
+        episodeDao.updateBookmarkStatus(ncode, episodeNo, isBookmark)
+    }
+
+    /**
+     * 指定されたエピソードまでを既読に設定
+     */
+    suspend fun markEpisodesAsReadUpTo(ncode: String, episodeNo: Int) {
+        episodeDao.markEpisodesAsReadUpTo(ncode, episodeNo)
+    }
+
+    /**
+     * しおりが付いたエピソードを取得
+     */
+    fun getBookmarkedEpisodes(ncode: String): Flow<List<EpisodeEntity>> {
+        return episodeDao.getBookmarkedEpisodes(ncode)
+    }
 }

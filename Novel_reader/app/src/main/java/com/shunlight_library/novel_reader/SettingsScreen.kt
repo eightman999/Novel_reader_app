@@ -488,6 +488,7 @@ fun SettingsScreenUpdated(
             HorizontalDivider()
 
             // 小説表示設定セクションを追加
+            // SettingsScreenUpdated.kt - 小説表示設定セクション
             SettingSection(title = "小説表示設定") {
                 // 背景色設定
                 Text(
@@ -496,64 +497,47 @@ fun SettingsScreenUpdated(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
-                // デフォルト背景色の使用切り替え
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("アプリのデフォルト背景色を使用")
-                    Spacer(modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = useDefaultBackground,
-                        onCheckedChange = { useDefaultBackground = it }
-                    )
-                }
+                // デフォルト背景色スイッチを削除し、直接カラーオプションを表示
+                backgroundOptions.forEach { option ->
+                    if (option != "Default") { // "Default"は表示しない
+                        val colorHex = when (option) {
+                            "White" -> "#FFFFFF"
+                            "Cream" -> "#F5F5DC" // デフォルト
+                            "Light Gray" -> "#EEEEEE"
+                            "Light Blue" -> "#E6F2FF"
+                            "Dark Gray" -> "#303030"
+                            "Black" -> "#000000"
+                            else -> "#FFFFFF"
+                        }
 
-                // デフォルト背景色を使わない場合のみ、カスタム背景色の選択肢を表示
-                if (!useDefaultBackground) {
-                    backgroundOptions.forEach { option ->
-                        if (option != "Default") { // "Default"は上のスイッチで制御するので除外
-                            val colorHex = when (option) {
-                                "White" -> "#FFFFFF"
-                                "Cream" -> "#F5F5DC"
-                                "Light Gray" -> "#EEEEEE"
-                                "Light Blue" -> "#E6F2FF"
-                                "Dark Gray" -> "#303030"
-                                "Black" -> "#000000"
-                                else -> "#FFFFFF"
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .selectable(
-                                        selected = episodeBackgroundColor == colorHex,
-                                        onClick = { episodeBackgroundColor = colorHex }
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
                                     selected = episodeBackgroundColor == colorHex,
-                                    onClick = null
+                                    onClick = { episodeBackgroundColor = colorHex }
                                 )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text(option)
-                                Spacer(modifier = Modifier.weight(1f))
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .background(
-                                            color = try {
-                                                Color(android.graphics.Color.parseColor(colorHex))
-                                            } catch (e: Exception) {
-                                                Color.White
-                                            }
-                                        )
-                                )
-                            }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = episodeBackgroundColor == colorHex,
+                                onClick = null
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(option)
+                            Spacer(modifier = Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(
+                                        color = try {
+                                            Color(android.graphics.Color.parseColor(colorHex))
+                                        } catch (e: Exception) {
+                                            Color.White
+                                        }
+                                    )
+                            )
                         }
                     }
                 }

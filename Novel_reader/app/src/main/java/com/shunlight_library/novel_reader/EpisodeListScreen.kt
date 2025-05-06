@@ -753,11 +753,18 @@ fun EpisodeListScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(novel?.title ?: "小説詳細")
+                        Text(
+                            text = novel?.title ?: "小説詳細",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,  // 1行に制限
+                            overflow = TextOverflow.Ellipsis  // テキストが長い場合は省略記号
+                        )
                         novel?.let {
                             Text(
                                 "作者: ${it.author}",
-                                style = MaterialTheme.typography.bodySmall
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -996,7 +1003,7 @@ fun EpisodeListScreen(
 
                         EpisodeItem(
                             episode = episode,
-                            isRead = isRead,
+//                            isRead = isRead,
                             onClick = { onEpisodeClick(ncode, episode.episode_no) }
                         )
                         Divider()
@@ -1007,10 +1014,11 @@ fun EpisodeListScreen(
     }
 }
 
+// EpisodeListScreen.kt - EpisodeItem の修正
+
 @Composable
 fun EpisodeItem(
     episode: EpisodeEntity,
-    isRead: Boolean,
     onClick: () -> Unit
 ) {
     Row(
@@ -1020,14 +1028,25 @@ fun EpisodeItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 既読/未読アイコン
+        // 既読/未読アイコン - episode.is_read を使用
         Icon(
-            imageVector = if (isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-            contentDescription = if (isRead) "既読" else "未読",
-            tint = if (isRead) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            imageVector = if (episode.is_read) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+            contentDescription = if (episode.is_read) "既読" else "未読",
+            tint = if (episode.is_read) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp)
         )
+
+        // しおりアイコンを追加 - episode.is_bookmark を使用
+        if (episode.is_bookmark) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.Bookmark,
+                contentDescription = "しおり",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.width(16.dp))
 
@@ -1036,16 +1055,16 @@ fun EpisodeItem(
             Text(
                 text = "${episode.episode_no}. ${episode.e_title}",
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isRead) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                color = if (episode.is_read) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isRead) FontWeight.Normal else FontWeight.Bold
+                fontWeight = if (episode.is_read) FontWeight.Normal else FontWeight.Bold
             )
 
             if (episode.update_time.isNotEmpty()) {
                 Text(
                     text = "更新: ${episode.update_time}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isRead) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    color = if (episode.is_read) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }

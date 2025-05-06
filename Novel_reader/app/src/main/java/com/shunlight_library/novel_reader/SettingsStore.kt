@@ -51,8 +51,8 @@ class SettingsStore(private val context: Context) {
         val USE_DEFAULT_BACKGROUND = booleanPreferencesKey("use_default_background")
     }
 
-    val defaultFontColor = "#FFFFFF" // W
-    val defaultEpisodeBackgroundColor = "#000000" // B
+    val defaultFontColor = "#000000" // 黒
+    val defaultEpisodeBackgroundColor = "#F5F5DC" // クリーム色
     val defaultUseDefaultBackground = true
 
     val defaultThemeMode = "System"

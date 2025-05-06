@@ -1,5 +1,7 @@
 package com.shunlight_library.novel_reader
 
+import android.content.Intent
+import android.os.Build
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import android.util.Log
 import android.widget.Toast
+import com.shunlight_library.novel_reader.api.NovelApiUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,6 +37,7 @@ import java.util.zip.GZIPInputStream
 import org.yaml.snakeyaml.Yaml
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
+import com.shunlight_library.novel_reader.service.UpdateService
 import java.util.regex.Pattern
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,109 +86,80 @@ fun WebViewScreen(
         }
         return Pair(null, false)
     }
+    // WebViewScreen.kt - registerNovelメソッドを修正
+    fun registerNovel(ncode: String, isR18: Boolean) {
+        isLoading = true
+        loadingMessage = "小説情報を取得中..."
 
-    // 小説情報を取得する関数
-    fun fetchNovelInfo(ncode: String, isR18: Boolean, onComplete: (Boolean, String) -> Unit) {
         scope.launch {
             try {
-                loadingMessage = "APIからデータを取得中..."
-
-                // APIエンドポイントを選択
-                val apiUrl = if (isR18) {
-                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
-                } else {
-                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+                // まず小説が既に登録されているか確認
+                if (NovelApiUtils.isNovelAlreadyRegistered(repository, ncode)) {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        Toast.makeText(context, "この小説は既に登録されています", Toast.LENGTH_SHORT).show()
+                        showAddDialog = false
+                    }
+                    return@launch
                 }
 
-                withContext(Dispatchers.IO) {
-                    val connection = URL(apiUrl).openConnection() as HttpURLConnection
-                    connection.requestMethod = "GET"
-                    connection.connectTimeout = 10000
-                    connection.readTimeout = 10000
+                // 小説詳細を取得
+                val novelEntity = NovelApiUtils.fetchNovelDetails(ncode, isR18)
 
-                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                        // gzipファイルを解凍
-                        val inputStream = GZIPInputStream(connection.inputStream)
-                        val reader = BufferedReader(InputStreamReader(inputStream))
-                        val content = StringBuilder()
-                        var line: String?
+                if (novelEntity != null) {
+                    // データベースに保存
+                    repository.insertNovel(novelEntity)
 
-                        while (reader.readLine().also { line = it } != null) {
-                            content.append(line).append("\n")
+                    // 更新キューエントリを作成
+                    val updateQueue = UpdateQueueEntity(
+                        ncode = ncode,
+                        total_ep = 0, // 初期値は0
+                        general_all_no = novelEntity.general_all_no,
+                        update_time = novelEntity.updated_at
+                    )
+                    repository.insertUpdateQueue(updateQueue)
+
+                    // 登録と同時にダウンロード処理を開始
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        showAddDialog = false
+
+                        // 成功メッセージを表示
+                        Toast.makeText(
+                            context,
+                            "小説「${novelEntity.title}」を登録しました",
+                            Toast.LENGTH_SHORT
+                        ).show()
+
+                        // ダウンロードサービスを開始
+                        val intent = Intent(context, UpdateService::class.java).apply {
+                            action = UpdateService.ACTION_START_UPDATE
+                            putExtra(UpdateService.EXTRA_NCODE, ncode)
+                            putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_DOWNLOAD)
                         }
 
-                        // YAMLデータを解析
-                        val yaml = Yaml()
-                        val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
-
-                        if (yamlData.size >= 2) {
-                            // 2番目の要素が小説データ（1番目はリザルトコード）
-                            val novelData = yamlData[1]
-
-                            // NovelDescEntityの作成
-                            val title = novelData["title"] as String
-                            val author = novelData["writer"] as String
-                            val synopsis = novelData["story"] as? String ?: ""
-                            val generalAllNo = novelData["general_all_no"] as Int
-
-                            // 現在の日時を取得
-                            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                            val currentDate = dateFormat.format(Date())
-
-                            // NovelDescEntityの作成
-                            val novelEntity = NovelDescEntity(
-                                ncode = ncode,
-                                title = title,
-                                author = author,
-                                Synopsis = synopsis,
-                                main_tag = "", // APIからは取得できないのでデフォルト値
-                                sub_tag = "", // APIからは取得できないのでデフォルト値
-                                rating = if (isR18) 1 else 2,
-                                last_update_date = currentDate,
-                                total_ep = 0, // 初期値は0、後で更新処理で正確な値が設定される
-                                general_all_no = generalAllNo,
-                                updated_at = currentDate
-                            )
-
-                            // データベースに保存
-                            repository.insertNovel(novelEntity)
-
-                            // 更新キューに追加
-                            try {
-                                // UpdateQueueEntityを作成して保存
-                                val updateQueue = UpdateQueueEntity(
-                                    ncode = ncode,
-                                    total_ep = 0, // 初期値は0
-                                    general_all_no = generalAllNo,
-                                    update_time = currentDate
-                                )
-                                repository.insertUpdateQueue(updateQueue)
-                            } catch (e: Exception) {
-                                Log.e("WebViewScreen", "更新キュー追加エラー", e)
-                            }
-
-                            withContext(Dispatchers.Main) {
-                                onComplete(true, "小説「$title」を登録しました")
-                            }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
                         } else {
-                            withContext(Dispatchers.Main) {
-                                onComplete(false, "小説情報が取得できませんでした")
-                            }
+                            context.startService(intent)
                         }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            onComplete(false, "API接続エラー: ${connection.responseCode}")
-                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        loadingMessage = "小説情報が取得できませんでした"
                     }
                 }
             } catch (e: Exception) {
-                Log.e("WebViewScreen", "小説情報取得エラー", e)
+                Log.e("WebViewScreen", "小説登録エラー", e)
                 withContext(Dispatchers.Main) {
-                    onComplete(false, "エラー: ${e.message}")
+                    isLoading = false
+                    loadingMessage = "エラー: ${e.message}"
                 }
             }
         }
     }
+    // 小説情報を取得する関数
 
     // 確認ダイアログ
     if (showAddDialog) {
@@ -215,7 +190,7 @@ fun WebViewScreen(
                         isLoading = true
                         loadingMessage = "小説情報を取得中..."
 
-                        fetchNovelInfo(detectedNcode, isR18) { success, message ->
+                        registerNovel(detectedNcode, isR18) { success, message ->
                             isLoading = false
                             if (success) {
                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()

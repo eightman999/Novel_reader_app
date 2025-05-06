@@ -24,6 +24,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import kotlinx.coroutines.flow.first
@@ -75,7 +77,8 @@ fun EpisodeViewScreen(
         }
     }
 
-    // エピソードデータの読み込み
+    // EpisodeViewScreen.kt - エピソードデータ読み込み部分の修正
+
     LaunchedEffect(ncode, episodeNo) {
         scrollState.scrollTo(0)
         scope.launch {
@@ -84,8 +87,19 @@ fun EpisodeViewScreen(
                 episode = repository.getEpisode(ncode, episodeNo)
                 novel = repository.getNovelByNcode(ncode)
 
-                // 最後に読んだ情報を更新
+                // エピソードを既読に設定
                 val episodeNumber = episodeNo.toIntOrNull() ?: 1
+
+                // 既存のエピソードが取得できた場合は既読マークを設定
+                if (episode != null) {
+                    // EpisodeEntityに追加した is_read フラグを true に設定
+                    repository.updateEpisodeReadStatus(ncode, episodeNo, true)
+
+                    // それ以前のエピソードも全て既読に設定
+                    repository.markEpisodesAsReadUpTo(ncode, episodeNumber)
+                }
+
+                // 最後に読んだ情報を更新（従来の処理）
                 repository.updateLastRead(ncode, episodeNumber)
             } catch (e: Exception) {
                 Log.e("EpisodeViewScreen", "データ取得エラー: ${e.message}")
@@ -121,27 +135,56 @@ fun EpisodeViewScreen(
 
     Scaffold(
         topBar = {
+            // In EpisodeViewScreen.kt - add a bookmark button to the TopAppBar
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = novel?.title ?: "小説を読む",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = episode?.e_title ?: "エピソード $episodeNo",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.clickable { onTitleTap() }
-                        )
-                    }
+                    Text(
+                        text = episode?.e_title ?: "エピソード $episodeNo",
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable { onTitleTap() }
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                     }
                 },
+                // EpisodeViewScreen.kt - TopAppBar の actions 部分に追加
+
                 actions = {
-                    // フォントサイズ調整ボタン
+                    // しおりボタン
+                    episode?.let {
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        // しおりフラグを反転
+                                        val newBookmarkStatus = !it.is_bookmark
+                                        repository.updateEpisodeBookmarkStatus(ncode, episodeNo, newBookmarkStatus)
+
+                                        // 表示を更新するために再取得
+                                        episode = repository.getEpisode(ncode, episodeNo)
+
+                                        // ユーザーに通知
+                                        val message = if (newBookmarkStatus) "しおりを追加しました" else "しおりを削除しました"
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Log.e("EpisodeViewScreen", "しおり更新エラー: ${e.message}")
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (it.is_bookmark) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (it.is_bookmark) "しおりを削除" else "しおりを追加",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    // 既存のフォントサイズボタン
                     IconButton(onClick = {
                         if (fontSize > 12) {
                             fontSize--

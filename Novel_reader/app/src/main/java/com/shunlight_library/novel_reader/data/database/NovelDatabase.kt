@@ -28,6 +28,13 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add new columns to the episodes table
+        database.execSQL("ALTER TABLE episodes ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE episodes ADD COLUMN is_bookmark INTEGER NOT NULL DEFAULT 0")
+    }
+}
 @Database(
     entities = [
         EpisodeEntity::class,
@@ -35,7 +42,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         LastReadNovelEntity::class,
         UpdateQueueEntity::class
     ],
-    version = 2,  // バージョンを1から2に更新
+    version = 3,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -54,7 +61,7 @@ abstract class NovelDatabase : RoomDatabase() {
                     NovelDatabase::class.java,
                     "novel_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance

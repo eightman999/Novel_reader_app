@@ -13,5 +13,7 @@ data class EpisodeEntity(
     val episode_no: String,
     val body: String,
     val e_title: String,
-    val update_time: String
+    val update_time: String,
+    val is_read: Boolean = false,      // 既読フラグ
+    val is_bookmark: Boolean = false   // しおりフラグ
 )
