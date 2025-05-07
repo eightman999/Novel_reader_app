@@ -174,6 +174,7 @@ object NovelApiUtils {
      * @param isR18 R18小説かどうか
      * @return 取得したエピソード、または取得できなかった場合はnull
      */
+    // NovelApiUtils.kt の fetchEpisode 関数を修正
     suspend fun fetchEpisode(ncode: String, episodeNo: Int, isR18: Boolean = false): EpisodeEntity? {
         return withContext(Dispatchers.IO) {
             try {
@@ -191,37 +192,27 @@ object NovelApiUtils {
                     .get()
 
                 val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
-                val bodyElements = doc.select("div.p-novel__body div.js-novel-text p")
+                val bodyElements = doc.select("div.p-novel__body > div")
+                val body = StringBuilder()
 
-                // 小説ダウンロード時の不要なタグ挿入問題修正
-                // すべての段落間にではなく、divタグの間だけに区切り線を追加
-                val body = buildString {
+                if (bodyElements.isNotEmpty()) {
                     bodyElements.forEachIndexed { index, element ->
-                        append("<p>${element.html()}</p>")
-                        // 要素間のみに区切り線を追加（先頭または最後には追加しない）
+                        body.append(element.outerHtml())
+                        // 最後の要素でなければ<hr>を追加
                         if (index < bodyElements.size - 1) {
-                            // </div>タグと<div>タグの間かを確認
-                            val hasClosingDiv = element.html().trim().endsWith("</div>")
-                            val hasOpeningDivNext = index + 1 < bodyElements.size &&
-                                    bodyElements[index + 1].html().trim().startsWith("<div")
-
-                            if (hasClosingDiv && hasOpeningDivNext) {
-                                append("\n")
-//                                append("\n<p></p><p>-----</p><p></p>\n")
-                            } else {
-                                append("\n")
-                            }
+                            body.append("\n<hr>\n")
                         }
                     }
                 }
 
+
                 if (title.isNotEmpty() && body.isNotEmpty()) {
                     val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
-                    return@withContext EpisodeEntity(
+                    EpisodeEntity(
                         ncode = ncode,
                         episode_no = episodeNo.toString(),
-                        body = body,
+                        body = body.toString(),
                         e_title = title,
                         update_time = currentDate,
                         is_read = false,
@@ -231,12 +222,11 @@ object NovelApiUtils {
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "エピソード取得エラー: $episodeNo", e)
+                Log.e("NovelApiUtils", "エピソード取得エラー: $episodeNo", e)
                 null
             }
         }
     }
-
     /**
      * URLからncodeとR18フラグを抽出する
      * @param url 小説のURL

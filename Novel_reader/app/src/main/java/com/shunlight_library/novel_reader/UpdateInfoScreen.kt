@@ -430,11 +430,18 @@ fun UpdateInfoScreen(
                                                                             try {
                                                                                 // タイトルの取得（text()でタグを除去）
                                                                                 var title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
+                                                                                val bodyElements = doc.select("div.p-novel__body > div")
+                                                                                val body = StringBuilder()
 
-                                                                                // 本文の取得 - すべてのセクション（前書き、本文、後書き）を含む
-                                                                                // html()メソッドを使用してタグを保持
-                                                                                val bodyElements = doc.select("div.p-novel__body div.js-novel-text p")
-                                                                                val body = bodyElements.joinToString("\n<p></p><p>-----</p><p></p>\n") { "<p>${it.html()}</p>" }
+                                                                                if (bodyElements.isNotEmpty()) {
+                                                                                    bodyElements.forEachIndexed { index, element ->
+                                                                                        body.append(element.outerHtml())
+                                                                                        // 最後の要素でなければ<hr>を追加
+                                                                                        if (index < bodyElements.size - 1) {
+                                                                                            body.append("\n<hr>\n")
+                                                                                        }
+                                                                                    }
+                                                                                }
 
                                                                                 // タイトルまたは本文が空の場合はリトライ
                                                                                 if (title.isEmpty() || body.isEmpty()) {
@@ -450,8 +457,18 @@ fun UpdateInfoScreen(
 
                                                                                         // 本文が空だった場合は再取得
                                                                                         if (body.isEmpty()) {
-                                                                                            val bodyElements = doc.select("div.p-novel__body div.js-novel-text p")
-                                                                                            val body = bodyElements.joinToString("\n<p></p><p>-----</p><p></p>\n") { "<p>${it.html()}</p>" }
+                                                                                            val bodyElements = doc.select("div.p-novel__body > div")
+                                                                                            val body = StringBuilder()
+
+                                                                                            if (bodyElements.isNotEmpty()) {
+                                                                                                bodyElements.forEachIndexed { index, element ->
+                                                                                                    body.append(element.outerHtml())
+                                                                                                    // 最後の要素でなければ<hr>を追加
+                                                                                                    if (index < bodyElements.size - 1) {
+                                                                                                        body.append("\n<hr>\n")
+                                                                                                    }
+                                                                                                }
+                                                                                            }
                                                                                         }
                                                                                     }
                                                                                 }
@@ -470,7 +487,7 @@ fun UpdateInfoScreen(
                                                                                 val episode = EpisodeEntity(
                                                                                     ncode = queueItem.ncode,
                                                                                     episode_no = episodeNoStr,
-                                                                                    body = body,
+                                                                                    body = body.toString(),
                                                                                     e_title = title,
                                                                                     update_time = dateFormat
                                                                                 )
