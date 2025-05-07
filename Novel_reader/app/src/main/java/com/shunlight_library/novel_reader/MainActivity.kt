@@ -238,8 +238,6 @@ when (val currentScreen = navigationManager.currentScreen) {
         )
     }
 
-    // when ステートメントの EpisodeView ケース内
-    // when ステートメントの EpisodeView ケース内
     is Screen.EpisodeView -> {
         EpisodeViewScreen(
             ncode = currentScreen.ncode,
@@ -255,7 +253,7 @@ when (val currentScreen = navigationManager.currentScreen) {
                     navigationManager.navigateTo(Screen.EpisodeView(
                         ncode = currentScreen.ncode,
                         episodeNo = prevEpisodeNo,
-                        source = currentScreen.currentScreen))
+                        source = currentScreen.source))  // Use the source from currentScreen
                 }
             },
             onNext = {
@@ -263,11 +261,10 @@ when (val currentScreen = navigationManager.currentScreen) {
                 navigationManager.navigateTo(Screen.EpisodeView(
                     ncode = currentScreen.ncode,
                     episodeNo = nextEpisodeNo,
-                    source = currentScreen.currentScreen))
+                    source = currentScreen.source))  // Use the source from currentScreen
             }
         )
     }
-
 
 
     is Screen.WebView -> {
