@@ -206,7 +206,8 @@ object NovelApiUtils {
                                     bodyElements[index + 1].html().trim().startsWith("<div")
 
                             if (hasClosingDiv && hasOpeningDivNext) {
-                                append("\n<p></p><p>-----</p><p></p>\n")
+                                append("\n")
+//                                append("\n<p></p><p>-----</p><p></p>\n")
                             } else {
                                 append("\n")
                             }
