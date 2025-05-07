@@ -186,7 +186,6 @@ class SettingsStore(private val context: Context) {
         themeMode: String,
         fontFamily: String,
         fontSize: Int,
-        backgroundColor: String,
         selfServerAccess: Boolean,
         textOrientation: String,
         selfServerPath: String,
@@ -195,11 +194,10 @@ class SettingsStore(private val context: Context) {
         useDefaultBackground: Boolean
     ) {
         context.dataStore.edit { preferences ->
-            // 既存の設定
+            // 既存の設定（BACKGROUND_COLOR は削除）
             preferences[THEME_MODE] = themeMode
             preferences[FONT_FAMILY] = fontFamily
             preferences[FONT_SIZE] = fontSize
-            preferences[BACKGROUND_COLOR] = backgroundColor
             preferences[SELF_SERVER_ACCESS] = selfServerAccess
             preferences[TEXT_ORIENTATION] = textOrientation
             preferences[SELF_SERVER_PATH_KEY] = selfServerPath

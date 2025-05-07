@@ -211,6 +211,7 @@ class UpdateService : Service() {
     }
 
     // Implementation of update methods
+    // UpdateService.kt の checkForUpdates メソッドを修正
     private fun checkForUpdates(ncode: String) {
         serviceScope.launch {
             try {
@@ -223,8 +224,15 @@ class UpdateService : Service() {
                     return@launch
                 }
 
+                // URLEntityを取得または作成
+                val urlEntity = repository.getOrCreateURL(ncode, novel.rating == 1)
+
                 // Fetch latest info from API
-                val (newGeneralAllNo, newUpdatedAt) = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+                val (newGeneralAllNo, newUpdatedAt) = NovelApiUtils.fetchNovelInfo(
+                    ncode = ncode,
+                    isR18 = novel.rating == 1,
+                    apiUrl = urlEntity.api_url
+                )
 
                 if (newGeneralAllNo == -1) {
                     updateComplete(false, "APIからデータが取得できませんでした")
@@ -259,7 +267,6 @@ class UpdateService : Service() {
             }
         }
     }
-
     private fun downloadEpisodes(ncode: String) {
         serviceScope.launch {
             try {

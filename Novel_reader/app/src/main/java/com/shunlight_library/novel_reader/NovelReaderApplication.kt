@@ -13,7 +13,8 @@ class NovelReaderApplication : Application() {
             database.episodeDao(),
             database.novelDescDao(),
             database.lastReadNovelDao(),
-            database.updateQueueDao()
+            database.updateQueueDao(),
+            database.urlEntityDao()
         )
     }
 

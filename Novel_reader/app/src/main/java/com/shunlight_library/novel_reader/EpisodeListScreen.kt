@@ -1126,6 +1126,8 @@ private suspend fun fetchNovelInfo(ncode: String): Pair<Int, String> {
 }
 
 // エピソードを取得する関数（スクレイピング）
+// UpdateInfoScreen.kt
+// エピソードを取得する関数（スクレイピング）
 private suspend fun fetchEpisode(ncode: String, episodeNo: Int, isR18: Boolean): EpisodeEntity? {
     return withContext(Dispatchers.IO) {
         try {
@@ -1144,7 +1146,35 @@ private suspend fun fetchEpisode(ncode: String, episodeNo: Int, isR18: Boolean):
 
             val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
             val bodyElements = doc.select("div.p-novel__body div.js-novel-text p")
-            val body = bodyElements.joinToString("\n<p></p><p>-----</p><p></p>\n") { "<p>${it.html()}</p>" }
+
+            // 小説ダウンロード時の不要なタグ挿入問題修正
+            // div-div間のみに区切り線を追加するよう修正
+            val body = StringBuilder()
+
+            if (bodyElements.isNotEmpty()) {
+                bodyElements.forEachIndexed { index, element ->
+                    body.append("<p>${element.html()}</p>")
+
+                    // 最後の要素でない場合にのみ改行を追加
+                    if (index < bodyElements.size - 1) {
+                        // divタグの終わりと次のdivタグの始まりを検出
+                        val currentHtml = element.html()
+                        val nextHtml = bodyElements[index + 1].html()
+
+                        // divタグの終わりと次のdivタグの始まりを検出
+                        val isCurrentDivEnd = currentHtml.trim().endsWith("</div>")
+                        val isNextDivStart = nextHtml.trim().startsWith("<div")
+
+                        if (isCurrentDivEnd && isNextDivStart) {
+                            // div-div間のみに区切り線を追加
+                            body.append("\n<p></p><p>-----</p><p></p>\n")
+                        } else {
+                            // 通常の改行のみ
+                            body.append("\n")
+                        }
+                    }
+                }
+            }
 
             if (title.isNotEmpty() && body.isNotEmpty()) {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -1152,15 +1182,17 @@ private suspend fun fetchEpisode(ncode: String, episodeNo: Int, isR18: Boolean):
                 EpisodeEntity(
                     ncode = ncode,
                     episode_no = episodeNo.toString(),
-                    body = body,
+                    body = body.toString(),
                     e_title = title,
-                    update_time = currentDate
+                    update_time = currentDate,
+                    is_read = false,
+                    is_bookmark = false
                 )
             } else {
                 null
             }
         } catch (e: Exception) {
-            Log.e("EpisodeListScreen", "エピソード取得エラー: $episodeNo", e)
+            Log.e("UpdateInfoScreen", "エピソード取得エラー: $episodeNo", e)
             null
         }
     }

@@ -2,11 +2,8 @@ package com.shunlight_library.novel_reader
 
 import RecentlyUpdatedNovelsScreen
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,8 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,11 +26,10 @@ import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.ui.theme.Novel_readerTheme
 import com.shunlight_library.novel_reader.ui.theme.LightOrange
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.shunlight_library.novel_reader.navigation.NavigationManager
 import com.shunlight_library.novel_reader.navigation.Screen
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var navigationManager: NavigationManager
@@ -69,7 +63,17 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
-            Novel_readerTheme {
+            val settingsStore = remember { SettingsStore(this) }
+            val themeMode by settingsStore.themeMode.collectAsState(initial = "System")
+
+            // テーマモードに基づいてダークテーマかどうかを決定
+            val isDarkTheme = when (themeMode) {
+                "Light" -> false
+                "Dark" -> true
+                else -> isSystemInDarkTheme()
+            }
+
+            Novel_readerTheme(darkTheme = isDarkTheme) {
                 // ナビゲーションマネージャーをコンポーザブルに提供
                 NovelReaderApp(navigationManager = navigationManager)
             }
@@ -222,41 +226,47 @@ when (val currentScreen = navigationManager.currentScreen) {
             )
         }
 
-        is Screen.EpisodeList -> {
-            EpisodeListScreen(
-                ncode = currentScreen.ncode,
-                onBack = {
-                    // ソース画面が指定されている場合、そこまで戻る
-                    if (currentScreen.source != null) {
-                        navigationManager.navigateBackTo(currentScreen.source)
-                    } else {
-                        navigationManager.navigateBack()
-                    }
-                },
-                onEpisodeClick = { ncode, episodeNo ->
-                    navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo))
+    is Screen.EpisodeList -> {
+        EpisodeListScreen(
+            ncode = currentScreen.ncode,
+            onBack = {
+                // ソース画面が指定されている場合、そこに戻る
+                if (currentScreen.source != null) {
+                    navigationManager.navigateBackTo(currentScreen.source)
+                } else {
+                    navigationManager.navigateBack()
                 }
-            )
-        }
+            },
+            onEpisodeClick = { ncode, episodeNo ->
+                navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo, currentScreen))
+            }
+        )
+    }
 
-        is Screen.EpisodeView -> {
-            EpisodeViewScreen(
-                ncode = currentScreen.ncode,
-                episodeNo = currentScreen.episodeNo,
-                onBack = { navigationManager.navigateBack() },
-                onPrevious = {
-                    val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
-                    if (prevEpisodeNo.toInt() >= 1) {
-                        navigationManager.navigateTo(Screen.EpisodeView(currentScreen.ncode, prevEpisodeNo))
-                    }
-                },
-                onNext = {
-                    // 次のエピソードへのロジック
+    is Screen.EpisodeView -> {
+        EpisodeViewScreen(
+            ncode = currentScreen.ncode,
+            episodeNo = currentScreen.episodeNo,
+            onBack = { navigationManager.navigateBack() },
+            onBackToToc = {
+                // 目次画面に戻る - ソース画面を保持
+                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, currentScreen.source))
+            },
+            onPrevious = {
+                val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
+                if (prevEpisodeNo.toInt() >= 1) {
+                    navigationManager.navigateTo(Screen.EpisodeView(currentScreen.ncode, prevEpisodeNo, currentScreen.source))
                 }
-            )
-        }
+            },
+            onNext = {
+                val nextEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it + 1 }?.toString() ?: "1"
+                navigationManager.navigateTo(Screen.EpisodeView(currentScreen.ncode, nextEpisodeNo, currentScreen.source))
+            }
+        )
+    }
 
-        is Screen.WebView -> {
+
+    is Screen.WebView -> {
             WebViewScreen(
                 url = currentScreen.url,
                 onBack = { navigationManager.navigateBack() }
@@ -267,7 +277,7 @@ when (val currentScreen = navigationManager.currentScreen) {
             RecentlyReadNovelsScreen(
                 onBack = { navigationManager.navigateBack() },
                 onNovelClick = { ncode, episodeNo ->
-                    navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo))
+                    navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo, currentScreen))
                 }
             )
         }
@@ -433,7 +443,8 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
                                 // 最後に読んだエピソードを開く
                                 onNavigate(Screen.EpisodeView(
                                     ncode = lastReadNovel!!.ncode,
-                                    episodeNo = lastReadNovel!!.episode_no.toString()
+                                    episodeNo = lastReadNovel!!.episode_no.toString(),
+                                    currentScreen = currentScreen
                                 ))
                             }
                         },

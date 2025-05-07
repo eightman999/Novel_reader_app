@@ -37,6 +37,7 @@ fun EpisodeViewScreen(
     ncode: String,
     episodeNo: String,
     onBack: () -> Unit,
+    onBackToToc: () -> Unit, // 新しく追加
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
@@ -246,7 +247,7 @@ fun EpisodeViewScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable(onClick = onBack)
+                            .clickable(onClick = onBackToToc) // onBackToTocを使用
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.List, contentDescription = "目次に戻る")
@@ -382,6 +383,7 @@ private fun convertPlainTextToHtml(plainText: String): String {
     }
 }
 
+// EpisodeViewScreen.kt の EnhancedHtmlRubyWebView 関数を修正
 @Composable
 fun EnhancedHtmlRubyWebView(
     htmlContent: String,
@@ -460,41 +462,14 @@ fun EnhancedHtmlRubyWebView(
         }
         ruby {
             ruby-align: center;
-            display: inline-flex;
-            flex-direction: column-reverse;
-            vertical-align: bottom;
         }
         rt {
             font-size: ${rubyFontSize}px;
             text-align: center;
             line-height: 1;
             color: $fontColor;
-            display: inline;
         }
     </style>
-    """.trimIndent()
-
-    // JavaScriptで追加の調整
-    val jsScript = """
-        <script>
-            // ドキュメント読み込み後にルビタグを調整
-            document.addEventListener('DOMContentLoaded', function() {
-                // すべてのルビ要素を取得
-                var rubyElements = document.getElementsByTagName('ruby');
-                for (var i = 0; i < rubyElements.length; i++) {
-                    var ruby = rubyElements[i];
-                    
-                    // rtタグが見つからない場合は修正
-                    if (ruby.getElementsByTagName('rt').length === 0) {
-                        var text = ruby.textContent;
-                        var match = text.match(/(.+?)\((.+?)\)/);
-                        if (match) {
-                            ruby.innerHTML = match[1] + '<rt>' + match[2] + '</rt>';
-                        }
-                    }
-                }
-            });
-        </script>
     """.trimIndent()
 
     // HTMLを修正
@@ -508,7 +483,6 @@ fun EnhancedHtmlRubyWebView(
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
             $cssStyle
-            $jsScript
         </head>
         <body>
             $fixedHtml
@@ -524,20 +498,12 @@ fun EnhancedHtmlRubyWebView(
             WebView(context).apply {
                 webView = this
                 settings.apply {
-                    javaScriptEnabled = true
+                    javaScriptEnabled = false // JavaScriptを無効化
                     defaultFontSize = fontSize
                     builtInZoomControls = true
                     displayZoomControls = false
                     cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                     defaultTextEncodingName = "UTF-8"
-                }
-
-                // WebViewClientのカスタマイズ
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        // ページ読み込み完了後の処理
-                    }
                 }
 
                 // HTMLをロード

@@ -1,5 +1,6 @@
 package com.shunlight_library.novel_reader
 
+import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
@@ -67,31 +68,25 @@ fun SettingsScreenUpdated(
     var showRating by remember { mutableStateOf(true) }
     var showUpdateDate by remember { mutableStateOf(true) }
     var showEpisodeCount by remember { mutableStateOf(true) }
+    useDefaultBackground = false // 強制的に背景色設定を使用
 
+    val actualBackgroundColor = try {
+        Color(AndroidColor.parseColor(backgroundColor))
+    } catch (e: Exception) {
+        MaterialTheme.colorScheme.background
+    }
     // Load saved preferences when the screen is created
-    LaunchedEffect(key1 = true) {
-        themeMode = settingsStore.themeMode.first()
-        fontFamily = settingsStore.fontFamily.first()
-        fontSize = settingsStore.fontSize.first()
-        backgroundColor = settingsStore.backgroundColor.first()
-        selfServerAccess = settingsStore.selfServerAccess.first()
-        textOrientation = settingsStore.textOrientation.first()
-        selfServerPath = settingsStore.selfServerPath.first()
-
-        // 新しい設定値の読み込み
-        fontColor = settingsStore.fontColor.first()
-        episodeBackgroundColor = settingsStore.episodeBackgroundColor.first()
-        useDefaultBackground = settingsStore.useDefaultBackground.first()
-
-        // 表示設定の読み込み
-        val displaySettings = settingsStore.getDisplaySettings()
-        showTitle = displaySettings.showTitle
-        showAuthor = displaySettings.showAuthor
-        showSynopsis = displaySettings.showSynopsis
-        showTags = displaySettings.showTags
-        showRating = displaySettings.showRating
-        showUpdateDate = displaySettings.showUpdateDate
-        showEpisodeCount = displaySettings.showEpisodeCount
+    LaunchedEffect(Unit) {
+        try {
+            fontSize = settingsStore.fontSize.first()
+            fontFamily = settingsStore.fontFamily.first()
+            fontColor = settingsStore.fontColor.first()
+            backgroundColor = settingsStore.episodeBackgroundColor.first()
+            useDefaultBackground = settingsStore.useDefaultBackground.first()
+            textOrientation = settingsStore.textOrientation.first()
+        } catch (e: Exception) {
+            Log.e("EpisodeViewScreen", "設定の読み込みエラー: ${e.message}")
+        }
     }
 
     // データベース同期ダイアログ
@@ -285,38 +280,6 @@ fun SettingsScreenUpdated(
 
             HorizontalDivider()
 
-            // Background Color Setting
-            SettingSection(title = "背景色") {
-                backgroundOptions.forEach { option ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = backgroundColor == option,
-                                onClick = { backgroundColor = option }
-                            )
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = backgroundColor == option,
-                            onClick = null // null because we're handling click on the row
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(option)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .background(
-                                    color = backgroundColors[option] ?: Color.White
-                                )
-                        )
-                    }
-                }
-            }
-
-            HorizontalDivider()
 
             // Self-Server Access Setting
             SettingSection(title = "自己サーバーアクセス") {
@@ -630,7 +593,6 @@ fun SettingsScreenUpdated(
                                 themeMode = themeMode,
                                 fontFamily = fontFamily,
                                 fontSize = fontSize,
-                                backgroundColor = backgroundColor,
                                 selfServerAccess = selfServerAccess,
                                 textOrientation = textOrientation,
                                 selfServerPath = selfServerPath,

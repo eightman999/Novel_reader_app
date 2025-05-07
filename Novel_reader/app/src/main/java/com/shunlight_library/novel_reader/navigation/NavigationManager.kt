@@ -4,7 +4,6 @@ package com.shunlight_library.novel_reader.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 
 /**
  * 画面遷移を管理するためのクラス
@@ -67,7 +66,7 @@ sealed class Screen {
     object Settings : Screen()
     data class NovelList(val source: Screen? = null) : Screen()
     data class EpisodeList(val ncode: String, val source: Screen? = null) : Screen()
-    data class EpisodeView(val ncode: String, val episodeNo: String) : Screen()
+    data class EpisodeView(val ncode: String, val episodeNo: String, val currentScreen: EpisodeList) : Screen()
     data class WebView(val url: String) : Screen()
     object RecentlyReadNovels : Screen()
     object RecentlyUpdatedNovels : Screen()

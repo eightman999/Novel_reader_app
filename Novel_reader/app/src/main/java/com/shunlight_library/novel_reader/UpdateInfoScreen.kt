@@ -860,3 +860,4 @@ private suspend fun fetchWithRetry(url: String, maxRetries: Int = 3): Document? 
     Log.e("UpdateInfo", "最大リトライ回数を超えました: $url", lastException)
     return null
 }
+

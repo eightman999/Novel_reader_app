@@ -12,6 +12,7 @@ import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import java.io.File
 import java.io.FileOutputStream
@@ -193,7 +194,7 @@ class DatabaseSyncManager(private val context: Context) {
             val columnTotalEp = getColumnIndexOrDefault(cursor, "total_ep")
             val columnGeneralAllNo = getColumnIndexOrDefault(cursor, "general_all_no")
             val columnUpdatedAt = getColumnIndexOrDefault(cursor, "updated_at")
-
+            val urlEntities = mutableListOf<URLEntity>() // URLEntityリスト追加
             val batchSize = 50
             val novels = mutableListOf<NovelDescEntity>()
 
@@ -216,7 +217,27 @@ class DatabaseSyncManager(private val context: Context) {
                 )
 
                 novels.add(novel)
+                // URLEntityも作成
+                val isR18 = novel.rating == 1
+                val apiUrl = if (isR18) {
+                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5&json"
+                } else {
+                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5&json"
+                }
+                val webUrl = if (isR18) {
+                    "https://novel18.syosetu.com/${novel.ncode}/"
+                } else {
+                    "https://ncode.syosetu.com/${novel.ncode}/"
+                }
 
+                val urlEntity = URLEntity(
+                    ncode = novel.ncode,
+                    api_url = apiUrl,
+                    url = webUrl,
+                    is_r18 = isR18
+                )
+
+                urlEntities.add(urlEntity)
                 // バッチサイズに達したら保存
                 if (novels.size >= batchSize) {
                     repository.insertNovels(novels)
@@ -227,6 +248,7 @@ class DatabaseSyncManager(private val context: Context) {
             // 残りのデータを保存
             if (novels.isNotEmpty()) {
                 repository.insertNovels(novels)
+                repository.insertURLs(urlEntities)
             }
 
             Log.d(TAG, "小説説明の同期が完了しました")

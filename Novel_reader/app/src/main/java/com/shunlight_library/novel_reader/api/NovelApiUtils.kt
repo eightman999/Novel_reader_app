@@ -29,19 +29,20 @@ object NovelApiUtils {
      * @param isR18 R18小説かどうか
      * @return Pair(総エピソード数, 更新日時) 取得に失敗した場合は (-1, "")
      */
-    suspend fun fetchNovelInfo(ncode: String, isR18: Boolean = false): Pair<Int, String> {
+    // NovelApiUtils.kt の fetchNovelInfo 関数を修正
+    suspend fun fetchNovelInfo(ncode: String, isR18: Boolean = false, apiUrl: String? = null): Pair<Int, String> {
         if (ncode.isEmpty()) return Pair(-1, "")
 
         return withContext(Dispatchers.IO) {
             try {
                 // API URLの構築
-                val apiUrl = if (isR18) {
+                val actualApiUrl = apiUrl ?: if (isR18) {
                     "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
                 } else {
                     "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
                 }
 
-                val connection = URL(apiUrl).openConnection() as HttpURLConnection
+                val connection = URL(actualApiUrl).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000

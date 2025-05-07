@@ -3,10 +3,12 @@ package com.shunlight_library.novel_reader.data.repository
 import com.shunlight_library.novel_reader.data.dao.EpisodeDao
 import com.shunlight_library.novel_reader.data.dao.LastReadNovelDao
 import com.shunlight_library.novel_reader.data.dao.NovelDescDao
+import com.shunlight_library.novel_reader.data.dao.URLEntityDao
 import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -19,7 +21,8 @@ class NovelRepository(
     private val episodeDao: EpisodeDao,
     private val novelDescDao: NovelDescDao,
     private val lastReadNovelDao: LastReadNovelDao,
-    private val updateQueueDao: UpdateQueueDao
+    private val updateQueueDao: UpdateQueueDao,
+    private val urlEntityDao: URLEntityDao
 ) {
     // Novel Description関連メソッド
     val allNovels: Flow<List<NovelDescEntity>> = novelDescDao.getAllNovels()
@@ -161,4 +164,57 @@ class NovelRepository(
     fun getBookmarkedEpisodes(ncode: String): Flow<List<EpisodeEntity>> {
         return episodeDao.getBookmarkedEpisodes(ncode)
     }
+
+    fun getAllURLs(): Flow<List<URLEntity>> {
+        return urlEntityDao.getAllURLs()
+    }
+
+    suspend fun getURLByNcode(ncode: String): URLEntity? {
+        return urlEntityDao.getURLByNcode(ncode)
+    }
+
+    suspend fun insertURL(urlEntity: URLEntity) {
+        urlEntityDao.insertURL(urlEntity)
+    }
+
+    suspend fun insertURLs(urlEntities: List<URLEntity>) {
+        urlEntityDao.insertURLs(urlEntities)
+    }
+
+    suspend fun updateURL(urlEntity: URLEntity) {
+        urlEntityDao.updateURL(urlEntity)
+    }
+
+    suspend fun deleteURLByNcode(ncode: String) {
+        urlEntityDao.deleteURLByNcode(ncode)
+    }
+    suspend fun getOrCreateURL(ncode: String, isR18: Boolean = false): URLEntity {
+        val existingURL = urlEntityDao.getURLByNcode(ncode)
+        if (existingURL != null) {
+            return existingURL
+        }
+
+        // 新しいURLEntityを作成
+        val apiUrl = if (isR18) {
+            "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+        } else {
+            "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+        }
+        val webUrl = if (isR18) {
+            "https://novel18.syosetu.com/$ncode/"
+        } else {
+            "https://ncode.syosetu.com/$ncode/"
+        }
+
+        val newURLEntity = URLEntity(
+            ncode = ncode,
+            api_url = apiUrl,
+            url = webUrl,
+            is_r18 = isR18
+        )
+
+        urlEntityDao.insertURL(newURLEntity)
+        return newURLEntity
+    }
+
 }
