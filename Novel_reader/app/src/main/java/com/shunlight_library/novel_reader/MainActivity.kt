@@ -239,6 +239,7 @@ when (val currentScreen = navigationManager.currentScreen) {
     }
 
     // when ステートメントの EpisodeView ケース内
+    // when ステートメントの EpisodeView ケース内
     is Screen.EpisodeView -> {
         EpisodeViewScreen(
             ncode = currentScreen.ncode,
@@ -246,7 +247,7 @@ when (val currentScreen = navigationManager.currentScreen) {
             onBack = { navigationManager.navigateBack() },
             onBackToToc = {
                 // 現在の ncode を使って EpisodeList に戻る
-                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, currentScreen))
+                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, source = Screen.Main))
             },
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
@@ -254,7 +255,7 @@ when (val currentScreen = navigationManager.currentScreen) {
                     navigationManager.navigateTo(Screen.EpisodeView(
                         ncode = currentScreen.ncode,
                         episodeNo = prevEpisodeNo,
-                        currentScreen = Screen.EpisodeView(currentScreen.ncode,currentScreen.episodeNo,currentScreen)))
+                        source = currentScreen.currentScreen))
                 }
             },
             onNext = {
@@ -262,7 +263,7 @@ when (val currentScreen = navigationManager.currentScreen) {
                 navigationManager.navigateTo(Screen.EpisodeView(
                     ncode = currentScreen.ncode,
                     episodeNo = nextEpisodeNo,
-                    currentScreen = Screen.EpisodeView(currentScreen.ncode,currentScreen.episodeNo,currentScreen)))
+                    source = currentScreen.currentScreen))
             }
         )
     }
@@ -447,7 +448,7 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
                                 onNavigate(Screen.EpisodeView(
                                     ncode = lastReadNovel!!.ncode,
                                     episodeNo = lastReadNovel!!.episode_no.toString(),
-                                    currentScreen = Screen.Main
+                                    source = Screen.Main
                                 ))
                             }
                         },
