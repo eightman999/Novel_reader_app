@@ -4,6 +4,7 @@ package com.shunlight_library.novel_reader.service
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -87,8 +88,20 @@ class UpdateService : Service() {
                     isRunning = true
                     currentNcode = ncode
 
-                    // Start as foreground service
-                    startForeground(NOTIFICATION_ID, createNotification("更新処理を開始しています..."))
+                    // 通知の作成
+                    val notification = createNotification("更新処理を開始しています...")
+
+                    // Android 12以降ではフォアグラウンドサービスタイプを指定
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    } else {
+                        // 以前のバージョン用
+                        startForeground(NOTIFICATION_ID, notification)
+                    }
 
                     // Start update based on type
                     when (updateType) {
@@ -104,10 +117,8 @@ class UpdateService : Service() {
             }
         }
 
-        // Make sure service doesn't restart if killed
         return START_NOT_STICKY
     }
-
     override fun onBind(intent: Intent?): IBinder {
         return binder
     }

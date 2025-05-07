@@ -14,6 +14,7 @@ import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -55,7 +56,8 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         EpisodeEntity::class,
         NovelDescEntity::class,
         LastReadNovelEntity::class,
-        UpdateQueueEntity::class
+        UpdateQueueEntity::class,
+        URLEntity::class
     ],
     version = 4,
     exportSchema = false

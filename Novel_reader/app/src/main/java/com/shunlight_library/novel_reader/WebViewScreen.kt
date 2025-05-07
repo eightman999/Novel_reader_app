@@ -1,6 +1,7 @@
 package com.shunlight_library.novel_reader
 
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -137,6 +138,13 @@ fun WebViewScreen(
                         }
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            // Android 12以降ではフォアグラウンドサービスタイプを指定
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                intent.putExtra(
+                                    "android.content.extra.FOREGROUND_SERVICE_TYPE",
+                                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                                )
+                            }
                             context.startForegroundService(intent)
                         } else {
                             context.startService(intent)
@@ -246,6 +254,13 @@ fun WebViewScreen(
                                         }
 
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            // Android 12以降ではフォアグラウンドサービスタイプを指定
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                intent.putExtra(
+                                                    "android.content.extra.FOREGROUND_SERVICE_TYPE",
+                                                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                                                )
+                                            }
                                             context.startForegroundService(intent)
                                         } else {
                                             context.startService(intent)
