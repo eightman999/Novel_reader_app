@@ -307,21 +307,7 @@ fun EpisodeViewScreen(
                         .padding(horizontal = 16.dp)
                         .verticalScroll(scrollState)
                 ) {
-                    // エピソードタイトル
-                    Text(
-                        text = episode!!.e_title,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            color = try {
-                                Color(AndroidColor.parseColor(fontColor))
-                            } catch (e: Exception) {
-                                MaterialTheme.colorScheme.onBackground
-                            }
-                        ),
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(vertical = 16.dp)
-                            .clickable { onTitleTap() }
-                    )
+
 
                     // 本文表示
                     if (devModeEnabled) {
