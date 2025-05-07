@@ -250,18 +250,17 @@ when (val currentScreen = navigationManager.currentScreen) {
             onBack = { navigationManager.navigateBack() },
             onBackToToc = {
                 // 目次画面に戻る - ソース画面を保持
-                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, currentScreen.source))
+                navigationManager.navigateTo(Screen.EpisodeView(ncode = lastReadNovel!!.ncode, episodeNo = lastReadNovel!!.episode_no.toString(), source = Screen.Main))
             },
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
                 if (prevEpisodeNo.toInt() >= 1) {
-                    navigationManager.navigateTo(Screen.EpisodeView(currentScreen.ncode, prevEpisodeNo, currentScreen.source))
+                    navigationManager.navigateTo(Screen.EpisodeView(ncode = currentScreen.ncode, episodeNo = currentScreen.episodeNo, source = currentScreen))
                 }
             },
             onNext = {
                 val nextEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it + 1 }?.toString() ?: "1"
-                navigationManager.navigateTo(Screen.EpisodeView(currentScreen.ncode, nextEpisodeNo, currentScreen.source))
-            }
+                navigationManager.navigateTo(Screen.EpisodeView(ncode = currentScreen.ncode, episodeNo = currentScreen.episodeNo, source = currentScreen.source))            }
         )
     }
 
