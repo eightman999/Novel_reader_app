@@ -15,5 +15,6 @@ data class EpisodeEntity(
     val e_title: String,
     val update_time: String,
     val is_read: Boolean = false,      // 既読フラグ
-    val is_bookmark: Boolean = false   // しおりフラグ
+    val is_bookmark: Boolean = false,   // しおりフラグ
+    val reading_rate: Float = 0f       // 追加：読書の進行度（0.0f～1.0f）
 )

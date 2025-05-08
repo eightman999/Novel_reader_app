@@ -2,6 +2,7 @@ package com.shunlight_library.novel_reader
 
 import android.graphics.Color as AndroidColor
 import android.util.Log
+import android.webkit.JavascriptInterface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,8 +29,11 @@ import android.widget.Toast
 import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -348,6 +352,9 @@ fun EpisodeViewScreen(
                             fontColor = fontColor,
                             fontFamily = fontFamily,
                             textOrientation = textOrientation,
+                            ncode = ncode,
+                            episodeNo = episodeNo,
+                            savedReadingRate = episode!!.reading_rate,
                             modifier = Modifier.padding(bottom = 32.dp)
                         )
                     }
@@ -393,10 +400,31 @@ fun EnhancedHtmlRubyWebView(
     backgroundColor: String? = null,
     fontColor: String = "#000000",
     fontFamily: String = "Gothic",
-    textOrientation: String = "Horizontal"
+    textOrientation: String = "Horizontal",
+    episode: EpisodeEntity? = null, // エピソード情報も受け取る
+    repository: NovelRepository // リポジトリも受け取る
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    class WebViewJSInterface(
+        private val ncode: String,
+        private val episodeNo: String,
+        private val repo: NovelRepository,
+        private val updateThreshold: Float = 0.01f // 更新する最小変化量
+    ) {
+        private var lastSavedPosition = 0f
 
+        @JavascriptInterface
+        fun saveScrollPosition(position: Float) {
+            // 前回保存した位置との差が閾値を超えた場合のみ保存処理を実行
+            if (abs(position - lastSavedPosition) > updateThreshold) {
+                scope.launch(Dispatchers.IO) {
+                    repo.updateReadingRate(ncode, episodeNo, position)
+                    lastSavedPosition = position
+                }
+            }
+        }
+    }
     // Process the content - if not HTML, convert to HTML with paragraph tags
     val processedContent = if (isHtmlContent(htmlContent)) {
         htmlContent
@@ -474,7 +502,45 @@ fun EnhancedHtmlRubyWebView(
 
     // HTMLを修正
     val fixedHtml = fixRubyTags(processedContent)
-
+    val scrollMonitorScript = """
+    <script>
+        // ページ読み込み完了後の処理
+        window.onload = function() {
+            // 保存された位置があれば復元
+            if (${savedReadingRate} > 0) {
+                // スクロール位置の計算
+                var maxScroll = document.body.scrollHeight - window.innerHeight;
+                var targetPosition = maxScroll * ${savedReadingRate};
+                // スクロール位置の復元（少し遅延させて確実に実行）
+                setTimeout(function() {
+                    window.scrollTo(0, targetPosition);
+                }, 100);
+            }
+            
+            // スクロール位置を監視して保存
+            var scrollTimeout;
+            window.addEventListener('scroll', function() {
+                clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(function() {
+                    // 現在のスクロール位置を0～1の範囲に正規化
+                    var maxScroll = document.body.scrollHeight - window.innerHeight;
+                    if (maxScroll <= 0) return;
+                    
+                    var currentScroll = window.scrollY;
+                    var scrollRatio = currentScroll / maxScroll;
+                    
+                    // 値の範囲を制限（0～1の範囲内に収める）
+                    scrollRatio = Math.max(0, Math.min(1, scrollRatio));
+                    
+                    // JavaScriptインターフェースを通じて値を保存
+                    if (typeof Android !== 'undefined') {
+                        Android.saveScrollPosition(scrollRatio);
+                    }
+                }, 300); // 300ms後に実行（スクロール中の頻繁な更新を防ぐ）
+            });
+        };
+    </script>
+    """.trimIndent()
     // HTMLコンテンツを整形
     val formattedHtml = """
         <!DOCTYPE html>
@@ -498,14 +564,20 @@ fun EnhancedHtmlRubyWebView(
             WebView(context).apply {
                 webView = this
                 settings.apply {
-                    javaScriptEnabled = false // JavaScriptを無効化
+                    javaScriptEnabled = true // JavaScriptを無効化
                     defaultFontSize = fontSize
                     builtInZoomControls = true
                     displayZoomControls = false
                     cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                     defaultTextEncodingName = "UTF-8"
                 }
-
+                // JavaScriptインターフェースを追加
+                if (ncode.isNotEmpty() && episodeNo.isNotEmpty()) {
+                    addJavascriptInterface(
+                        WebViewScrollInterface(ncode, episodeNo, repository, scope),
+                        "Android"
+                    )
+                }
                 // HTMLをロード
                 loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
             }

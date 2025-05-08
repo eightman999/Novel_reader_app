@@ -57,4 +57,8 @@ interface EpisodeDao {
      */
     @Query("SELECT * FROM episodes WHERE ncode = :ncode AND is_read = 1 ORDER BY CAST(episode_no AS INTEGER)")
     fun getReadEpisodes(ncode: String): Flow<List<EpisodeEntity>>
+
+    @Query("UPDATE episodes SET reading_rate = :readingRate WHERE ncode = :ncode AND episode_no = :episodeNo")
+    suspend fun updateReadingRate(ncode: String, episodeNo: String, readingRate: Float)
+
 }

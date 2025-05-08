@@ -51,6 +51,13 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         )
     }
 }
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE episodes ADD COLUMN reading_rate REAL NOT NULL DEFAULT 0.0")
+    }
+}
+
 @Database(
     entities = [
         EpisodeEntity::class,
@@ -59,7 +66,7 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         UpdateQueueEntity::class,
         URLEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -80,7 +87,7 @@ abstract class NovelDatabase : RoomDatabase() {
                     NovelDatabase::class.java,
                     "novel_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                 INSTANCE = instance
                 instance

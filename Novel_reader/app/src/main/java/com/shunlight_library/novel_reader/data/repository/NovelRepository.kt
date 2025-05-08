@@ -188,6 +188,11 @@ class NovelRepository(
     suspend fun deleteURLByNcode(ncode: String) {
         urlEntityDao.deleteURLByNcode(ncode)
     }
+
+    suspend fun updateReadingRate(ncode: String, episodeNo: String, readingRate: Float) {
+        episodeDao.updateReadingRate(ncode, episodeNo, readingRate)
+    }
+
     suspend fun getOrCreateURL(ncode: String, isR18: Boolean = false): URLEntity {
         val existingURL = urlEntityDao.getURLByNcode(ncode)
         if (existingURL != null) {

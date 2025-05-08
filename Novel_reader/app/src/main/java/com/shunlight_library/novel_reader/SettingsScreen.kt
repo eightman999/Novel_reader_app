@@ -202,6 +202,91 @@ fun SettingsScreenUpdated(
                     }
                 }
             )
+        },
+        bottomBar = {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                tonalElevation = 8.dp
+            ) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                // 既存の設定保存処理...
+                                scope.launch {
+                                    try {
+                                        // 基本設定を保存
+                                        settingsStore.saveAllSettings(
+                                            themeMode = themeMode,
+                                            fontFamily = fontFamily,
+                                            fontSize = fontSize,
+                                            selfServerAccess = selfServerAccess,
+                                            textOrientation = textOrientation,
+                                            selfServerPath = selfServerPath,
+                                            fontColor = fontColor,
+                                            episodeBackgroundColor = episodeBackgroundColor,
+                                            useDefaultBackground = useDefaultBackground
+                                        )
+
+                                        // 表示設定も保存
+                                        settingsStore.saveDisplaySettings(
+                                            DisplaySettings(
+                                                showTitle = showTitle,
+                                                showAuthor = showAuthor,
+                                                showSynopsis = showSynopsis,
+                                                showTags = showTags,
+                                                showRating = showRating,
+                                                showUpdateDate = showUpdateDate,
+                                                showEpisodeCount = showEpisodeCount
+                                            )
+                                        )
+
+                                        // 保存確認ログ
+                                        Log.d("SettingsScreen", "設定を保存しました")
+
+                                        // 保存したことをユーザーに通知
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
+                                        }
+
+                                        onBack()
+                                    } catch (e: Exception) {
+                                        Log.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                                // 自動更新設定も保存
+                                settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
+
+                                // カスタムフォント設定も保存
+                                settingsStore.saveCustomFont(customFontPath)
+
+                                // 自動更新スケジュールを設定
+                                val app = context.applicationContext as NovelReaderApplication
+                                app.scheduleUpdateWork(autoUpdateEnabled, autoUpdateTime)
+
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
+                                }
+
+                                onBack()
+                            } catch (e: Exception) {
+                                Log.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text("設定を保存")
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -583,58 +668,7 @@ fun SettingsScreenUpdated(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Save Button
-            Button(
-                onClick = {
-                    scope.launch {
-                        try {
-                            // 基本設定を保存
-                            settingsStore.saveAllSettings(
-                                themeMode = themeMode,
-                                fontFamily = fontFamily,
-                                fontSize = fontSize,
-                                selfServerAccess = selfServerAccess,
-                                textOrientation = textOrientation,
-                                selfServerPath = selfServerPath,
-                                fontColor = fontColor,
-                                episodeBackgroundColor = episodeBackgroundColor,
-                                useDefaultBackground = useDefaultBackground
-                            )
 
-                            // 表示設定も保存
-                            settingsStore.saveDisplaySettings(
-                                DisplaySettings(
-                                    showTitle = showTitle,
-                                    showAuthor = showAuthor,
-                                    showSynopsis = showSynopsis,
-                                    showTags = showTags,
-                                    showRating = showRating,
-                                    showUpdateDate = showUpdateDate,
-                                    showEpisodeCount = showEpisodeCount
-                                )
-                            )
-
-                            // 保存確認ログ
-                            Log.d("SettingsScreen", "設定を保存しました")
-
-                            // 保存したことをユーザーに通知
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
-                            }
-
-                            onBack()
-                        } catch (e: Exception) {
-                            Log.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("設定を保存")
-            }
         }
     }
 }
