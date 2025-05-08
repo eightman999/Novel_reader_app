@@ -105,7 +105,8 @@ fun EpisodeViewScreen(
     }
 
     LaunchedEffect(ncode, episodeNo) {
-        scrollState.scrollTo(0)
+
+//        scrollState.scrollTo(0)
         scope.launch {
             try {
                 // エピソード情報の取得
@@ -627,8 +628,9 @@ fun EnhancedHtmlRubyWebView(
                     displayZoomControls = false
                     cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                     defaultTextEncodingName = "UTF-8"
-                    onWebViewCreated(this)
+
                 }
+                onWebViewCreated(this)
                 // JavaScriptインターフェースを追加
                 addJavascriptInterface(
                     WebViewScrollInterface(ncode, episodeNo, repository, scope),

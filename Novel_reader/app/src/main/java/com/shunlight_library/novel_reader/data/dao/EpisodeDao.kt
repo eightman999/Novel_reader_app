@@ -61,4 +61,6 @@ interface EpisodeDao {
     @Query("UPDATE episodes SET reading_rate = :readingRate WHERE ncode = :ncode AND episode_no = :episodeNo")
     suspend fun updateReadingRate(ncode: String, episodeNo: String, readingRate: Float)
 
+    
+
 }
