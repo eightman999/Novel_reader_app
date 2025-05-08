@@ -1,5 +1,6 @@
 package com.shunlight_library.novel_reader
 
+import android.app.TimePickerDialog
 import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
@@ -7,6 +8,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -14,6 +16,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -69,6 +74,13 @@ fun SettingsScreenUpdated(
     var showUpdateDate by remember { mutableStateOf(true) }
     var showEpisodeCount by remember { mutableStateOf(true) }
     useDefaultBackground = false // 強制的に背景色設定を使用
+    // 状態変数に自動更新設定を追加
+    var autoUpdateEnabled by remember { mutableStateOf(false) }
+    var autoUpdateTime by remember { mutableStateOf("03:00") }
+    var customFontPath by remember { mutableStateOf("") }
+
+    // 時間選択ダイアログ状態
+    var showTimePickerDialog by remember { mutableStateOf(false) }
 
     val actualBackgroundColor = try {
         Color(AndroidColor.parseColor(backgroundColor))
@@ -84,11 +96,24 @@ fun SettingsScreenUpdated(
             backgroundColor = settingsStore.episodeBackgroundColor.first()
             useDefaultBackground = settingsStore.useDefaultBackground.first()
             textOrientation = settingsStore.textOrientation.first()
+            autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
+            autoUpdateTime = settingsStore.autoUpdateTime.first()
+            customFontPath = settingsStore.customFontPath.first()
         } catch (e: Exception) {
             Log.e("EpisodeViewScreen", "設定の読み込みエラー: ${e.message}")
         }
     }
-
+    // 時間選択ダイアログ
+    if (showTimePickerDialog) {
+        TimePickerDialog(
+            initialTime = autoUpdateTime,
+            onDismiss = { showTimePickerDialog = false },
+            onTimeSelected = { selectedTime ->
+                autoUpdateTime = selectedTime
+                showTimePickerDialog = false
+            }
+        )
+    }
     // データベース同期ダイアログ
     if (showDBSyncDialog && selectedDbUri != null) {
         AlertDialog(
@@ -204,6 +229,7 @@ fun SettingsScreenUpdated(
             )
         },
         bottomBar = {
+            // 画面下部に固定されるボタン
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 tonalElevation = 8.dp
@@ -212,71 +238,50 @@ fun SettingsScreenUpdated(
                     onClick = {
                         scope.launch {
                             try {
-                                // 既存の設定保存処理...
-                                scope.launch {
-                                    try {
-                                        // 基本設定を保存
-                                        settingsStore.saveAllSettings(
-                                            themeMode = themeMode,
-                                            fontFamily = fontFamily,
-                                            fontSize = fontSize,
-                                            selfServerAccess = selfServerAccess,
-                                            textOrientation = textOrientation,
-                                            selfServerPath = selfServerPath,
-                                            fontColor = fontColor,
-                                            episodeBackgroundColor = episodeBackgroundColor,
-                                            useDefaultBackground = useDefaultBackground
-                                        )
+                                // 基本設定を保存
+                                settingsStore.saveAllSettings(
+                                    themeMode = themeMode,
+                                    fontFamily = fontFamily,
+                                    fontSize = fontSize,
+                                    selfServerAccess = selfServerAccess,
+                                    textOrientation = textOrientation,
+                                    selfServerPath = selfServerPath,
+                                    fontColor = fontColor,
+                                    episodeBackgroundColor = episodeBackgroundColor,
+                                    useDefaultBackground = useDefaultBackground
+                                )
 
-                                        // 表示設定も保存
-                                        settingsStore.saveDisplaySettings(
-                                            DisplaySettings(
-                                                showTitle = showTitle,
-                                                showAuthor = showAuthor,
-                                                showSynopsis = showSynopsis,
-                                                showTags = showTags,
-                                                showRating = showRating,
-                                                showUpdateDate = showUpdateDate,
-                                                showEpisodeCount = showEpisodeCount
-                                            )
-                                        )
+                                // 表示設定を保存
+                                settingsStore.saveDisplaySettings(
+                                    DisplaySettings(
+                                        showTitle = showTitle,
+                                        showAuthor = showAuthor,
+                                        showSynopsis = showSynopsis,
+                                        showTags = showTags,
+                                        showRating = showRating,
+                                        showUpdateDate = showUpdateDate,
+                                        showEpisodeCount = showEpisodeCount
+                                    )
+                                )
 
-                                        // 保存確認ログ
-                                        Log.d("SettingsScreen", "設定を保存しました")
-
-                                        // 保存したことをユーザーに通知
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
-                                        }
-
-                                        onBack()
-                                    } catch (e: Exception) {
-                                        Log.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                }
-                                // 自動更新設定も保存
+                                // 自動更新設定を保存
                                 settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
 
-                                // カスタムフォント設定も保存
+                                // カスタムフォント設定を保存
                                 settingsStore.saveCustomFont(customFontPath)
 
                                 // 自動更新スケジュールを設定
                                 val app = context.applicationContext as NovelReaderApplication
                                 app.scheduleUpdateWork(autoUpdateEnabled, autoUpdateTime)
 
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
-                                }
+                                // 保存したことをユーザーに通知
+                                Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
 
+                                // 設定画面を閉じる
                                 onBack()
                             } catch (e: Exception) {
                                 Log.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
-                                }
+                                Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         }
                     },
@@ -631,7 +636,58 @@ fun SettingsScreenUpdated(
                     }
                 }
             }
+            HorizontalDivider()
 
+            SettingSection(title = "自動更新設定") {
+                // 自動更新の有効/無効
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("自動更新を有効にする")
+                    Spacer(modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = autoUpdateEnabled,
+                        onCheckedChange = { autoUpdateEnabled = it }
+                    )
+                }
+
+                // 自動更新が有効な場合のみ時間設定を表示
+                if (autoUpdateEnabled) {
+                    // 自動更新時間の設定
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showTimePickerDialog = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("自動更新時間")
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = autoUpdateTime,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = "時間を選択",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // 説明文
+                    Text(
+                        text = "指定した時間に小説の更新をチェックします。\n更新があれば通知が表示されます。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
             HorizontalDivider()
 
             // データベース同期セクション
@@ -803,6 +859,97 @@ fun DatabaseSyncDialog(
                 ) {
                     Text("キャンセル")
                 }
+            }
+        }
+    )
+}
+@Composable
+fun TimePickerDialog(
+    initialTime: String,
+    onDismiss: () -> Unit,
+    onTimeSelected: (String) -> Unit
+) {
+    // 時間と分の初期値を取得
+    val timeParts = initialTime.split(":")
+    var hour by remember { mutableStateOf(timeParts[0].toIntOrNull() ?: 3) }
+    var minute by remember { mutableStateOf(timeParts[1].toIntOrNull() ?: 0) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("自動更新時間を設定") },
+        text = {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // 時間選択
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 時間セレクター
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("時間")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { hour = (hour - 1 + 24) % 24 }) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上へ")
+                            }
+                            Text(
+                                text = hour.toString().padStart(2, '0'),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            IconButton(onClick = { hour = (hour + 1) % 24 }) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下へ")
+                            }
+                        }
+                    }
+
+                    Text(":", style = MaterialTheme.typography.headlineMedium)
+
+                    // 分セレクター
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("分")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { minute = (minute - 5 + 60) % 60 }) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上へ")
+                            }
+                            Text(
+                                text = minute.toString().padStart(2, '0'),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            IconButton(onClick = { minute = (minute + 5) % 60 }) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下へ")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    // フォーマットされた時間文字列を作成して返す
+                    val timeString = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
+                    onTimeSelected(timeString)
+                }
+            ) {
+                Text("設定")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("キャンセル")
             }
         }
     )

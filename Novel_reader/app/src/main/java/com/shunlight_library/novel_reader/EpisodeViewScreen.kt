@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -389,8 +390,29 @@ private fun convertPlainTextToHtml(plainText: String): String {
         }
     }
 }
+// EpisodeViewScreen.kt内に追加するWebViewScrollInterfaceクラス
+class WebViewScrollInterface(
+    private val ncode: String,
+    private val episodeNo: String,
+    private val repo: NovelRepository,
+    private val scope: CoroutineScope,
+    private val updateThreshold: Float = 0.01f // 更新する最小変化量
+) {
+    private var lastSavedPosition = 0f
 
-// EpisodeViewScreen.kt の EnhancedHtmlRubyWebView 関数を修正
+    @JavascriptInterface
+    fun saveScrollPosition(position: Float) {
+        // 前回保存した位置との差が閾値を超えた場合のみ保存処理を実行
+        if (abs(position - lastSavedPosition) > updateThreshold) {
+            scope.launch(Dispatchers.IO) {
+                repo.updateReadingRate(ncode, episodeNo, position)
+                lastSavedPosition = position
+            }
+        }
+    }
+}
+
+// EnhancedHtmlRubyWebView関数を修正（スクロール位置保存・復元機能追加）
 @Composable
 fun EnhancedHtmlRubyWebView(
     htmlContent: String,
@@ -401,38 +423,15 @@ fun EnhancedHtmlRubyWebView(
     fontColor: String = "#000000",
     fontFamily: String = "Gothic",
     textOrientation: String = "Horizontal",
-    episode: EpisodeEntity? = null, // エピソード情報も受け取る
-    repository: NovelRepository // リポジトリも受け取る
+    ncode: String,
+    episodeNo: String,
+    savedReadingRate: Float = 0f,
+    repository: NovelRepository = NovelReaderApplication.getRepository()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    class WebViewJSInterface(
-        private val ncode: String,
-        private val episodeNo: String,
-        private val repo: NovelRepository,
-        private val updateThreshold: Float = 0.01f // 更新する最小変化量
-    ) {
-        private var lastSavedPosition = 0f
 
-        @JavascriptInterface
-        fun saveScrollPosition(position: Float) {
-            // 前回保存した位置との差が閾値を超えた場合のみ保存処理を実行
-            if (abs(position - lastSavedPosition) > updateThreshold) {
-                scope.launch(Dispatchers.IO) {
-                    repo.updateReadingRate(ncode, episodeNo, position)
-                    lastSavedPosition = position
-                }
-            }
-        }
-    }
-    // Process the content - if not HTML, convert to HTML with paragraph tags
-    val processedContent = if (isHtmlContent(htmlContent)) {
-        htmlContent
-    } else {
-        convertPlainTextToHtml(htmlContent)
-    }
-
-    // HTMLを修正する関数
+    // HTMLを修正...（既存コード） // HTMLを修正する関数
     fun fixRubyTags(html: String): String {
         // パターン1: <ruby>対象</rb>(ルビ) の修正
         var fixed = html.replace("<ruby>([^<]*?)</rb>\\(([^)]*?)\\)".toRegex()) {
@@ -457,13 +456,11 @@ fun EnhancedHtmlRubyWebView(
 
         return fixed
     }
-
-    // フォントファミリーの設定
-    val actualFontFamily = when (fontFamily) {
-        "Mincho" -> "serif"
-        "Gothic" -> "sans-serif"
-        else -> "sans-serif"
-    }
+//    val actualFontFamily = when (fontFamily) {
+//        "Mincho" -> "serif"
+//        "Gothic" -> "sans-serif"
+//        else -> "sans-serif"
+//    }
 
     // 背景色の設定（デフォルトの場合はテーマの色）
     val bgColor = backgroundColor ?: "#FFFFFF"
@@ -474,10 +471,47 @@ fun EnhancedHtmlRubyWebView(
     } else {
         "horizontal-tb"
     }
+// カスタムフォントの設定を追加
+    val customFontPath = /* 設定から取得するコード */
+    val customFontCss = if (customFontPath.isNotEmpty()) {
+        """
+    @font-face {
+        font-family: 'CustomFont';
+        src: url('file://$customFontPath') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+    }
+    """
+    } else {
+        ""
+    }
 
+// フォントファミリーの設定（カスタムフォントがある場合はそれを使用）
+    val actualFontFamily = if (customFontPath.isNotEmpty()) {
+        "CustomFont"
+    } else {
+        when (fontFamily) {
+            "Mincho" -> "serif"
+            "Gothic" -> "sans-serif"
+            "Rounded" -> "'M PLUS Rounded 1c', sans-serif"
+            "Handwriting" -> "'Hannari Mincho', serif"
+            else -> "sans-serif"
+        }
+    }
     // ルビ用のCSSスタイルを定義
     val cssStyle = """
     <style>
+        $customFontCss
+        body {
+            font-family: $actualFontFamily;
+            font-size: ${fontSize}px;
+            line-height: 1.8;
+            padding: 16.dp;
+            margin: 0;
+            background-color: $bgColor;
+            color: $fontColor;
+            writing-mode: $writingMode;
+        }
         body {
             font-family: $actualFontFamily;
             font-size: ${fontSize}px;
@@ -499,9 +533,15 @@ fun EnhancedHtmlRubyWebView(
         }
     </style>
     """.trimIndent()
-
+    val processedContent = if (isHtmlContent(htmlContent)) {
+        htmlContent
+    } else {
+        convertPlainTextToHtml(htmlContent)
+    }
     // HTMLを修正
     val fixedHtml = fixRubyTags(processedContent)
+
+    // スクロール位置を保存・復元するためのJavaScriptを追加
     val scrollMonitorScript = """
     <script>
         // ページ読み込み完了後の処理
@@ -541,6 +581,7 @@ fun EnhancedHtmlRubyWebView(
         };
     </script>
     """.trimIndent()
+
     // HTMLコンテンツを整形
     val formattedHtml = """
         <!DOCTYPE html>
@@ -549,6 +590,7 @@ fun EnhancedHtmlRubyWebView(
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
             $cssStyle
+            $scrollMonitorScript
         </head>
         <body>
             $fixedHtml
@@ -557,14 +599,11 @@ fun EnhancedHtmlRubyWebView(
     """.trimIndent()
 
     // WebViewでHTMLをレンダリング
-    var webView: WebView? = null
-
     AndroidView(
         factory = { context ->
             WebView(context).apply {
-                webView = this
                 settings.apply {
-                    javaScriptEnabled = true // JavaScriptを無効化
+                    javaScriptEnabled = true // JavaScriptを有効化
                     defaultFontSize = fontSize
                     builtInZoomControls = true
                     displayZoomControls = false
@@ -572,12 +611,10 @@ fun EnhancedHtmlRubyWebView(
                     defaultTextEncodingName = "UTF-8"
                 }
                 // JavaScriptインターフェースを追加
-                if (ncode.isNotEmpty() && episodeNo.isNotEmpty()) {
-                    addJavascriptInterface(
-                        WebViewScrollInterface(ncode, episodeNo, repository, scope),
-                        "Android"
-                    )
-                }
+                addJavascriptInterface(
+                    WebViewScrollInterface(ncode, episodeNo, repository, scope),
+                    "Android"
+                )
                 // HTMLをロード
                 loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
             }
@@ -589,3 +626,5 @@ fun EnhancedHtmlRubyWebView(
         modifier = modifier.fillMaxSize()
     )
 }
+
+

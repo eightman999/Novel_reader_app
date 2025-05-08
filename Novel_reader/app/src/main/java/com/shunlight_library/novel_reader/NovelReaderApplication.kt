@@ -2,9 +2,15 @@ package com.shunlight_library.novel_reader
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.shunlight_library.novel_reader.data.database.NovelDatabase
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.worker.UpdateCheckWorker
+import java.lang.reflect.Array.set
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 class NovelReaderApplication : Application() {
     // データベースとリポジトリのlazy初期化
@@ -57,7 +63,9 @@ class NovelReaderApplication : Application() {
     }
 
     /**
-     * 自動更新のスケジュールを設定する
+     * 自動更新スケジュールを設定する
+     * @param enabled 自動更新を有効にするかどうか
+     * @param timeString 自動更新を実行する時間（HH:MM形式）
      */
     fun scheduleUpdateWork(enabled: Boolean, timeString: String) {
         // 既存のワークをキャンセル
@@ -115,5 +123,5 @@ class NovelReaderApplication : Application() {
             Log.e("NovelReaderApp", "自動更新スケジュール設定エラー: ${e.message}", e)
         }
     }
-
 }
+

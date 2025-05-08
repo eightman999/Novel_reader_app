@@ -265,4 +265,70 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    // SettingsStore.kt に追加
+
+    // 自動更新設定のキー
+    val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
+    val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
+    val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
+
+    // デフォルト値
+    val defaultAutoUpdateEnabled = false
+    val defaultAutoUpdateTime = "03:00" // デフォルトは午前3時
+    val defaultCustomFontPath = ""
+
+    // 自動更新有効/無効の設定値を取得
+    val autoUpdateEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_UPDATE_ENABLED] ?: defaultAutoUpdateEnabled
+        }
+
+    // 自動更新時間の設定値を取得
+    val autoUpdateTime: Flow<String> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_UPDATE_TIME] ?: defaultAutoUpdateTime
+        }
+
+    // カスタムフォントパスの設定値を取得
+    val customFontPath: Flow<String> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[CUSTOM_FONT_PATH] ?: defaultCustomFontPath
+        }
+
+    // 自動更新設定を保存するメソッド
+    suspend fun saveAutoUpdateSettings(enabled: Boolean, time: String) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTO_UPDATE_ENABLED] = enabled
+            preferences[AUTO_UPDATE_TIME] = time
+        }
+    }
+
+    // カスタムフォントパスを保存するメソッド
+    suspend fun saveCustomFont(path: String) {
+        context.dataStore.edit { preferences ->
+            preferences[CUSTOM_FONT_PATH] = path
+        }
+    }
+
 }
