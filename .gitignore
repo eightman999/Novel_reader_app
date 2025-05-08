@@ -1,2 +1,6 @@
 debug/output-metadata.json
 debug/app-debug.apk
+release/NovelReader.apk
+release/baselineProfiles/1/app-release.dm
+release/baselineProfiles/0/app-release.dm
+*.dm

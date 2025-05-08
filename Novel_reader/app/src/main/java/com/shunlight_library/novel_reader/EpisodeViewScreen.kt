@@ -147,11 +147,11 @@ fun EpisodeViewScreen(
                         modifier = Modifier.clickable { onTitleTap() }
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                    }
-                },
+//                navigationIcon = {
+//                    IconButton(onClick = onBack) {
+//                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+//                    }
+//                },
                 // EpisodeViewScreen.kt - TopAppBar の actions 部分に追加
 
                 actions = {

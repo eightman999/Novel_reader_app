@@ -219,7 +219,7 @@ when (val currentScreen = navigationManager.currentScreen) {
 
         is Screen.NovelList -> {
             NovelListScreen(
-                onBack = { navigationManager.navigateBack() },
+                onBack = { navigationManager.navigateTo(Screen.Main) },
                 onNovelClick = { ncode ->
                     navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
                 }
@@ -230,7 +230,7 @@ when (val currentScreen = navigationManager.currentScreen) {
         EpisodeListScreen(
             ncode = currentScreen.ncode,
             onBack = {
-                navigationManager.navigateBack()
+                navigationManager.navigateTo(Screen.NovelList())
             },
             onEpisodeClick = { ncode, episodeNo ->
                 navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo, currentScreen))
@@ -245,7 +245,7 @@ when (val currentScreen = navigationManager.currentScreen) {
             onBack = { navigationManager.navigateBack() },
             onBackToToc = {
                 // 現在の ncode を使って EpisodeList に戻る
-                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, source = Screen.Main))
+                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
             },
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
