@@ -47,6 +47,7 @@ fun EpisodeViewScreen(
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
+    var webView by remember { mutableStateOf<WebView?>(null) }
     val repository = NovelReaderApplication.getRepository()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -156,7 +157,22 @@ fun EpisodeViewScreen(
             MaterialTheme.colorScheme.background
         }
     }
-
+    fun saveReadingRate() {
+        webView?.evaluateJavascript("""
+        (function() {
+            var maxScroll = document.body.scrollHeight - window.innerHeight;
+            if (maxScroll <= 0) return 0;
+            var currentScroll = window.scrollY;
+            var scrollRatio = currentScroll / maxScroll;
+            return Math.max(0, Math.min(1, scrollRatio));
+        })();
+    """.trimIndent()) { result ->
+            val readingRate = result.toFloatOrNull() ?: 0f
+            scope.launch(Dispatchers.IO) {
+                repository.updateReadingRate(ncode, episodeNo, readingRate)
+            }
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -237,7 +253,10 @@ fun EpisodeViewScreen(
                             .weight(1f)
                             .clickable(
                                 enabled = episodeNo.toIntOrNull()?.let { it > 1 } ?: false,
-                                onClick = onPrevious
+                                onClick = {
+                                    saveReadingRate()
+                                    onPrevious()
+                                }
                             )
                             .padding(vertical = 8.dp)
                     ) {
@@ -262,7 +281,10 @@ fun EpisodeViewScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable(onClick = onBackToToc)
+                            .clickable(onClick = {
+                                saveReadingRate()
+                                onBackToToc()
+                            })
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.List, contentDescription = "目次に戻る")
@@ -280,7 +302,11 @@ fun EpisodeViewScreen(
                                         epNo < it.total_ep
                                     } ?: false
                                 } ?: false,
-                                onClick = onNext
+                                onClick = {
+                                    saveReadingRate()
+                                    onNext()
+                                }
+
                             )
                             .padding(vertical = 8.dp)
                     ) {
@@ -349,7 +375,7 @@ fun EpisodeViewScreen(
                                 ),
                                 modifier = Modifier.padding(bottom = 32.dp)
                             )
-                            Divider()
+                            HorizontalDivider()
                         }
                     } else {
                         // 通常モード: WebViewでHTML表示
@@ -366,7 +392,8 @@ fun EpisodeViewScreen(
                             ncode = ncode,
                             episodeNo = episodeNo,
                             savedReadingRate = episode!!.reading_rate,
-                            modifier = Modifier.padding(bottom = 32.dp)
+                            modifier = Modifier.padding(bottom = 32.dp),
+                            onWebViewCreated = { webView = it }
                         )
                     }
                 }
@@ -384,6 +411,7 @@ fun EpisodeViewScreen(
             }
         }
     }
+
 }
 
 // Add these utility functions
@@ -440,7 +468,8 @@ fun EnhancedHtmlRubyWebView(
     ncode: String,
     episodeNo: String,
     savedReadingRate: Float = 0f,
-    repository: NovelRepository = NovelReaderApplication.getRepository()
+    repository: NovelRepository = NovelReaderApplication.getRepository(),
+   onWebViewCreated: (WebView) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -598,6 +627,7 @@ fun EnhancedHtmlRubyWebView(
                     displayZoomControls = false
                     cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                     defaultTextEncodingName = "UTF-8"
+                    onWebViewCreated(this)
                 }
                 // JavaScriptインターフェースを追加
                 addJavascriptInterface(
@@ -614,4 +644,5 @@ fun EnhancedHtmlRubyWebView(
         },
         modifier = modifier.fillMaxSize()
     )
+
 }

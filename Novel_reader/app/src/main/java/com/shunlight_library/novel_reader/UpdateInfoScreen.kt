@@ -2,7 +2,6 @@ package com.shunlight_library.novel_reader
 
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -254,7 +253,7 @@ fun UpdateInfoScreen(
                                                 novelMap[queue.ncode] = novel
                                             }
                                         }
-                                        novels = novelMap as List<NovelDescEntity>
+                                        novels = novelMap.values.toList()
                                     } catch (e: Exception) {
                                         Log.e("UpdateCheck", "更新情報再取得エラー: ${e.message}")
                                     }
@@ -686,7 +685,7 @@ fun UpdateInfoScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
 
-                    Divider()
+                    HorizontalDivider()
 
                     LazyColumn {
                         items(updateQueue) { queueItem ->
@@ -705,7 +704,7 @@ fun UpdateInfoScreen(
                                     }
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                         }
                     }
                 }

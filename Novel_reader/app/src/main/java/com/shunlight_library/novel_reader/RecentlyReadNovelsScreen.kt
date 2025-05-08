@@ -93,7 +93,7 @@ fun RecentlyReadNovelsScreen(
                         novel = item.novel,
                         onClick = { onNovelClick(item.lastRead.ncode, item.lastRead.episode_no.toString()) }
                     )
-                    Divider()
+                    HorizontalDivider()
                 }
             }
         }

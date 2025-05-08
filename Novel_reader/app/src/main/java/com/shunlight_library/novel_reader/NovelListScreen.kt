@@ -373,7 +373,7 @@ fun NovelListScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Divider()
+                    HorizontalDivider()
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // チェックボックス式のフィルター
@@ -603,7 +603,7 @@ fun NovelListScreen(
                         showEpisodeCount = showEpisodeCount,
                         onClick = { onNovelClick(novelWithReadInfo.novel.ncode) }
                     )
-                    Divider()
+                    HorizontalDivider()
                 }
             }
         }

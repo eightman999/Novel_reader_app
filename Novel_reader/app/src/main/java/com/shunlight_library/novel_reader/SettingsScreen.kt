@@ -266,7 +266,9 @@ fun SettingsScreenUpdated(
                                     "font/otf",
                                     "application/x-font-ttf",
                                     "application/x-font-otf",
-                                    "application/octet-stream" // ttcファイルのため
+                                    "application/x-font-ttc", // ttcファイル用に追加
+                                    "font/collection",        // ttcファイル用に追加
+                                    "application/octet-stream"
                                 ))
                             }
                             fontPickerLauncher.launch(intent)

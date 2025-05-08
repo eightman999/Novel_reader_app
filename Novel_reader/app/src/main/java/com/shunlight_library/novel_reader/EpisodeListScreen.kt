@@ -1007,7 +1007,7 @@ fun EpisodeListScreen(
 //                            isRead = isRead,
                             onClick = { onEpisodeClick(ncode, episode.episode_no) }
                         )
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }

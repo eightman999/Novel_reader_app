@@ -78,7 +78,7 @@ fun RecentlyUpdatedNovelsScreen(
                         novel = novel,
                         onClick = { onNovelClick(novel.ncode) }
                     )
-                    Divider()
+                    HorizontalDivider()
                 }
             }
         }

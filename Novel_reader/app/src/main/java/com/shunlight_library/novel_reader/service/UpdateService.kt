@@ -166,7 +166,12 @@ class UpdateService : Service() {
         // Stop foreground service after a delay
         serviceScope.launch {
             delay(3000) // Give notification time to be seen
-            stopForeground(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                stopForeground(Service.STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
             stopSelf()
         }
     }

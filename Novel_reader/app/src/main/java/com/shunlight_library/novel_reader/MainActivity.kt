@@ -246,6 +246,7 @@ when (val currentScreen = navigationManager.currentScreen) {
             onBackToToc = {
                 // 現在の ncode を使って EpisodeList に戻る
                 navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
+
             },
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
