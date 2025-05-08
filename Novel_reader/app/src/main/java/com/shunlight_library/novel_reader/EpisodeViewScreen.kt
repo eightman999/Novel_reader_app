@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.utils.FontUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -42,7 +43,7 @@ fun EpisodeViewScreen(
     ncode: String,
     episodeNo: String,
     onBack: () -> Unit,
-    onBackToToc: () -> Unit, // 新しく追加
+    onBackToToc: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
@@ -63,6 +64,11 @@ fun EpisodeViewScreen(
     var useDefaultBackground by remember { mutableStateOf(true) }
     var textOrientation by remember { mutableStateOf("Horizontal") }
 
+    // カスタムフォント情報
+    var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
+    var isCustomFont by remember { mutableStateOf(false) }
+    var customFontPath by remember { mutableStateOf("") }
+
     // 開発者モード関連の状態
     var titleTapCount by remember { mutableStateOf(0) }
     var lastTapTime by remember { mutableStateOf(0L) }
@@ -72,18 +78,30 @@ fun EpisodeViewScreen(
     // 設定の読み込み
     LaunchedEffect(Unit) {
         try {
+            // 基本設定の読み込み
             fontSize = settingsStore.fontSize.first()
             fontFamily = settingsStore.fontFamily.first()
             fontColor = settingsStore.fontColor.first()
             backgroundColor = settingsStore.episodeBackgroundColor.first()
             useDefaultBackground = settingsStore.useDefaultBackground.first()
             textOrientation = settingsStore.textOrientation.first()
+
+            // カスタムフォント情報を読み込む
+            customFonts = settingsStore.getAllCustomFontInfo()
+
+            // 選択されているフォントがカスタムフォントかどうかを判定
+            val selectedFont = customFonts.find { it.id == fontFamily }
+            if (selectedFont != null) {
+                isCustomFont = true
+                customFontPath = selectedFont.path
+            } else {
+                isCustomFont = false
+                customFontPath = ""
+            }
         } catch (e: Exception) {
             Log.e("EpisodeViewScreen", "設定の読み込みエラー: ${e.message}")
         }
     }
-
-    // EpisodeViewScreen.kt - エピソードデータ読み込み部分の修正
 
     LaunchedEffect(ncode, episodeNo) {
         scrollState.scrollTo(0)
@@ -141,7 +159,6 @@ fun EpisodeViewScreen(
 
     Scaffold(
         topBar = {
-            // In EpisodeViewScreen.kt - add a bookmark button to the TopAppBar
             TopAppBar(
                 title = {
                     Text(
@@ -152,13 +169,6 @@ fun EpisodeViewScreen(
                         modifier = Modifier.clickable { onTitleTap() }
                     )
                 },
-//                navigationIcon = {
-//                    IconButton(onClick = onBack) {
-//                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-//                    }
-//                },
-                // EpisodeViewScreen.kt - TopAppBar の actions 部分に追加
-
                 actions = {
                     // しおりボタン
                     episode?.let {
@@ -252,7 +262,7 @@ fun EpisodeViewScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable(onClick = onBackToToc) // onBackToTocを使用
+                            .clickable(onClick = onBackToToc)
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.List, contentDescription = "目次に戻る")
@@ -313,8 +323,6 @@ fun EpisodeViewScreen(
                         .padding(horizontal = 16.dp)
                         .verticalScroll(scrollState)
                 ) {
-
-
                     // 本文表示
                     if (devModeEnabled) {
                         // 開発者モード: HTMLソースを表示
@@ -352,6 +360,8 @@ fun EpisodeViewScreen(
                             backgroundColor = if (useDefaultBackground) null else backgroundColor,
                             fontColor = fontColor,
                             fontFamily = fontFamily,
+                            isCustomFont = isCustomFont,
+                            customFontPath = customFontPath,
                             textOrientation = textOrientation,
                             ncode = ncode,
                             episodeNo = episodeNo,
@@ -375,6 +385,7 @@ fun EpisodeViewScreen(
         }
     }
 }
+
 // Add these utility functions
 private fun isHtmlContent(content: String): Boolean {
     // Simple check for HTML tags
@@ -390,6 +401,7 @@ private fun convertPlainTextToHtml(plainText: String): String {
         }
     }
 }
+
 // EpisodeViewScreen.kt内に追加するWebViewScrollInterfaceクラス
 class WebViewScrollInterface(
     private val ncode: String,
@@ -422,6 +434,8 @@ fun EnhancedHtmlRubyWebView(
     backgroundColor: String? = null,
     fontColor: String = "#000000",
     fontFamily: String = "Gothic",
+    isCustomFont: Boolean = false,
+    customFontPath: String = "",
     textOrientation: String = "Horizontal",
     ncode: String,
     episodeNo: String,
@@ -431,7 +445,7 @@ fun EnhancedHtmlRubyWebView(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // HTMLを修正...（既存コード） // HTMLを修正する関数
+    // HTMLを修正する関数
     fun fixRubyTags(html: String): String {
         // パターン1: <ruby>対象</rb>(ルビ) の修正
         var fixed = html.replace("<ruby>([^<]*?)</rb>\\(([^)]*?)\\)".toRegex()) {
@@ -456,11 +470,6 @@ fun EnhancedHtmlRubyWebView(
 
         return fixed
     }
-//    val actualFontFamily = when (fontFamily) {
-//        "Mincho" -> "serif"
-//        "Gothic" -> "sans-serif"
-//        else -> "sans-serif"
-//    }
 
     // 背景色の設定（デフォルトの場合はテーマの色）
     val bgColor = backgroundColor ?: "#FFFFFF"
@@ -471,47 +480,25 @@ fun EnhancedHtmlRubyWebView(
     } else {
         "horizontal-tb"
     }
-// カスタムフォントの設定を追加
-    val customFontPath = /* 設定から取得するコード */
-    val customFontCss = if (customFontPath.isNotEmpty()) {
-        """
-    @font-face {
-        font-family: 'CustomFont';
-        src: url('file://$customFontPath') format('truetype');
-        font-weight: normal;
-        font-style: normal;
-    }
-    """
+
+    // カスタムフォントのCSS生成
+    val customFontCss = if (isCustomFont && customFontPath.isNotEmpty()) {
+        FontUtils.generateCustomFontCss(customFontPath)
     } else {
         ""
     }
 
-// フォントファミリーの設定（カスタムフォントがある場合はそれを使用）
-    val actualFontFamily = if (customFontPath.isNotEmpty()) {
-        "CustomFont"
+    // フォントファミリーの設定
+    val actualFontFamily = if (isCustomFont) {
+        FontUtils.fontNameToCssFontFamily(fontFamily, true)
     } else {
-        when (fontFamily) {
-            "Mincho" -> "serif"
-            "Gothic" -> "sans-serif"
-            "Rounded" -> "'M PLUS Rounded 1c', sans-serif"
-            "Handwriting" -> "'Hannari Mincho', serif"
-            else -> "sans-serif"
-        }
+        FontUtils.fontNameToCssFontFamily(fontFamily)
     }
+
     // ルビ用のCSSスタイルを定義
     val cssStyle = """
     <style>
         $customFontCss
-        body {
-            font-family: $actualFontFamily;
-            font-size: ${fontSize}px;
-            line-height: 1.8;
-            padding: 16.dp;
-            margin: 0;
-            background-color: $bgColor;
-            color: $fontColor;
-            writing-mode: $writingMode;
-        }
         body {
             font-family: $actualFontFamily;
             font-size: ${fontSize}px;
@@ -533,11 +520,13 @@ fun EnhancedHtmlRubyWebView(
         }
     </style>
     """.trimIndent()
+
     val processedContent = if (isHtmlContent(htmlContent)) {
         htmlContent
     } else {
         convertPlainTextToHtml(htmlContent)
     }
+
     // HTMLを修正
     val fixedHtml = fixRubyTags(processedContent)
 
@@ -626,5 +615,3 @@ fun EnhancedHtmlRubyWebView(
         modifier = modifier.fillMaxSize()
     )
 }
-
-

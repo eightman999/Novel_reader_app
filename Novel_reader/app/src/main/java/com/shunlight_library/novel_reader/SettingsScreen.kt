@@ -1,12 +1,14 @@
 package com.shunlight_library.novel_reader
 
-import android.app.TimePickerDialog
-import android.graphics.Color as AndroidColor
+import android.app.Activity
 import android.content.Intent
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,9 +18,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +31,7 @@ import com.shunlight_library.novel_reader.data.sync.DatabaseSyncManager
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import com.shunlight_library.novel_reader.ui.components.DatabaseFileSelector
 import com.shunlight_library.novel_reader.ui.components.ServerDirectorySelector
+import com.shunlight_library.novel_reader.utils.FontUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -74,10 +75,14 @@ fun SettingsScreenUpdated(
     var showUpdateDate by remember { mutableStateOf(true) }
     var showEpisodeCount by remember { mutableStateOf(true) }
     useDefaultBackground = false // 強制的に背景色設定を使用
+
     // 状態変数に自動更新設定を追加
     var autoUpdateEnabled by remember { mutableStateOf(false) }
     var autoUpdateTime by remember { mutableStateOf("03:00") }
-    var customFontPath by remember { mutableStateOf("") }
+
+    // カスタムフォント関連の状態変数
+    var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
+    var showCustomFontDialog by remember { mutableStateOf(false) }
 
     // 時間選択ダイアログ状態
     var showTimePickerDialog by remember { mutableStateOf(false) }
@@ -87,22 +92,77 @@ fun SettingsScreenUpdated(
     } catch (e: Exception) {
         MaterialTheme.colorScheme.background
     }
+
+    // フォントピッカーランチャーを定義
+    val fontPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                // フォントファイルをインポート
+                scope.launch {
+                    val customFont = FontUtils.importFontFromUri(context, uri)
+                    if (customFont != null) {
+                        // 設定に保存
+                        settingsStore.saveCustomFont(
+                            customFont.id,
+                            customFont.name,
+                            customFont.filePath,
+                            customFont.fontType
+                        )
+
+                        // フォントを選択
+                        fontFamily = customFont.id
+
+                        // リストを更新
+                        customFonts = settingsStore.getAllCustomFontInfo()
+
+                        Toast.makeText(context, "フォント「${customFont.name}」を追加しました", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "フォントの追加に失敗しました", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
     // Load saved preferences when the screen is created
     LaunchedEffect(Unit) {
         try {
-            fontSize = settingsStore.fontSize.first()
+            // 基本設定の読み込み
+            themeMode = settingsStore.themeMode.first()
             fontFamily = settingsStore.fontFamily.first()
-            fontColor = settingsStore.fontColor.first()
-            backgroundColor = settingsStore.episodeBackgroundColor.first()
-            useDefaultBackground = settingsStore.useDefaultBackground.first()
+            fontSize = settingsStore.fontSize.first()
+            selfServerAccess = settingsStore.selfServerAccess.first()
             textOrientation = settingsStore.textOrientation.first()
+            selfServerPath = settingsStore.selfServerPath.first()
+
+            // 表示関連の設定読み込み
+            fontColor = settingsStore.fontColor.first()
+            episodeBackgroundColor = settingsStore.episodeBackgroundColor.first()
+            useDefaultBackground = settingsStore.useDefaultBackground.first()
+
+            // 表示設定の読み込み
+            val displaySettings = settingsStore.getDisplaySettings()
+            showTitle = displaySettings.showTitle
+            showAuthor = displaySettings.showAuthor
+            showSynopsis = displaySettings.showSynopsis
+            showTags = displaySettings.showTags
+            showRating = displaySettings.showRating
+            showUpdateDate = displaySettings.showUpdateDate
+            showEpisodeCount = displaySettings.showEpisodeCount
+
+            // 自動更新設定の読み込み
             autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
             autoUpdateTime = settingsStore.autoUpdateTime.first()
-            customFontPath = settingsStore.customFontPath.first()
+
+            // カスタムフォント情報の読み込み
+            customFonts = settingsStore.getAllCustomFontInfo()
         } catch (e: Exception) {
-            Log.e("EpisodeViewScreen", "設定の読み込みエラー: ${e.message}")
+            Log.e("SettingsScreen", "設定の読み込みエラー: ${e.message}")
         }
     }
+
     // 時間選択ダイアログ
     if (showTimePickerDialog) {
         TimePickerDialog(
@@ -114,6 +174,118 @@ fun SettingsScreenUpdated(
             }
         )
     }
+
+    // カスタムフォントダイアログ
+    if (showCustomFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomFontDialog = false },
+            title = { Text("カスタムフォント") },
+            text = {
+                Column {
+                    // カスタムフォント一覧
+                    if (customFonts.isNotEmpty()) {
+                        Text(
+                            text = "保存済みのフォント",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        customFonts.forEach { fontInfo ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectable(
+                                        selected = fontFamily == fontInfo.id,
+                                        onClick = {
+                                            fontFamily = fontInfo.id
+                                            showCustomFontDialog = false
+                                        }
+                                    )
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = fontFamily == fontInfo.id,
+                                    onClick = null
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(fontInfo.name)
+                                    Text(
+                                        text = "形式: ${fontInfo.type.uppercase()}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Spacer(modifier = Modifier.weight(1f))
+
+                                // 削除ボタン
+                                IconButton(
+                                    onClick = {
+                                        scope.launch {
+                                            // ファイルを削除
+                                            if (FontUtils.deleteCustomFont(context, fontInfo.path)) {
+                                                // 設定からも削除
+                                                settingsStore.deleteCustomFont(fontInfo.id)
+
+                                                // 現在選択中のフォントが削除された場合はデフォルトに戻す
+                                                if (fontFamily == fontInfo.id) {
+                                                    fontFamily = "Gothic"
+                                                }
+
+                                                // リストを更新
+                                                customFonts = settingsStore.getAllCustomFontInfo()
+
+                                                Toast.makeText(context, "フォント「${fontInfo.name}」を削除しました", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "フォントの削除に失敗しました", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "削除",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    }
+
+                    // 新しいフォントを追加するボタン
+                    Button(
+                        onClick = {
+                            // フォント選択インテントを起動
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                    "font/ttf",
+                                    "font/otf",
+                                    "application/x-font-ttf",
+                                    "application/x-font-otf",
+                                    "application/octet-stream" // ttcファイルのため
+                                ))
+                            }
+                            fontPickerLauncher.launch(intent)
+                            showCustomFontDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("新しいフォントを追加")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCustomFontDialog = false }) {
+                    Text("閉じる")
+                }
+            }
+        )
+    }
+
     // データベース同期ダイアログ
     if (showDBSyncDialog && selectedDbUri != null) {
         AlertDialog(
@@ -190,6 +362,8 @@ fun SettingsScreenUpdated(
     BackHandler {
         if (showDBSyncDialog && !isSyncing) {
             showDBSyncDialog = false
+        } else if (showCustomFontDialog) {
+            showCustomFontDialog = false
         } else {
             onBack()
         }
@@ -267,9 +441,6 @@ fun SettingsScreenUpdated(
                                 // 自動更新設定を保存
                                 settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
 
-                                // カスタムフォント設定を保存
-                                settingsStore.saveCustomFont(customFontPath)
-
                                 // 自動更新スケジュールを設定
                                 val app = context.applicationContext as NovelReaderApplication
                                 app.scheduleUpdateWork(autoUpdateEnabled, autoUpdateTime)
@@ -332,6 +503,7 @@ fun SettingsScreenUpdated(
                 Column(
                     modifier = Modifier.selectableGroup()
                 ) {
+                    // 標準フォント選択肢
                     RadioButtonOption(
                         text = "ゴシック体",
                         selected = fontFamily == "Gothic",
@@ -342,6 +514,69 @@ fun SettingsScreenUpdated(
                         selected = fontFamily == "Mincho",
                         onClick = { fontFamily = "Mincho" }
                     )
+                    RadioButtonOption(
+                        text = "丸ゴシック",
+                        selected = fontFamily == "Rounded",
+                        onClick = { fontFamily = "Rounded" }
+                    )
+                    RadioButtonOption(
+                        text = "筆記体",
+                        selected = fontFamily == "Handwriting",
+                        onClick = { fontFamily = "Handwriting" }
+                    )
+
+                    // カスタムフォント一覧
+                    customFonts.forEach { fontInfo ->
+                        RadioButtonOption(
+                            text = "カスタム: ${fontInfo.name}",
+                            selected = fontFamily == fontInfo.id,
+                            onClick = { fontFamily = fontInfo.id }
+                        )
+                    }
+
+                    // カスタムフォント追加ボタン
+                    Button(
+                        onClick = { showCustomFontDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text("カスタムフォントを管理...")
+                    }
+
+                    // 削除ボタン（カスタムフォントが選択されている場合のみ表示）
+                    if (fontFamily !in listOf("Gothic", "Mincho", "Rounded", "Handwriting")) {
+                        val selectedFontInfo = customFonts.firstOrNull { it.id == fontFamily }
+                        if (selectedFontInfo != null) {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        // ファイルを削除
+                                        FontUtils.deleteCustomFont(context, selectedFontInfo.path)
+
+                                        // 設定からも削除
+                                        settingsStore.deleteCustomFont(selectedFontInfo.id)
+
+                                        // デフォルトフォントに戻す
+                                        fontFamily = "Gothic"
+
+                                        // リストを更新
+                                        customFonts = settingsStore.getAllCustomFontInfo()
+
+                                        Toast.makeText(context, "フォント「${selectedFontInfo.name}」を削除しました", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Text("選択中のカスタムフォントを削除")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -369,7 +604,6 @@ fun SettingsScreenUpdated(
             }
 
             HorizontalDivider()
-
 
             // Self-Server Access Setting
             SettingSection(title = "自己サーバーアクセス") {
@@ -541,7 +775,6 @@ fun SettingsScreenUpdated(
             HorizontalDivider()
 
             // 小説表示設定セクションを追加
-            // SettingsScreenUpdated.kt - 小説表示設定セクション
             SettingSection(title = "小説表示設定") {
                 // 背景色設定
                 Text(
@@ -723,14 +956,10 @@ fun SettingsScreenUpdated(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-
-
         }
     }
 }
 
-// SettingSection, RadioButtonOption, など既存の補助Composable関数は
-// 元のSettingsScreen.ktと同様に使用します。
 @Composable
 fun SettingSection(
     title: String,
@@ -775,94 +1004,6 @@ fun RadioButtonOption(
     }
 }
 
-@Composable
-fun DatabaseSyncDialog(
-    selectedUri: Uri,
-    onDismiss: () -> Unit,
-    onComplete: (Boolean) -> Unit
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var isSyncing by remember { mutableStateOf(false) }
-    var syncResult by remember { mutableStateOf<Boolean?>(null) }
-
-    AlertDialog(
-        onDismissRequest = {
-            if (!isSyncing) onDismiss()
-        },
-        title = {
-            Text("内部DBへの書き込み")
-        },
-        text = {
-            when {
-                isSyncing -> {
-                    CircularProgressIndicator()
-                }
-                syncResult == null -> {
-                    Text("選択したディレクトリの情報を内部DBに同期しますか？")
-                }
-                syncResult == true -> {
-                    Text("同期が完了しました！")
-                }
-                else -> {
-                    Text("同期中にエラーが発生しました。もう一度お試しください。")
-                }
-            }
-        },
-        confirmButton = {
-            if (syncResult == null && !isSyncing) {
-                TextButton(
-                    onClick = {
-                        isSyncing = true
-                        scope.launch {
-                            try {
-                                val syncManager = DatabaseSyncManager(context)
-                                val result = syncManager.syncFromExternalDb(selectedUri)
-                                syncResult = result
-
-                                if (result) {
-                                    Toast.makeText(context, "データベースの同期に成功しました", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "データベースの同期に失敗しました", Toast.LENGTH_SHORT).show()
-                                }
-
-                                isSyncing = false
-                                onComplete(result)
-                            } catch (e: Exception) {
-                                Log.e("DatabaseSync", "同期エラー: ${e.message}", e)
-                                syncResult = false
-                                isSyncing = false
-                                Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_LONG).show()
-                                onComplete(false)
-                            }
-                        }
-                    }
-                ) {
-                    Text("同期する")
-                }
-            } else {
-                TextButton(
-                    onClick = {
-                        onDismiss()
-                    }
-                ) {
-                    Text("閉じる")
-                }
-            }
-        },
-        dismissButton = {
-            if (syncResult == null && !isSyncing) {
-                TextButton(
-                    onClick = {
-                        onDismiss()
-                    }
-                ) {
-                    Text("キャンセル")
-                }
-            }
-        }
-    )
-}
 @Composable
 fun TimePickerDialog(
     initialTime: String,

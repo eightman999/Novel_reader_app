@@ -3,12 +3,12 @@ package com.shunlight_library.novel_reader
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import androidx.work.*
 import com.shunlight_library.novel_reader.data.database.NovelDatabase
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import com.shunlight_library.novel_reader.worker.UpdateCheckWorker
-import java.lang.reflect.Array.set
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
@@ -124,4 +124,3 @@ class NovelReaderApplication : Application() {
         }
     }
 }
-

@@ -23,6 +23,14 @@ data class DisplaySettings(
     val showEpisodeCount: Boolean = true
 )
 
+// CustomFont用のデータクラス
+data class CustomFontInfo(
+    val id: String,
+    val name: String,
+    val path: String,
+    val type: String
+)
+
 // DataStoreのインスタンスをトップレベルで定義
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -49,6 +57,17 @@ class SettingsStore(private val context: Context) {
         val FONT_COLOR = stringPreferencesKey("font_color")
         val EPISODE_BACKGROUND_COLOR = stringPreferencesKey("episode_background_color")
         val USE_DEFAULT_BACKGROUND = booleanPreferencesKey("use_default_background")
+
+        // 自動更新設定のキー
+        val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
+        val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
+        val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
+
+        // カスタムフォント管理のためのキー
+        val CUSTOM_FONTS = stringSetPreferencesKey("custom_fonts")
+        private const val CUSTOM_FONT_NAME_PREFIX = "custom_font_name_"
+        private const val CUSTOM_FONT_PATH_PREFIX = "custom_font_path_"
+        private const val CUSTOM_FONT_TYPE_PREFIX = "custom_font_type_"
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -71,6 +90,11 @@ class SettingsStore(private val context: Context) {
     val defaultShowRating = false
     val defaultShowUpdateDate = true
     val defaultShowEpisodeCount = true
+    val defaultAutoUpdateEnabled = false
+    val defaultAutoUpdateTime = "03:00" // デフォルトは午前3時
+    val defaultCustomFontPath = ""
+    val defaultCustomFonts = emptySet<String>()
+
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
             if (exception is IOException) {
@@ -181,6 +205,112 @@ class SettingsStore(private val context: Context) {
         .map { preferences: Preferences ->
             preferences[USE_DEFAULT_BACKGROUND] ?: defaultUseDefaultBackground
         }
+
+    // 自動更新有効/無効の設定値を取得
+    val autoUpdateEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_UPDATE_ENABLED] ?: defaultAutoUpdateEnabled
+        }
+
+    // 自動更新時間の設定値を取得
+    val autoUpdateTime: Flow<String> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_UPDATE_TIME] ?: defaultAutoUpdateTime
+        }
+
+    // カスタムフォントIDのリストを取得するFlow
+    val customFontIds: Flow<Set<String>> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[CUSTOM_FONTS] ?: defaultCustomFonts
+        }
+
+    // カスタムフォント情報を取得するメソッド
+    suspend fun getCustomFontInfo(fontId: String): CustomFontInfo? {
+        val preferences = context.dataStore.data.first()
+        val name = preferences[stringPreferencesKey("${CUSTOM_FONT_NAME_PREFIX}${fontId}")] ?: return null
+        val path = preferences[stringPreferencesKey("${CUSTOM_FONT_PATH_PREFIX}${fontId}")] ?: return null
+        val type = preferences[stringPreferencesKey("${CUSTOM_FONT_TYPE_PREFIX}${fontId}")] ?: return null
+
+        return CustomFontInfo(
+            id = fontId,
+            name = name,
+            path = path,
+            type = type
+        )
+    }
+
+    // すべてのカスタムフォント情報を取得するメソッド
+    suspend fun getAllCustomFontInfo(): List<CustomFontInfo> {
+        val preferences = context.dataStore.data.first()
+        val fontIds = preferences[CUSTOM_FONTS] ?: emptySet()
+
+        return fontIds.mapNotNull { fontId ->
+            val name = preferences[stringPreferencesKey("${CUSTOM_FONT_NAME_PREFIX}${fontId}")] ?: return@mapNotNull null
+            val path = preferences[stringPreferencesKey("${CUSTOM_FONT_PATH_PREFIX}${fontId}")] ?: return@mapNotNull null
+            val type = preferences[stringPreferencesKey("${CUSTOM_FONT_TYPE_PREFIX}${fontId}")] ?: return@mapNotNull null
+
+            CustomFontInfo(
+                id = fontId,
+                name = name,
+                path = path,
+                type = type
+            )
+        }
+    }
+
+    // カスタムフォントを保存するメソッド
+    suspend fun saveCustomFont(fontId: String, fontName: String, fontPath: String, fontType: String) {
+        context.dataStore.edit { preferences ->
+            // 現在のカスタムフォントIDリストを取得
+            val currentFonts = preferences[CUSTOM_FONTS] ?: emptySet()
+
+            // IDリストを更新
+            preferences[CUSTOM_FONTS] = currentFonts + fontId
+
+            // フォント情報を保存
+            preferences[stringPreferencesKey("${CUSTOM_FONT_NAME_PREFIX}${fontId}")] = fontName
+            preferences[stringPreferencesKey("${CUSTOM_FONT_PATH_PREFIX}${fontId}")] = fontPath
+            preferences[stringPreferencesKey("${CUSTOM_FONT_TYPE_PREFIX}${fontId}")] = fontType
+        }
+    }
+
+    // カスタムフォントを削除するメソッド
+    suspend fun deleteCustomFont(fontId: String) {
+        context.dataStore.edit { preferences ->
+            // 現在のカスタムフォントIDリストを取得
+            val currentFonts = preferences[CUSTOM_FONTS] ?: emptySet()
+
+            // IDリストから削除
+            preferences[CUSTOM_FONTS] = currentFonts - fontId
+
+            // フォント情報も削除
+            preferences.remove(stringPreferencesKey("${CUSTOM_FONT_NAME_PREFIX}${fontId}"))
+            preferences.remove(stringPreferencesKey("${CUSTOM_FONT_PATH_PREFIX}${fontId}"))
+            preferences.remove(stringPreferencesKey("${CUSTOM_FONT_TYPE_PREFIX}${fontId}"))
+        }
+    }
+
     // すべての設定を保存するためのメソッド
     suspend fun saveAllSettings(
         themeMode: String,
@@ -265,57 +395,6 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    // SettingsStore.kt に追加
-
-    // 自動更新設定のキー
-    val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
-    val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
-    val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
-
-    // デフォルト値
-    val defaultAutoUpdateEnabled = false
-    val defaultAutoUpdateTime = "03:00" // デフォルトは午前3時
-    val defaultCustomFontPath = ""
-
-    // 自動更新有効/無効の設定値を取得
-    val autoUpdateEnabled: Flow<Boolean> = context.dataStore.data
-        .catch { exception: Throwable ->
-            if (exception is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw exception
-            }
-        }
-        .map { preferences: Preferences ->
-            preferences[AUTO_UPDATE_ENABLED] ?: defaultAutoUpdateEnabled
-        }
-
-    // 自動更新時間の設定値を取得
-    val autoUpdateTime: Flow<String> = context.dataStore.data
-        .catch { exception: Throwable ->
-            if (exception is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw exception
-            }
-        }
-        .map { preferences: Preferences ->
-            preferences[AUTO_UPDATE_TIME] ?: defaultAutoUpdateTime
-        }
-
-    // カスタムフォントパスの設定値を取得
-    val customFontPath: Flow<String> = context.dataStore.data
-        .catch { exception: Throwable ->
-            if (exception is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw exception
-            }
-        }
-        .map { preferences: Preferences ->
-            preferences[CUSTOM_FONT_PATH] ?: defaultCustomFontPath
-        }
-
     // 自動更新設定を保存するメソッド
     suspend fun saveAutoUpdateSettings(enabled: Boolean, time: String) {
         context.dataStore.edit { preferences ->
@@ -330,5 +409,4 @@ class SettingsStore(private val context: Context) {
             preferences[CUSTOM_FONT_PATH] = path
         }
     }
-
 }
