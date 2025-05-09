@@ -106,7 +106,7 @@ fun EpisodeViewScreen(
 
     LaunchedEffect(ncode, episodeNo) {
 
-//        scrollState.scrollTo(0)
+        scrollState.scrollTo(0)
         scope.launch {
             try {
                 // エピソード情報の取得
