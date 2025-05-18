@@ -46,6 +46,7 @@ object NovelApiUtils {
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0")  // User-Agentを追加
 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val inputStream = GZIPInputStream(connection.inputStream)
@@ -204,7 +205,6 @@ object NovelApiUtils {
                         }
                     }
                 }
-
 
                 if (title.isNotEmpty() && body.isNotEmpty()) {
                     val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
