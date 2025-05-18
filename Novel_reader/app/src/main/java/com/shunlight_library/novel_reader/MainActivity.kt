@@ -375,7 +375,6 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
     var lastReadNovel by remember { mutableStateOf<LastReadNovelEntity?>(null) }
     var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
     var updateInfoText by remember { mutableStateOf("新着0件・更新あり0件") }
-    var showR18Dialog by remember { mutableStateOf(false) }
 
     // 最後に読んだ小説と更新情報の取得
     LaunchedEffect(Unit) {
@@ -387,56 +386,6 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
         // 更新情報も取得
         val (newCount, updateCount) = repository.getUpdateCounts()
         updateInfoText = "新着${newCount}件・更新あり${updateCount}件"
-    }
-
-    // R18コンテンツ選択ダイアログ
-    if (showR18Dialog) {
-        AlertDialog(
-            onDismissRequest = { showR18Dialog = false },
-            title = { Text("R18コンテンツを選択") },
-            text = { Text("閲覧したいR18サイトを選択してください") },
-            confirmButton = {
-                Column(
-                    modifier = Modifier.padding(top = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            onNavigate(Screen.WebView("https://noc.syosetu.com/top/top/"))
-                            showR18Dialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("ノクターン")
-                    }
-
-                    Button(
-                        onClick = {
-                            onNavigate(Screen.WebView("https://mid.syosetu.com/top/top/"))
-                            showR18Dialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("ミッドナイト")
-                    }
-
-                    Button(
-                        onClick = {
-                            onNavigate(Screen.WebView("https://mnlt.syosetu.com/top/top/"))
-                            showR18Dialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("ムーンライト")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showR18Dialog = false }) {
-                    Text("キャンセル")
-                }
-            }
-        )
     }
 
     Scaffold { innerPadding ->
@@ -591,7 +540,9 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
                         icon = "<",
                         text = "R18",
                         onClick = {
-                            showR18Dialog = true
+                            // R18ダイアログを表示する代わりに、ダイアログを表示する関数を呼ぶ
+                            // この例ではMainActivityで管理している状態を使うため、関数を通じて操作
+                            (context as? MainActivity)?.showR18Dialog()
                         }
                     )
                     Spacer(modifier = Modifier.width(160.dp)) // 右側は空欄
