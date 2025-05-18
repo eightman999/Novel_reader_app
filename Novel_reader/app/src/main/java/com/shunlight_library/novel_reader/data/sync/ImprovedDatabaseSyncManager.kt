@@ -134,9 +134,22 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 ))
 
                 // 必要なテーブルの存在確認
-                val requiredTables = listOf("novels_descs", "episodes", "last_read_novel")
+                val requiredTables = listOf("novels_descs", "episodes", "rast_read_novel")
                 for (table in requiredTables) {
                     if (!sqliteHelper.isTableExists(db, table)) {
+                        // 存在するテーブル一覧を取得してログ出力
+                        val tableList = mutableListOf<String>()
+                        try {
+                            db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
+                                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                                while (cursor.moveToNext()) {
+                                    tableList.add(cursor.getString(nameIndex))
+                                }
+                            }
+                            Log.e(TAG, "DBに存在するテーブル一覧: ${tableList.joinToString(", ")}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "テーブル一覧取得中にエラーが発生", e)
+                        }
                         val errorMsg = "必要なテーブルがありません: $table"
                         updateProgress(callback, SyncProgress(
                             step = SyncStep.ERROR,
