@@ -74,6 +74,8 @@ fun WebViewScreen(
     }
 
     // WebViewの設定を強化
+
+
     fun configureWebView(webView: WebView) {
         webView.settings.apply {
             // JavaScriptを有効化
@@ -119,24 +121,64 @@ fun WebViewScreen(
                 currentLoadingUrl = loadedUrl
                 currentUrl = loadedUrl
 
-                // ページ読み込み完了時にCookieを確認
-                view.evaluateJavascript("""
+                // 年齢確認ページかチェック
+                if (loadedUrl.contains("ageauth")) {
+                    Log.d("WebViewScreen", "年齢確認ページを検出しました")
+                    view.evaluateJavascript("""
                     (function() {
-                        return document.cookie;
+                        var links = document.getElementsByTagName('a');
+                        for (var i = 0; i < links.length; i++) {
+                            if (links[i].textContent.trim() === 'Enter') {
+                                links[i].click();
+                                return true;
+                            }
+                        }
+                        // 'Enter'が見つからない場合、'はい'や'同意する'ボタンも探す
+                        for (var i = 0; i < links.length; i++) {
+                            var text = links[i].textContent.trim();
+                            if (text === 'はい' || text === '同意する' || 
+                                text === 'Yes' || text === 'I agree') {
+                                links[i].click();
+                                return true;
+                            }
+                        }
+                        // リンクが見つからなかった場合、フォームのボタンを探してクリック
+                        var buttons = document.getElementsByTagName('button');
+                        for (var i = 0; i < buttons.length; i++) {
+                            buttons[i].click();
+                            return true;
+                        }
+                        // フォームの送信ボタンも探す
+                        var inputs = document.querySelectorAll('input[type="submit"]');
+                        for (var i = 0; i < inputs.length; i++) {
+                            inputs[i].click();
+                            return true;
+                        }
+                        return false;
                     })();
                 """.trimIndent()) { result ->
+                        Log.d("WebViewScreen", "年齢確認自動クリック結果: $result")
+                    }
+                }
+
+                // ページ読み込み完了時にCookieを確認
+                view.evaluateJavascript("""
+                (function() {
+                    return document.cookie;
+                })();
+            """.trimIndent()) { result ->
                     Log.d("WebViewScreen", "Current cookies: $result")
                 }
 
                 // セッション維持のためのJavaScript実行
                 view.evaluateJavascript("""
-                    (function() {
-                        if (window.localStorage) {
-                            return window.localStorage.getItem('session');
-                        }
-                        return null;
-                    })();
-                """.trimIndent()) { result ->
+                (function() {
+                    if (window.localStorage) {
+                        return window.localStorage.getItem('session');
+                    }
+                    return null;
+                })();
+            """.trimIndent()) { result ->
                     Log.d("WebViewScreen", "Session data: $result")
                 }
             }
@@ -144,6 +186,22 @@ fun WebViewScreen(
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
                 view.loadUrl(url)
                 return true
+            }
+
+            // ページロード前のリクエスト処理を追加
+            override fun onLoadResource(view: WebView, url: String) {
+                super.onLoadResource(view, url)
+
+                // R18サイトへのアクセス時にCookieを設定
+                if (url.contains("novel18.syosetu.com") ||
+                    url.contains("noc.syosetu.com") ||
+                    url.contains("mid.syosetu.com") ||
+                    url.contains("mnlt.syosetu.com") ||
+                    url.contains("ageauth")) {
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setCookie(url, "over18=yes")
+                    cookieManager.flush()
+                }
             }
         }
 
@@ -351,6 +409,7 @@ fun WebViewScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+
             AndroidView(
                 factory = { context ->
                     WebView(context).apply {
@@ -359,6 +418,17 @@ fun WebViewScreen(
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
                         configureWebView(this)
+
+                        // R18サイトのCookieを事前に設定
+                        val cookieManager = CookieManager.getInstance()
+                        cookieManager.setAcceptCookie(true)
+                        cookieManager.setCookie("https://novel18.syosetu.com", "over18=yes")
+                        cookieManager.setCookie("https://noc.syosetu.com", "over18=yes")
+                        cookieManager.setCookie("https://mid.syosetu.com", "over18=yes")
+                        cookieManager.setCookie("https://mnlt.syosetu.com", "over18=yes")
+                        cookieManager.setAcceptThirdPartyCookies(this, true)
+                        cookieManager.flush()
+
                         loadUrl(url)
                         webView = this
                     }

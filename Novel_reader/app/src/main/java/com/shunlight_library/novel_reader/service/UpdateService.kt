@@ -438,8 +438,7 @@ class UpdateService : Service() {
                     val progress = (index + 1).toFloat() / redownloadTargets.size
                     updateProgress(0.3f + (0.7f * progress), "エラーまたは欠番のあるエピソードを再取得中... (${index + 1}/${redownloadTargets.size})")
 
-                    // Avoid server overload
-                    delay(200)
+
                 }
 
                 // Update novel total_ep value if needed

@@ -6,6 +6,7 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.yaml.snakeyaml.Yaml
@@ -176,6 +177,7 @@ object NovelApiUtils {
      * @return 取得したエピソード、または取得できなかった場合はnull
      */
     // NovelApiUtils.kt の fetchEpisode 関数を修正
+    // NovelApiUtils.kt の fetchEpisode 関数を修正
     suspend fun fetchEpisode(ncode: String, episodeNo: Int, isR18: Boolean = false): EpisodeEntity? {
         return withContext(Dispatchers.IO) {
             try {
@@ -184,14 +186,58 @@ object NovelApiUtils {
                 } else {
                     "https://ncode.syosetu.com"
                 }
-
                 val url = "$baseUrl/$ncode/$episodeNo/"
 
-                val doc = Jsoup.connect(url)
-                    .userAgent("Mozilla/5.0")
-                    .timeout(30000)
-                    .get()
+                // ユーザーエージェントをランダムに設定（検出回避用）
+                val userAgents = listOf(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36"
+                )
+                val randomUserAgent = userAgents.random()
 
+                // Jsoupのコネクションを設定
+                val connection = Jsoup.connect(url)
+                    .userAgent(randomUserAgent)
+                    .timeout(30000)
+                    .followRedirects(true)
+
+                if (isR18 ||
+                    url.contains("novel18.syosetu.com") ||
+                    url.contains("noc.syosetu.com") ||
+                    url.contains("mid.syosetu.com") ||
+                    url.contains("mnlt.syosetu.com")) {
+                    // R18サイト用のCookieを設定
+                    connection.cookie("over18", "yes")
+                }
+
+                var doc = connection.get()
+
+                // レスポンスが年齢確認ページかチェック
+                val htmlContent = doc.html()
+                if (htmlContent.contains("年齢確認") || htmlContent.contains("Age Verification") ||
+                    doc.location().contains("ageauth")) {
+
+                    Log.d(TAG, "年齢確認ページを検出しました。Enterリンクを探します")
+
+                    // "Enter"リンクを探す
+                    val enterLink = doc.select("a:contains(Enter)").firstOrNull() // firstOrNull() を使用
+                    if (enterLink != null) { // nullチェック
+                        val nextUrl = enterLink.absUrl("href")
+                        Log.d(TAG, "Enterリンクが見つかりました。次のURLに進みます: $nextUrl")
+
+                        // "Enter"リンクにアクセス
+                        doc = Jsoup.connect(nextUrl)
+                            .userAgent(randomUserAgent)
+                            .timeout(30000)
+                            .cookie("over18", "yes") // R18サイトの場合、再度Cookieが必要な場合がある
+                            .get()
+                    } else {
+                        Log.d(TAG, "Enterリンクが見つかりませんでした")
+                    }
+                }
+
+                // タイトルと本文を取得
                 val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
                 val bodyElements = doc.select("div.p-novel__body > div")
                 val body = StringBuilder()
@@ -219,13 +265,33 @@ object NovelApiUtils {
                         is_bookmark = false
                     )
                 } else {
+                    Log.e(TAG, "タイトルまたは本文が空です: title=${title.isNotEmpty()}, body=${body.isNotEmpty()}")
                     null
                 }
             } catch (e: Exception) {
-                Log.e("NovelApiUtils", "エピソード取得エラー: $episodeNo", e)
+                Log.e(TAG, "エピソード取得エラー: $episodeNo", e)
                 null
             }
         }
+    }
+
+    // リダイレクトと複数回試行用のfetchEpisodeWithRetry関数を追加
+    suspend fun fetchEpisodeWithRetry(ncode: String, episodeNo: Int, isR18: Boolean = false, maxRetries: Int = 3): EpisodeEntity? {
+        for (attempt in 1..maxRetries) {
+            try {
+                val episode = fetchEpisode(ncode, episodeNo, isR18)
+                if (episode != null) {
+                    return episode
+                }
+                Log.d(TAG, "試行 $attempt/$maxRetries 失敗しました。再試行します...")
+                delay(1000) // 1秒待機してから再試行
+            } catch (e: Exception) {
+                Log.e(TAG, "試行 $attempt/$maxRetries 中にエラー発生: ${e.message}")
+                if (attempt == maxRetries) throw e
+                delay(1000) // 1秒待機してから再試行
+            }
+        }
+        return null
     }
     /**
      * URLからncodeとR18フラグを抽出する

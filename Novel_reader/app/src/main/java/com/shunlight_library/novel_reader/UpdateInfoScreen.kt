@@ -18,11 +18,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -52,6 +54,11 @@ fun UpdateInfoScreen(
     var novels by remember { mutableStateOf<Map<String, NovelDescEntity>>(emptyMap()) }
     var isRefreshing by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
+    var showErrorFixConfirmDialog by remember { mutableStateOf(false) }
+    var errorNovelCount by remember { mutableStateOf(0) }
+    var errorEpisodeCount by remember { mutableStateOf(0) }
+    var missingEpisodeCount by remember { mutableStateOf(0) }
+    var redownloadTargets by remember { mutableStateOf<Map<String, List<Int>>>(emptyMap()) }
 
     // 進捗表示用の変数
     var isSyncing by remember { mutableStateOf(false) }
@@ -61,6 +68,7 @@ fun UpdateInfoScreen(
     var currentCount by remember { mutableStateOf(0) }
     var totalCount by remember { mutableStateOf(0) }
     val connectionSemaphore = Semaphore(3)
+
     // データ取得
     LaunchedEffect(key1 = Unit) {
         repository.allUpdateQueue.collect { queueList ->
@@ -76,7 +84,126 @@ fun UpdateInfoScreen(
             novels = novelMap
         }
     }
+    if (showErrorFixConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showErrorFixConfirmDialog = false },
+            title = { Text("評価0-2の小説エラー修正") },
+            text = {
+                Text(
+                    "エラーが見つかりました:\n" +
+                            "対象小説: ${errorNovelCount}冊\n" +
+                            "エラーのあるエピソード: ${errorEpisodeCount}件\n" +
+                            "欠番エピソード: ${missingEpisodeCount}件\n\n" +
+                            "これらのエピソードを再取得しますか？"
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showErrorFixConfirmDialog = false
+                    isSyncing = true
+                    syncProgress = 0f
+                    syncStep = "エラー修正"
+                    syncMessage = "エピソードを修正中..."
+                    currentCount = 0
 
+                    val novelList = redownloadTargets.keys.toList()
+                    totalCount = redownloadTargets.values.sumOf { it.size } // 総エピソード数
+
+                    scope.launch {
+                        try {
+                            var processedCount = 0
+                            var successCount = 0
+                            var failCount = 0
+
+                            // 各小説について処理
+                            for (ncode in novelList) {
+                                // 小説情報を取得
+                                val novel = repository.getNovelByNcode(ncode)
+                                if (novel == null) {
+                                    continue
+                                }
+
+                                syncMessage = "「${novel.title}」のエピソードを修正中..."
+
+                                // この小説の再取得対象エピソード
+                                val targets = redownloadTargets[ncode] ?: continue
+
+                                // 各エピソードを再取得
+                                for (episodeNo in targets) {
+                                    try {
+                                        // NovelApiUtils.fetchEpisodeを使用
+                                        val episode = NovelApiUtils.fetchEpisode(novel.ncode, episodeNo, novel.rating == 1)
+
+                                        if (episode != null) {
+                                            // データベースに保存
+                                            repository.insertEpisode(episode)
+                                            successCount++
+                                        } else {
+                                            failCount++
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("UpdateInfo", "エピソード取得エラー: $ncode-$episodeNo - ${e.message}")
+                                        failCount++
+                                    }
+
+                                    // 進捗更新
+                                    processedCount++
+                                    currentCount = processedCount
+                                    syncProgress = processedCount.toFloat() / totalCount
+                                    syncMessage = "「${novel.title}」のエピソードを修正中... ($processedCount/$totalCount)"
+
+                                    // APIに負担をかけないよう少し待機
+                                    delay(50)
+                                }
+
+                                // 小説のtotal_ep値を更新
+                                try {
+                                    val updatedEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                                    val maxEpisodeNo = updatedEpisodes.mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: 0
+
+                                    if (maxEpisodeNo > novel.total_ep) {
+                                        val updatedNovel = novel.copy(total_ep = maxEpisodeNo)
+                                        repository.updateNovel(updatedNovel)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("UpdateInfo", "小説情報の更新に失敗: ${novel.ncode} - ${e.message}")
+                                }
+                            }
+
+                            // 処理結果の通知
+                            withContext(Dispatchers.Main) {
+                                syncProgress = 1f
+                                syncMessage = "修正完了: 成功${successCount}件、失敗${failCount}件"
+                                Toast.makeText(
+                                    context,
+                                    "修正完了: 成功${successCount}件、失敗${failCount}件",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                delay(2000)
+                                isSyncing = false
+                            }
+                        } catch (e: Exception) {
+                            // 全体エラー処理
+                            withContext(Dispatchers.Main) {
+                                syncProgress = 1f
+                                syncMessage = "エラー: ${e.message}"
+                                Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
+                                delay(1500)
+                                isSyncing = false
+                            }
+                        }
+                    }
+                }) {
+                    Text("修正する")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showErrorFixConfirmDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
     // 更新確認ダイアログ
     if (showConfirmDialog) {
         AlertDialog(
@@ -580,6 +707,146 @@ fun UpdateInfoScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("一括更新")
                         }
+
+                        Button(
+                            onClick = {
+                                // エラー修正処理を開始
+                                isSyncing = true
+                                syncProgress = 0f
+                                syncStep = "エラーチェック"
+                                syncMessage = "評価0-2の小説を検索中..."
+                                errorNovelCount = 0
+                                errorEpisodeCount = 0
+                                missingEpisodeCount = 0
+                                redownloadTargets = emptyMap()
+
+                                scope.launch {
+                                    try {
+                                        // 評価0-2の小説を取得
+                                        val novels = repository.getNovelsForUpdate().filter { it.rating in 0..2 }
+
+                                        if (novels.isEmpty()) {
+                                            withContext(Dispatchers.Main) {
+                                                syncProgress = 1f
+                                                syncMessage = "評価0-2の小説が見つかりませんでした"
+                                                Toast.makeText(context, "評価0-2の小説が見つかりませんでした", Toast.LENGTH_SHORT).show()
+                                                delay(1500)
+                                                isSyncing = false
+                                            }
+                                            return@launch
+                                        }
+
+                                        // 総数設定
+                                        totalCount = novels.size
+
+                                        // 各小説のエラーをチェック
+                                        val novelErrorMap = mutableMapOf<String, List<Int>>()
+                                        var totalErrorEps = 0
+                                        var totalMissingEps = 0
+                                        var novelsWithErrors = 0
+
+                                        novels.forEachIndexed { index, novel ->
+                                            syncProgress = 0.3f + (0.7f * index.toFloat() / novels.size)
+                                            currentCount = index + 1
+                                            syncMessage = "「${novel.title}」のエラーをチェック中... (${index + 1}/${novels.size})"
+
+                                            try {
+                                                // エピソードを取得
+                                                val episodes = repository.getEpisodesByNcode(novel.ncode).first()
+
+                                                // エラーのあるエピソードを特定（body または e_title が空）
+                                                val errorEpisodes = episodes.filter {
+                                                    it.body.isEmpty() || it.e_title.isEmpty()
+                                                }
+
+                                                // APIから最新情報を取得
+                                                val (newGeneralAllNo, _) = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+
+                                                // 使用するgeneral_all_no値
+                                                val generalAllNoValue = if (newGeneralAllNo == -1) novel.general_all_no else newGeneralAllNo
+
+                                                // エピソードのマップを作成
+                                                val episodeNumberMap = episodes.associate { episode ->
+                                                    val numericValue = episode.episode_no.toIntOrNull() ?: 0
+                                                    numericValue to episode.episode_no
+                                                }
+
+                                                // 最大エピソード番号
+                                                val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
+                                                val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
+
+                                                // 欠番を特定
+                                                val missingEpisodes = (1..checkRangeMax).filter { epNo ->
+                                                    !episodeNumberMap.containsKey(epNo)
+                                                }
+
+                                                // エラーエピソードの番号リスト
+                                                val errorEpisodeNumbers = errorEpisodes.mapNotNull { it.episode_no.toIntOrNull() }
+
+                                                // 再取得対象（エラーと欠番を合わせる）
+                                                val targets = (errorEpisodeNumbers + missingEpisodes).distinct().sorted()
+
+                                                if (targets.isNotEmpty()) {
+                                                    novelErrorMap[novel.ncode] = targets
+                                                    totalErrorEps += errorEpisodes.size
+                                                    totalMissingEps += missingEpisodes.size
+                                                    novelsWithErrors++
+                                                }
+
+                                                // APIに負担をかけないよう少し待機
+                                                delay(100)
+                                            } catch (e: Exception) {
+                                                Log.e("UpdateInfo", "小説のエラーチェックに失敗: ${novel.ncode} - ${e.message}")
+                                            }
+                                        }
+
+                                        // エラーが見つからなかった場合
+                                        if (novelErrorMap.isEmpty()) {
+                                            withContext(Dispatchers.Main) {
+                                                syncProgress = 1f
+                                                syncMessage = "エラーや欠番は見つかりませんでした"
+                                                Toast.makeText(context, "エラーや欠番は見つかりませんでした", Toast.LENGTH_SHORT).show()
+                                                delay(1500)
+                                                isSyncing = false
+                                            }
+                                            return@launch
+                                        }
+
+                                        // エラーが見つかった場合
+                                        errorNovelCount = novelsWithErrors
+                                        errorEpisodeCount = totalErrorEps
+                                        missingEpisodeCount = totalMissingEps
+                                        redownloadTargets = novelErrorMap
+
+                                        // 確認ダイアログを表示
+                                        withContext(Dispatchers.Main) {
+                                            isSyncing = false
+                                            showErrorFixConfirmDialog = true
+                                        }
+
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            syncProgress = 1f
+                                            syncMessage = "エラー: ${e.message}"
+                                            Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            delay(1500)
+                                            isSyncing = false
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = !isRefreshing && !isSyncing
+                        ) {
+                            Icon(
+                                Icons.Default.BuildCircle,
+                                contentDescription = "エラー修正",
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("欠落修正")
+                        }
+
                     }
 
                     if (isRefreshing || isSyncing) {
@@ -711,7 +978,10 @@ fun UpdateInfoScreen(
             }
         }
     }
+    // 評価0-2の小説のエラーを確認する関数
+
 }
+
 
 @Composable
 fun UpdateQueueItem(
@@ -806,6 +1076,8 @@ fun UpdateQueueItem(
         }
     }
 }
+
+
 
 // 日付表示フォーマット
 private fun formatDate(dateString: String): String {
