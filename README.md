@@ -1,12 +1,12 @@
 # Novel Reader
 
-**Novel Reader** は、日本の小説投稿サイト（「小説家になろう」など）の作品を快適に読むためのAndroidアプリケーションです。
+**Novel Reader** は、小説投稿サイトの作品を快適に読むためのAndroidアプリケーションです。
 
 ## 概要 / Overview
 
 このアプリは、オンライン小説プラットフォームから小説を取得・管理し、オフラインでも快適に読書できる環境を提供します。縦書き表示、ルビ対応、カスタムフォント、自動更新チェックなど、日本語小説の読書に特化した機能を備えています。
 
-*An Android application for comfortably reading novels from Japanese novel platforms like "Shōsetsuka ni Narō" (Let's Become Novelists). Features offline reading, vertical text display, ruby text support, and automatic update checking.*
+*An Android application for comfortably reading novels from Japanese novel platforms Features offline reading, vertical text display, ruby text support, and automatic update checking.*
 
 ## 主な機能 / Features
 
@@ -39,7 +39,6 @@
 ### 🌐 Webブラウザ機能
 - 小説サイトの直接閲覧
 - WebViewからの小説登録
-- R18サイト対応（ノクターン・ミッドナイト・ムーンライト）
 
 ## 技術スタック / Tech Stack
 
@@ -126,9 +125,9 @@ app/src/main/java/com/shunlight_library/novel_reader/
 
 ## 注意事項 / Important Notes
 
-⚠️ **利用規約の遵守**: このアプリは小説投稿サイトのAPIやWebスクレイピングを使用します。各サイトの利用規約を遵守し、適切な間隔でのアクセスを心がけてください。
+⚠️ **利用規約の遵守**: このアプリは小説投稿サイトのAPI等を使用します。適切な間隔でのアクセスを心がけてください。
 
-⚠️ **個人利用推奨**: 商用利用や大量アクセスは避け、個人の読書用途での利用を推奨します。
+⚠️ **個人利用厳守**: 商用利用や大量アクセスは避け、個人の読書用途での利用をしてください。
 
 ⚠️ **データの取り扱い**: 取得した小説データは個人利用の範囲内で適切に管理してください。
 
