@@ -8,7 +8,8 @@ import androidx.room.Index
     primaryKeys = ["ncode"],
     indices = [
         Index(value = ["last_update_date"], name = "idx_novels_last_update"),
-        Index(value = ["ncode", "rating", "total_ep", "general_all_no", "updated_at"], name = "idx_novels_update_check")
+        Index(value = ["ncode", "rating", "total_ep", "general_all_no", "updated_at"], name = "idx_novels_update_check"),
+        Index(value = ["is_favorite"], name = "idx_novels_favorite")
     ]
 )
 data class NovelDescEntity(
@@ -22,7 +23,8 @@ data class NovelDescEntity(
     val last_update_date: String,
     val total_ep: Int,
     val general_all_no: Int,
-    val updated_at: String
+    val updated_at: String,
+    val is_favorite: Boolean = false
 )
 
 //https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode={ncode}&gzip=5&json

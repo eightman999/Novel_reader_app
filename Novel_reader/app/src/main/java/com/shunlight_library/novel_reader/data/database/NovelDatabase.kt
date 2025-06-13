@@ -58,6 +58,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_favorite ON novels_descs (is_favorite)")
+    }
+}
+
 @Database(
     entities = [
         EpisodeEntity::class,
@@ -66,7 +73,7 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         UpdateQueueEntity::class,
         URLEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -87,7 +94,7 @@ abstract class NovelDatabase : RoomDatabase() {
                     NovelDatabase::class.java,
                     "novel_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                 INSTANCE = instance
                 instance

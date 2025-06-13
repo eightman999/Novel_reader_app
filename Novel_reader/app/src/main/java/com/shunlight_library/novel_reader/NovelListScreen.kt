@@ -53,7 +53,8 @@ data class FilterSettings(
     val maxRating: Int = 5,  // 最高レーティングを追加
     val hideRating5WithNoEpisodes: Boolean = false,
     val showCompleted: Boolean = true,
-    val showOngoing: Boolean = true
+    val showOngoing: Boolean = true,
+    val showFavoritesOnly: Boolean = false
 )
 
 // 小説と既読情報を組み合わせたデータクラス
@@ -115,7 +116,8 @@ fun NovelListScreen(
                     maxRating = filterSettings.maxRating,
                     hideRating5WithNoEpisodes = filterSettings.hideRating5WithNoEpisodes,
                     showCompleted = filterSettings.showCompleted,
-                    showOngoing = filterSettings.showOngoing
+                    showOngoing = filterSettings.showOngoing,
+                    showFavoritesOnly = filterSettings.showFavoritesOnly
                 )
                 settingsStore.saveNovelListFilterSettings(settings)
             }
@@ -137,6 +139,11 @@ fun NovelListScreen(
 
             // ratingでフィルタリング（最低値と最高値の両方）
             if (novel.rating < filterSettings.minRating || novel.rating > filterSettings.maxRating) {
+                return@filter false
+            }
+
+            // お気に入りフィルターが有効な場合、お気に入りでない小説を除外
+            if (filterSettings.showFavoritesOnly && !novel.is_favorite) {
                 return@filter false
             }
 
@@ -225,7 +232,8 @@ fun NovelListScreen(
             maxRating = savedFilterSettings.maxRating,
             hideRating5WithNoEpisodes = savedFilterSettings.hideRating5WithNoEpisodes,
             showCompleted = savedFilterSettings.showCompleted,
-            showOngoing = savedFilterSettings.showOngoing
+            showOngoing = savedFilterSettings.showOngoing,
+            showFavoritesOnly = savedFilterSettings.showFavoritesOnly
         )
     }
     
@@ -444,6 +452,32 @@ fun NovelListScreen(
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }
+
+                    // お気に入りのみ表示チェックボックス
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                filterSettings = filterSettings.copy(
+                                    showFavoritesOnly = !filterSettings.showFavoritesOnly
+                                )
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = filterSettings.showFavoritesOnly,
+                            onCheckedChange = { checked ->
+                                filterSettings = filterSettings.copy(
+                                    showFavoritesOnly = checked
+                                )
+                            }
+                        )
+                        Text(
+                            text = "お気に入りのみ表示",
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -459,6 +493,7 @@ fun NovelListScreen(
                     // すべてのフィルターをリセット
                     filterSettings = FilterSettings()
                     showFilterDialog = false
+                    saveCurrentSettings()
                 }) {
                     Text("リセット")
                 }
@@ -648,7 +683,12 @@ fun NovelListScreen(
                         showRating = showRating,
                         showUpdateDate = showUpdateDate,
                         showEpisodeCount = showEpisodeCount,
-                        onClick = { onNovelClick(novelWithReadInfo.novel.ncode) }
+                        onClick = { onNovelClick(novelWithReadInfo.novel.ncode) },
+                        onFavoriteClick = { isFavorite ->
+                            scope.launch {
+                                repository.updateFavoriteStatus(novelWithReadInfo.novel.ncode, isFavorite)
+                            }
+                        }
                     )
                     HorizontalDivider()
                 }
@@ -668,7 +708,8 @@ fun NovelListItem(
     showRating: Boolean,
     showUpdateDate: Boolean,
     showEpisodeCount: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onFavoriteClick: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -683,11 +724,27 @@ fun NovelListItem(
                 .padding(16.dp)
         ) {
             if (showTitle) {
-                Text(
-                    text = novel.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = novel.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { onFavoriteClick(!novel.is_favorite) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (novel.is_favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = if (novel.is_favorite) "お気に入りから削除" else "お気に入りに追加",
+                            tint = if (novel.is_favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
             }
 

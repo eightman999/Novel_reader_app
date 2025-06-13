@@ -222,4 +222,13 @@ class NovelRepository(
         return newURLEntity
     }
 
+    // お気に入り関連メソッド
+    suspend fun updateFavoriteStatus(ncode: String, isFavorite: Boolean) {
+        withContext(Dispatchers.IO) {
+            novelDescDao.updateFavoriteStatus(ncode, isFavorite)
+        }
+    }
+
+    val favoriteNovels: Flow<List<NovelDescEntity>> = novelDescDao.getFavoriteNovels()
+
 }

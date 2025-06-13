@@ -39,7 +39,8 @@ data class NovelListFilterSettings(
     val maxRating: Int = 5,
     val hideRating5WithNoEpisodes: Boolean = false,
     val showCompleted: Boolean = true,
-    val showOngoing: Boolean = true
+    val showOngoing: Boolean = true,
+    val showFavoritesOnly: Boolean = false
 )
 
 // DataStoreのインスタンスをトップレベルで定義
@@ -88,6 +89,7 @@ class SettingsStore(private val context: Context) {
         val NOVEL_LIST_HIDE_RATING5_NO_EPISODES = booleanPreferencesKey("novel_list_hide_rating5_no_episodes")
         val NOVEL_LIST_SHOW_COMPLETED = booleanPreferencesKey("novel_list_show_completed")
         val NOVEL_LIST_SHOW_ONGOING = booleanPreferencesKey("novel_list_show_ongoing")
+        val NOVEL_LIST_SHOW_FAVORITES_ONLY = booleanPreferencesKey("novel_list_show_favorites_only")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -123,6 +125,7 @@ class SettingsStore(private val context: Context) {
     val defaultNovelListHideRating5NoEpisodes = false
     val defaultNovelListShowCompleted = true
     val defaultNovelListShowOngoing = true
+    val defaultNovelListShowFavoritesOnly = false
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -449,7 +452,8 @@ class SettingsStore(private val context: Context) {
             maxRating = preferences[NOVEL_LIST_MAX_RATING] ?: defaultNovelListMaxRating,
             hideRating5WithNoEpisodes = preferences[NOVEL_LIST_HIDE_RATING5_NO_EPISODES] ?: defaultNovelListHideRating5NoEpisodes,
             showCompleted = preferences[NOVEL_LIST_SHOW_COMPLETED] ?: defaultNovelListShowCompleted,
-            showOngoing = preferences[NOVEL_LIST_SHOW_ONGOING] ?: defaultNovelListShowOngoing
+            showOngoing = preferences[NOVEL_LIST_SHOW_ONGOING] ?: defaultNovelListShowOngoing,
+            showFavoritesOnly = preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] ?: defaultNovelListShowFavoritesOnly
         )
     }
     
@@ -463,6 +467,7 @@ class SettingsStore(private val context: Context) {
             preferences[NOVEL_LIST_HIDE_RATING5_NO_EPISODES] = settings.hideRating5WithNoEpisodes
             preferences[NOVEL_LIST_SHOW_COMPLETED] = settings.showCompleted
             preferences[NOVEL_LIST_SHOW_ONGOING] = settings.showOngoing
+            preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] = settings.showFavoritesOnly
         }
     }
 }
