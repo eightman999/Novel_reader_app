@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -33,6 +34,8 @@ import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 
 class MainActivity : ComponentActivity() {
     private lateinit var navigationManager: NavigationManager
+    private lateinit var backPressedCallback: OnBackPressedCallback
+    
     // R18ダイアログの表示状態
     private val _showR18Dialog = mutableStateOf(false)
     val showR18Dialog: Boolean
@@ -52,6 +55,18 @@ class MainActivity : ComponentActivity() {
 
         // ナビゲーションマネージャーの作成
         navigationManager = NavigationManager()
+
+        // OnBackPressedCallback を設定
+        backPressedCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // まずナビゲーションマネージャーにバック処理を任せる
+                if (!navigationManager.navigateBack()) {
+                    // ナビゲーションマネージャーが処理できなければアプリを終了
+                    finish()
+                }
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
 
         // ステータスバーを表示する（設定修正）
         window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -80,15 +95,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        // まずナビゲーションマネージャーにバック処理を任せる
-        if (!navigationManager.navigateBack()) {
-            // ナビゲーションマネージャーが処理できなければデフォルト動作を使用
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
