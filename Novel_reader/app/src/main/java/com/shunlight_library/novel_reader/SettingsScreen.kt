@@ -37,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.shunlight_library.novel_reader.worker.AutoUpdateScheduler
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +47,7 @@ fun SettingsScreenUpdated(
 ) {
     val context = LocalContext.current
     val settingsStore = remember { SettingsStore(context) }
+    val autoUpdateScheduler = remember { AutoUpdateScheduler(context) }
     val scope = rememberCoroutineScope()
 
     // State variables for settings with initial values from DataStore
@@ -448,8 +450,7 @@ fun SettingsScreenUpdated(
                                 settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
 
                                 // 自動更新スケジュールを設定
-                                val app = context.applicationContext as NovelReaderApplication
-                                app.scheduleUpdateWork(autoUpdateEnabled, autoUpdateTime)
+                                autoUpdateScheduler.scheduleAutoUpdate(autoUpdateEnabled, autoUpdateTime)
 
                                 // 保存したことをユーザーに通知
                                 Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()

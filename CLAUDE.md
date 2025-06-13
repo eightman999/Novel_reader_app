@@ -202,3 +202,61 @@ fun NovelListScreen() {
 - 画面起動時に保存された設定を自動読み込み
 - 設定変更時（ダイアログ適用、ボタンクリック等）に即座に保存
 - 例外処理を含めて enum 値の安全な復元を行う
+
+## 自動更新機能の実装
+
+### WorkManagerによるバックグラウンド自動更新 (実装完了)
+
+**概要**: 設定した時刻に自動でバックグラウンド更新を実行し、システム通知とアプリ内通知で結果を通知する機能
+
+**実装ファイル**:
+- `AutoUpdateWorker.kt` - WorkManagerによるバックグラウンド処理
+- `AutoUpdateScheduler.kt` - 自動更新の時刻スケジュール管理
+- `NotificationData.kt` & `NotificationStore.kt` - アプリ内通知管理
+- `NotificationDialog.kt` - 通知一覧UI
+- `MainActivity.kt` - メイン画面への通知機能統合
+- `AndroidManifest.xml` - バックグラウンド実行権限
+
+**主要機能**:
+1. **バックグラウンド自動更新**: 24時間間隔で指定時刻に実行
+2. **システム通知**: 更新結果をスマホの通知で即座表示
+3. **アプリ内通知**: 詳細な更新履歴と管理機能
+4. **通知バッジ**: メイン画面に未読通知数表示
+5. **権限管理**: WAKE_LOCK, SCHEDULE_EXACT_ALARM等の適切な権限設定
+
+**効果**: 
+- アプリ未起動・画面OFF時でもバックグラウンドで更新確認
+- 「新規X作品、更新Y作品」の詳細通知
+- 更新履歴の永続化と管理
+- 設定変更時の即座反映
+
+## R18作品判定ルール
+
+**必須**: 小説のR18判定は`rating`フィールドで行う
+
+```kotlin
+// R18判定の実装パターン
+val isR18 = novel.rating == 1
+
+// APIエンドポイント選択
+val apiUrl = if (isR18) {
+    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+} else {
+    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+}
+
+// WebサイトURL選択
+val webUrl = if (isR18) {
+    "https://novel18.syosetu.com/$ncode/"
+} else {
+    "https://ncode.syosetu.com/$ncode/"
+}
+```
+
+**重要なルール**:
+- **rating = 1** → R18サイト（novel18.syosetu.com）
+- **rating = 2** → 一般サイト（ncode.syosetu.com）
+- R18作品の更新確認・閲覧は専用APIとサイトを使用
+- 一般作品の更新確認・閲覧は通常APIとサイトを使用
+
+このルールは全てのAPI呼び出し、URL生成、WebView表示で統一して適用すること。

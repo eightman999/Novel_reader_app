@@ -31,6 +31,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.shunlight_library.novel_reader.navigation.NavigationManager
 import com.shunlight_library.novel_reader.navigation.Screen
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
+import com.shunlight_library.novel_reader.data.NotificationStore
+import com.shunlight_library.novel_reader.ui.components.NotificationDialog
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var navigationManager: NavigationManager
@@ -79,7 +82,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settingsStore = remember { SettingsStore(this) }
+            val notificationStore = remember { NotificationStore(this) }
             val themeMode by settingsStore.themeMode.collectAsState(initial = "System")
+            val scope = rememberCoroutineScope()
+
+            // アプリ起動時に未読通知をチェック
+            LaunchedEffect(key1 = Unit) {
+                scope.launch {
+                    val unreadNotifications = notificationStore.getUnreadNotifications()
+                    if (unreadNotifications.isNotEmpty()) {
+                        // 通知があることを示すフラグを設定
+                        // 実際の通知表示はメイン画面で行う
+                    }
+                }
+            }
 
             // テーマモードに基づいてダークテーマかどうかを決定
             val isDarkTheme = when (themeMode) {
@@ -90,7 +106,10 @@ class MainActivity : ComponentActivity() {
 
             Novel_readerTheme(darkTheme = isDarkTheme) {
                 // ナビゲーションマネージャーをコンポーザブルに提供
-                NovelReaderApp(navigationManager = navigationManager)
+                NovelReaderApp(
+                    navigationManager = navigationManager,
+                    notificationStore = notificationStore
+                )
             }
         }
     }
@@ -99,7 +118,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NovelReaderApp(navigationManager: NavigationManager) {
+fun NovelReaderApp(
+    navigationManager: NavigationManager,
+    notificationStore: NotificationStore? = null
+) {
     var showSettings by remember { mutableStateOf(false) }
     // WebView用の状態変数を追加
     var showWebView by remember { mutableStateOf(false) }
@@ -213,7 +235,8 @@ fun NovelReaderApp(navigationManager: NavigationManager) {
 when (val currentScreen = navigationManager.currentScreen) {
         is Screen.Main -> {
             MainScreen(
-                onNavigate = { screen -> navigationManager.navigateTo(screen) }
+                onNavigate = { screen -> navigationManager.navigateTo(screen) },
+                notificationStore = notificationStore
             )
         }
 
@@ -372,7 +395,10 @@ fun MenuButton(
 
 // MainActivity.kt - MainScreen関数を更新
 @Composable
-fun MainScreen(onNavigate: (Screen) -> Unit) {
+fun MainScreen(
+    onNavigate: (Screen) -> Unit,
+    notificationStore: NotificationStore? = null
+) {
     val repository = NovelReaderApplication.getRepository()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -382,6 +408,16 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
     var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
     var updateInfoText by remember { mutableStateOf("新着0件・更新あり0件") }
     var showR18Dialog by remember { mutableStateOf(false) }
+    
+    // 通知関連の状態
+    var unreadNotificationCount by remember { mutableStateOf(0) }
+    var showNotificationDialog by remember { mutableStateOf(false) }
+
+    // 通知データの監視
+    if (notificationStore != null) {
+        val unreadCount by notificationStore.unreadCountFlow.collectAsState(initial = 0)
+        unreadNotificationCount = unreadCount
+    }
 
     // 最後に読んだ小説と更新情報の取得
     LaunchedEffect(Unit) {
@@ -658,13 +694,13 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
                 SectionHeader(title = "オプション")
             }
 
-            // 設定とDB同期
+            // 設定、通知、DB同期
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     MenuButton(
                         icon = "⚙",
@@ -673,6 +709,31 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
                             onNavigate(Screen.Settings)
                         }
                     )
+                    
+                    // 通知ボタン（バッジ付き）
+                    Box {
+                        MenuButton(
+                            icon = "🔔",
+                            text = "通知",
+                            onClick = {
+                                showNotificationDialog = true
+                            }
+                        )
+                        // 未読通知バッジ
+                        if (unreadNotificationCount > 0) {
+                            Badge(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = (-8).dp, y = 8.dp)
+                            ) {
+                                Text(
+                                    text = if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString(),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                    
                     MenuButton(
                         icon = "",
                         text = "DB同期",
@@ -683,5 +744,13 @@ fun MainScreen(onNavigate: (Screen) -> Unit) {
                 }
             }
         }
+    }
+    
+    // 通知ダイアログ
+    if (showNotificationDialog && notificationStore != null) {
+        NotificationDialog(
+            notificationStore = notificationStore,
+            onDismiss = { showNotificationDialog = false }
+        )
     }
 }
