@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.navigationBarsPadding
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncManager
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import com.shunlight_library.novel_reader.ui.components.DatabaseFileSelector
@@ -394,6 +395,7 @@ fun SettingsScreenUpdated(
     )
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
                 title = { Text("設定") },
@@ -407,7 +409,9 @@ fun SettingsScreenUpdated(
         bottomBar = {
             // 画面下部に固定されるボタン
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
                 tonalElevation = 8.dp
             ) {
                 Button(
