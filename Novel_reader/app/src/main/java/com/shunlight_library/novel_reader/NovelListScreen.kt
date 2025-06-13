@@ -104,6 +104,24 @@ fun NovelListScreen(
     var displayedNovels by remember { mutableStateOf<List<NovelWithReadInfo>>(emptyList()) }
     var lastReadMap by remember { mutableStateOf<Map<String, LastReadNovelEntity>>(emptyMap()) }
 
+    // 設定を保存する関数（手動呼び出し時のみ）
+    val saveCurrentSettings = remember {
+        {
+            scope.launch {
+                val settings = NovelListFilterSettings(
+                    sortField = sortField.name,
+                    sortDirection = sortDirection.name,
+                    minRating = filterSettings.minRating,
+                    maxRating = filterSettings.maxRating,
+                    hideRating5WithNoEpisodes = filterSettings.hideRating5WithNoEpisodes,
+                    showCompleted = filterSettings.showCompleted,
+                    showOngoing = filterSettings.showOngoing
+                )
+                settingsStore.saveNovelListFilterSettings(settings)
+            }
+        }
+    }
+
     // フィルターとソートを適用する関数
     fun applyFiltersAndSort() {
         // フィルターの適用
@@ -178,8 +196,8 @@ fun NovelListScreen(
         }
     }
 
-    // 設定とデータの読み込み
-    LaunchedEffect(key1 = true) {
+    // 設定の読み込み（初回のみ）
+    LaunchedEffect(key1 = Unit) {
         // 表示設定の取得
         val displaySettings = settingsStore.getDisplaySettings()
         showTitle = displaySettings.showTitle
@@ -189,8 +207,30 @@ fun NovelListScreen(
         showRating = displaySettings.showRating
         showUpdateDate = displaySettings.showUpdateDate
         showEpisodeCount = displaySettings.showEpisodeCount
-
-        // 最終既読情報の取得
+        
+        // フィルター設定の取得
+        val savedFilterSettings = settingsStore.getNovelListFilterSettings()
+        sortField = try {
+            SortField.valueOf(savedFilterSettings.sortField)
+        } catch (e: IllegalArgumentException) {
+            SortField.LAST_UPDATE_DATE
+        }
+        sortDirection = try {
+            SortDirection.valueOf(savedFilterSettings.sortDirection)
+        } catch (e: IllegalArgumentException) {
+            SortDirection.DESCENDING
+        }
+        filterSettings = FilterSettings(
+            minRating = savedFilterSettings.minRating,
+            maxRating = savedFilterSettings.maxRating,
+            hideRating5WithNoEpisodes = savedFilterSettings.hideRating5WithNoEpisodes,
+            showCompleted = savedFilterSettings.showCompleted,
+            showOngoing = savedFilterSettings.showOngoing
+        )
+    }
+    
+    // 最終既読情報の取得
+    LaunchedEffect(key1 = Unit) {
         repository.allLastReadNovels.collect { lastReadList ->
             lastReadMap = lastReadList.associateBy { it.ncode }
         }
@@ -216,7 +256,7 @@ fun NovelListScreen(
     }
 
     // 検索、フィルター、ソートが変更されたとき
-    LaunchedEffect(searchText, searchField, sortField, sortDirection, filterSettings) {
+    LaunchedEffect(searchText, searchField, sortField, sortDirection, filterSettings, allNovels) {
         applyFiltersAndSort()
     }
 
@@ -292,7 +332,10 @@ fun NovelListScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { showSortDialog = false }) {
+                Button(onClick = { 
+                    showSortDialog = false
+                    saveCurrentSettings()
+                }) {
                     Text("適用")
                 }
             },
@@ -404,7 +447,10 @@ fun NovelListScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilterDialog = false }) {
+                Button(onClick = { 
+                    showFilterDialog = false
+                    saveCurrentSettings()
+                }) {
                     Text("適用")
                 }
             },
@@ -457,6 +503,7 @@ fun NovelListScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             Column {
                 TopAppBar(
