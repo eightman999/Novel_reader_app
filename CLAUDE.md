@@ -112,3 +112,93 @@ Use `SettingsStore` for persistent configuration with DataStore.
 4. Use NavigationManager for navigation to maintain proper back stack
 5. Handle R18 content appropriately with dialog-based site selection
 6. Maintain reading progress and bookmark functionality in EpisodeViewScreen
+
+#### Back Navigation Implementation
+**必須**: Android標準のナビゲーションバーのバックハンドラーを使用する
+
+```kotlin
+// MainActivity.kt での実装パターン
+class MainActivity : ComponentActivity() {
+    private lateinit var navigationManager: NavigationManager
+    private lateinit var backPressedCallback: OnBackPressedCallback
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // NavigationManager初期化
+        navigationManager = NavigationManager()
+        
+        // OnBackPressedCallbackの設定
+        backPressedCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!navigationManager.navigateBack()) {
+                    finish()
+                }
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
+        
+        // 以下setContent...
+    }
+}
+```
+
+**重要**:
+- deprecated な `onBackPressed()` は使用しない
+- `OnBackPressedDispatcher` を使用してシステムバックボタンとの統合を行う
+- NavigationManager と連携して適切なバック処理を実装する
+
+#### Filter and Sort Settings Persistence
+**必須**: リスト画面のフィルター・ソート設定は永続化し、次回起動時に復元する
+
+```kotlin
+// SettingsStore での実装パターン
+data class NovelListFilterSettings(
+    val sortField: String = "LAST_UPDATE_DATE",
+    val sortDirection: String = "DESCENDING",
+    val minRating: Int = 0,
+    val maxRating: Int = 5,
+    val hideRating5WithNoEpisodes: Boolean = false,
+    val showCompleted: Boolean = true,
+    val showOngoing: Boolean = true
+)
+
+// 設定の保存・読み込みメソッド
+suspend fun getNovelListFilterSettings(): NovelListFilterSettings { ... }
+suspend fun saveNovelListFilterSettings(settings: NovelListFilterSettings) { ... }
+```
+
+```kotlin
+// Screen での実装パターン
+@Composable
+fun NovelListScreen() {
+    val settingsStore = remember { SettingsStore(context) }
+    var sortField by remember { mutableStateOf(SortField.LAST_UPDATE_DATE) }
+    var filterSettings by remember { mutableStateOf(FilterSettings()) }
+    
+    // 設定の自動保存
+    fun saveCurrentSettings() {
+        scope.launch {
+            settingsStore.saveNovelListFilterSettings(...)
+        }
+    }
+    
+    // 起動時の設定読み込み
+    LaunchedEffect(key1 = true) {
+        val saved = settingsStore.getNovelListFilterSettings()
+        sortField = SortField.valueOf(saved.sortField)
+        // ...
+    }
+    
+    // 設定変更時の自動保存
+    LaunchedEffect(sortField, filterSettings) {
+        saveCurrentSettings()
+    }
+}
+```
+
+**重要**:
+- DataStoreを使用してフィルター・ソート設定を永続化
+- 画面起動時に保存された設定を自動読み込み
+- 設定変更時（ダイアログ適用、ボタンクリック等）に即座に保存
+- 例外処理を含めて enum 値の安全な復元を行う
