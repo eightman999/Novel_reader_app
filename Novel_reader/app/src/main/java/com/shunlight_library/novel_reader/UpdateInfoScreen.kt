@@ -455,13 +455,13 @@ fun UpdateInfoScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Button(
                             onClick = { showConfirmDialog = true },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             enabled = !isRefreshing && !isSyncing
                         ) {
                             Icon(
@@ -473,9 +473,8 @@ fun UpdateInfoScreen(
                             Text("更新確認")
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
-
                         Button(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 // 一括更新処理を実装
                                 if (updateQueue.isNotEmpty()) {
@@ -709,6 +708,7 @@ fun UpdateInfoScreen(
                         }
 
                         Button(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 // エラー修正処理を開始
                                 isSyncing = true
