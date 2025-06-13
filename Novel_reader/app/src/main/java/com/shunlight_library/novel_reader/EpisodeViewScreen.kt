@@ -4,6 +4,7 @@ import android.graphics.Color as AndroidColor
 import android.util.Log
 import android.webkit.JavascriptInterface
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -186,6 +187,14 @@ fun EpisodeViewScreen(
                         modifier = Modifier.clickable { onTitleTap() }
                     )
                 },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        saveReadingRate()
+                        onBackToToc()
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "目次に戻る")
+                    }
+                },
                 actions = {
                     // しおりボタン
                     episode?.let {
@@ -336,6 +345,12 @@ fun EpisodeViewScreen(
             }
         }
     ) { innerPadding ->
+        // システムバックボタンで目次に戻る
+        BackHandler {
+            saveReadingRate()
+            onBackToToc()
+        }
+        
         // エピソード本文の表示
         if (episode != null) {
             Box(
