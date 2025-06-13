@@ -32,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.regex.Pattern
+import android.os.Message
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,8 +96,8 @@ fun WebViewScreen(
             builtInZoomControls = true
             displayZoomControls = false
 
-            // ユーザーエージェント設定
-            userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Mobile Safari/537.36"
+            // ユーザーエージェント設定（最新のChromeに更新）
+            userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
             // WebViewデフォルトエンコーディング
             defaultTextEncodingName = "UTF-8"
@@ -121,6 +122,35 @@ fun WebViewScreen(
                 currentLoadingUrl = loadedUrl
                 currentUrl = loadedUrl
 
+                // target="_blank"リンクを修正するJavaScriptを実行
+                view.evaluateJavascript("""
+                    (function() {
+                        // すべてのtarget="_blank"リンクからtarget属性を除去
+                        var links = document.querySelectorAll('a[target="_blank"]');
+                        console.log('Found ' + links.length + ' target="_blank" links');
+                        for (var i = 0; i < links.length; i++) {
+                            links[i].removeAttribute('target');
+                            console.log('Removed target from link: ' + links[i].href);
+                        }
+
+                        // リンクにクリックイベントリスナーを追加（念のため）
+                        var readButtons = document.querySelectorAll('.read_button');
+                        for (var i = 0; i < readButtons.length; i++) {
+                            readButtons[i].addEventListener('click', function(e) {
+                                var href = this.getAttribute('href');
+                                if (href) {
+                                    console.log('Read button clicked, navigating to: ' + href);
+                                    window.location.href = href;
+                                }
+                            });
+                        }
+
+                        return 'target="_blank" links processed: ' + links.length;
+                    })();
+                """.trimIndent()) { result ->
+                    Log.d("WebViewScreen", "Target blank links processing result: $result")
+                }
+
                 // 年齢確認ページかチェック
                 if (loadedUrl.contains("ageauth")) {
                     Log.d("WebViewScreen", "年齢確認ページを検出しました")
@@ -136,7 +166,7 @@ fun WebViewScreen(
                         // 'Enter'が見つからない場合、'はい'や'同意する'ボタンも探す
                         for (var i = 0; i < links.length; i++) {
                             var text = links[i].textContent.trim();
-                            if (text === 'はい' || text === '同意する' || 
+                            if (text === 'はい' || text === '同意する' ||
                                 text === 'Yes' || text === 'I agree') {
                                 links[i].click();
                                 return true;
@@ -184,6 +214,7 @@ fun WebViewScreen(
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                Log.d("WebViewScreen", "shouldOverrideUrlLoading called with URL: $url")
                 view.loadUrl(url)
                 return true
             }
@@ -205,12 +236,47 @@ fun WebViewScreen(
             }
         }
 
-        // WebChromeClientの設定
+        // WebChromeClientの設定（新しいウィンドウ作成を処理）
         webView.webChromeClient = object : WebChromeClient() {
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                Log.d("WebViewScreen", "onCreateWindow called - redirecting to same WebView")
+
+                // 新しいウィンドウを作成する代わりに、一時的なWebViewを作成して
+                // そのURLを元のWebViewで読み込む
+                val tempWebView = WebView(view!!.context)
+                tempWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                        Log.d("WebViewScreen", "New window would load URL: $url, redirecting to main WebView")
+                        // 元のWebViewでURLを読み込む
+                        webView.loadUrl(url)
+                        return true
+                    }
+
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        if (url != null) {
+                            Log.d("WebViewScreen", "Temp WebView started loading: $url, redirecting to main WebView")
+                            webView.loadUrl(url)
+                        }
+                    }
+                }
+
+                // メッセージを一時的なWebViewに送信
+                val transport = resultMsg?.obj as? WebView.WebViewTransport
+                transport?.webView = tempWebView
+                resultMsg?.sendToTarget()
+
+                return true
+            }
+
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
                 if (newProgress == 100) {
-                    // ページ読み込み完了時の処理
                     Log.d("WebViewScreen", "Page load completed")
                 }
             }
