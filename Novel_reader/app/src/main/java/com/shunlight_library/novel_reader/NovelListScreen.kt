@@ -533,7 +533,7 @@ fun NovelListScreen(
 
                         // 並び替えボタン
                         IconButton(onClick = { showSortDialog = true }) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "並び替え")
+                            Icon(Icons.Default.Sort, contentDescription = "並び替え")
                         }
 
                         // フィルターボタン
