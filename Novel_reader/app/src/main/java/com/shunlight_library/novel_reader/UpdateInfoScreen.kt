@@ -856,7 +856,7 @@ fun UpdateInfoScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 CircularProgressIndicator(
-                                    progress = syncProgress,
+                                    progress = { syncProgress },
                                     modifier = Modifier.size(64.dp)
                                 )
 
@@ -887,7 +887,7 @@ fun UpdateInfoScreen(
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     LinearProgressIndicator(
-                                        progress = currentCount.toFloat() / totalCount,
+                                        progress = { currentCount.toFloat() / totalCount },
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(8.dp)

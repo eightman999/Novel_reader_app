@@ -290,7 +290,7 @@ fun NovelListScreen(
                         }
                     }
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     // 昇順/降順の選択
                     Text("並び順", style = MaterialTheme.typography.titleMedium)
@@ -533,7 +533,7 @@ fun NovelListScreen(
 
                         // 並び替えボタン
                         IconButton(onClick = { showSortDialog = true }) {
-                            Icon(Icons.Default.Sort, contentDescription = "並び替え")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "並び替え")
                         }
 
                         // フィルターボタン

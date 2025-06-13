@@ -252,7 +252,7 @@ fun SettingsScreenUpdated(
                             }
                         }
 
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     }
 
                     // 新しいフォントを追加するボタン

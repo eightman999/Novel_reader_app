@@ -271,7 +271,7 @@ fun EpisodeViewScreen(
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "前のエピソード",
                             tint = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
                                 MaterialTheme.colorScheme.primary
@@ -297,7 +297,7 @@ fun EpisodeViewScreen(
                             })
                             .padding(vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.List, contentDescription = "目次に戻る")
+                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "目次に戻る")
                         Text("目次に戻る", style = MaterialTheme.typography.labelSmall)
                     }
 
@@ -321,7 +321,7 @@ fun EpisodeViewScreen(
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(
-                            Icons.Default.ArrowForward,
+                            Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "次のエピソード",
                             tint = if (novel?.let {
                                     episodeNo.toIntOrNull()?.let { epNo ->
