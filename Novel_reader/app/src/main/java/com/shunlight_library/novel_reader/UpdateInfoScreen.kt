@@ -474,7 +474,6 @@ fun UpdateInfoScreen(
                         }
 
                         Button(
-                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 // 一括更新処理を実装
                                 if (updateQueue.isNotEmpty()) {
@@ -695,7 +694,7 @@ fun UpdateInfoScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             enabled = !isRefreshing && !isSyncing && updateQueue.isNotEmpty()
                         ) {
                             Icon(
@@ -708,7 +707,6 @@ fun UpdateInfoScreen(
                         }
 
                         Button(
-                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 // エラー修正処理を開始
                                 isSyncing = true
@@ -835,7 +833,7 @@ fun UpdateInfoScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             enabled = !isRefreshing && !isSyncing
                         ) {
                             Icon(
