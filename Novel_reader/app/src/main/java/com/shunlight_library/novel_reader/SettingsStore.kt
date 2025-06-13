@@ -31,6 +31,17 @@ data class CustomFontInfo(
     val type: String
 )
 
+// NovelListFilter設定用のデータクラス
+data class NovelListFilterSettings(
+    val sortField: String = "LAST_UPDATE_DATE",
+    val sortDirection: String = "DESCENDING",
+    val minRating: Int = 0,
+    val maxRating: Int = 5,
+    val hideRating5WithNoEpisodes: Boolean = false,
+    val showCompleted: Boolean = true,
+    val showOngoing: Boolean = true
+)
+
 // DataStoreのインスタンスをトップレベルで定義
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -68,6 +79,15 @@ class SettingsStore(private val context: Context) {
         private const val CUSTOM_FONT_NAME_PREFIX = "custom_font_name_"
         private const val CUSTOM_FONT_PATH_PREFIX = "custom_font_path_"
         private const val CUSTOM_FONT_TYPE_PREFIX = "custom_font_type_"
+        
+        // 小説リストフィルター設定のキー
+        val NOVEL_LIST_SORT_FIELD = stringPreferencesKey("novel_list_sort_field")
+        val NOVEL_LIST_SORT_DIRECTION = stringPreferencesKey("novel_list_sort_direction")
+        val NOVEL_LIST_MIN_RATING = intPreferencesKey("novel_list_min_rating")
+        val NOVEL_LIST_MAX_RATING = intPreferencesKey("novel_list_max_rating")
+        val NOVEL_LIST_HIDE_RATING5_NO_EPISODES = booleanPreferencesKey("novel_list_hide_rating5_no_episodes")
+        val NOVEL_LIST_SHOW_COMPLETED = booleanPreferencesKey("novel_list_show_completed")
+        val NOVEL_LIST_SHOW_ONGOING = booleanPreferencesKey("novel_list_show_ongoing")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -94,6 +114,15 @@ class SettingsStore(private val context: Context) {
     val defaultAutoUpdateTime = "03:00" // デフォルトは午前3時
     val defaultCustomFontPath = ""
     val defaultCustomFonts = emptySet<String>()
+    
+    // 小説リストフィルター設定のデフォルト値
+    val defaultNovelListSortField = "LAST_UPDATE_DATE"
+    val defaultNovelListSortDirection = "DESCENDING"
+    val defaultNovelListMinRating = 0
+    val defaultNovelListMaxRating = 5
+    val defaultNovelListHideRating5NoEpisodes = false
+    val defaultNovelListShowCompleted = true
+    val defaultNovelListShowOngoing = true
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -407,6 +436,33 @@ class SettingsStore(private val context: Context) {
     suspend fun saveCustomFont(path: String) {
         context.dataStore.edit { preferences ->
             preferences[CUSTOM_FONT_PATH] = path
+        }
+    }
+    
+    // 小説リストフィルター設定の取得
+    suspend fun getNovelListFilterSettings(): NovelListFilterSettings {
+        val preferences = context.dataStore.data.first()
+        return NovelListFilterSettings(
+            sortField = preferences[NOVEL_LIST_SORT_FIELD] ?: defaultNovelListSortField,
+            sortDirection = preferences[NOVEL_LIST_SORT_DIRECTION] ?: defaultNovelListSortDirection,
+            minRating = preferences[NOVEL_LIST_MIN_RATING] ?: defaultNovelListMinRating,
+            maxRating = preferences[NOVEL_LIST_MAX_RATING] ?: defaultNovelListMaxRating,
+            hideRating5WithNoEpisodes = preferences[NOVEL_LIST_HIDE_RATING5_NO_EPISODES] ?: defaultNovelListHideRating5NoEpisodes,
+            showCompleted = preferences[NOVEL_LIST_SHOW_COMPLETED] ?: defaultNovelListShowCompleted,
+            showOngoing = preferences[NOVEL_LIST_SHOW_ONGOING] ?: defaultNovelListShowOngoing
+        )
+    }
+    
+    // 小説リストフィルター設定の保存
+    suspend fun saveNovelListFilterSettings(settings: NovelListFilterSettings) {
+        context.dataStore.edit { preferences ->
+            preferences[NOVEL_LIST_SORT_FIELD] = settings.sortField
+            preferences[NOVEL_LIST_SORT_DIRECTION] = settings.sortDirection
+            preferences[NOVEL_LIST_MIN_RATING] = settings.minRating
+            preferences[NOVEL_LIST_MAX_RATING] = settings.maxRating
+            preferences[NOVEL_LIST_HIDE_RATING5_NO_EPISODES] = settings.hideRating5WithNoEpisodes
+            preferences[NOVEL_LIST_SHOW_COMPLETED] = settings.showCompleted
+            preferences[NOVEL_LIST_SHOW_ONGOING] = settings.showOngoing
         }
     }
 }
