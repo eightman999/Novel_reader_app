@@ -347,10 +347,10 @@ fun EpisodeViewScreen(
             }
         }
     ) { innerPadding ->
-        // システムバックボタンで目次に戻る
+        // システムバックボタンで直前の画面に戻る
         BackHandler {
             saveReadingRate()
-            onBackToToc()
+            onBack()
         }
         
         // エピソード本文の表示
