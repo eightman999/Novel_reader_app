@@ -295,5 +295,12 @@
 
 ## 次のタスク
 
+
 1. 他の画面でのナビゲーションバー対応確認
 2. 他のレイアウト改善の検討
+
+## 2025/6/15
+### EpisodeView back navigation fix
+- System back now pops to the screen prior to any EpisodeView
+- Back to Table of Contents also clears stacked EpisodeViews
+
