@@ -13,10 +13,13 @@ import androidx.work.WorkerParameters
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
+import com.shunlight_library.novel_reader.SettingsStore
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.AppNotification
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.data.NotificationType
+import com.shunlight_library.novel_reader.worker.AutoUpdateScheduler
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -55,12 +58,25 @@ class AutoUpdateWorker(
             
             // 結果の処理と通知
             handleUpdateResults(updateResults)
-            
+
+            // 次回のスケジュールを再設定
+            reschedule()
+
             Log.d(TAG, "自動更新処理完了")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "自動更新処理中にエラーが発生", e)
+            reschedule()
             Result.failure()
+        }
+    }
+
+    private suspend fun reschedule() {
+        if (!tags.contains("manual_update")) {
+            val store = SettingsStore(applicationContext)
+            val enabled = store.autoUpdateEnabled.first()
+            val time = store.autoUpdateTime.first()
+            AutoUpdateScheduler(applicationContext).scheduleAutoUpdate(enabled, time)
         }
     }
 

@@ -271,11 +271,18 @@ when (val currentScreen = navigationManager.currentScreen) {
         EpisodeViewScreen(
             ncode = currentScreen.ncode,
             episodeNo = currentScreen.episodeNo,
-            onBack = { navigationManager.navigateBack() },
+            onBack = {
+                currentScreen.source?.let { source ->
+                    navigationManager.navigateBackTo(source)
+                } ?: navigationManager.navigateBack()
+            },
             onBackToToc = {
-                // 現在の ncode を使って EpisodeList に戻る
-                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
-
+                currentScreen.source?.let { source ->
+                    navigationManager.navigateBackTo(source)
+                    if (source !is Screen.EpisodeList) {
+                        navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, source))
+                    }
+                } ?: navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
             },
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"

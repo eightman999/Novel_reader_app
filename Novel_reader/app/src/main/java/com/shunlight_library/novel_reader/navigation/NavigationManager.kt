@@ -36,15 +36,13 @@ class NavigationManager {
 
     // 特定の画面まで戻る
     fun navigateBackTo(screen: Screen): Boolean {
-        val index = screenStack.lastIndexOf(screen)
-        return if (index >= 0) {
-            // スタックから該当の画面まで取り出す
-            val newScreen = screenStack.removeAt(index)
-            // それ以降の画面を破棄
-            for (i in screenStack.size - 1 downTo index) {
-                screenStack.removeAt(i)
-            }
-            _currentScreen.value = newScreen
+        // 目的の画面が見つかるまでスタックを巻き戻す
+        while (screenStack.isNotEmpty() && screenStack.last() != screen) {
+            screenStack.removeAt(screenStack.lastIndex)
+        }
+
+        return if (screenStack.isNotEmpty() && screenStack.last() == screen) {
+            _currentScreen.value = screenStack.removeAt(screenStack.lastIndex)
             true
         } else {
             false
