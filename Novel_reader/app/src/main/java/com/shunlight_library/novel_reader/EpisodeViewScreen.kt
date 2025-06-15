@@ -375,18 +375,64 @@ fun EpisodeViewScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .background(actualBackgroundColor)
-                    .pointerInput(episodeNo) {
+                    .pointerInput(episodeNo, textOrientation) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
                                 dragAmountX += dragAmount.x
                             },
                             onDragEnd = {
-                                if (dragAmountX > 100f) {
-                                    saveReadingRate()
-                                    onPrevious()
-                                } else if (dragAmountX < -100f) {
-                                    saveReadingRate()
-                                    onNext()
+                                if (textOrientation == "Vertical") {
+                                    if (dragAmountX > 100f) {
+                                        webView?.evaluateJavascript(
+                                            """
+                                            (function(){
+                                                var max=document.body.scrollWidth - window.innerWidth;
+                                                var pos=Math.max(0, window.scrollX - window.innerWidth);
+                                                window.scrollTo({left:pos, behavior:'smooth'});
+                                                return (max>0)?pos/max:0;
+                                            })();
+                                            """.trimIndent()
+                                        ) { progress ->
+                                            val rate = progress.toFloatOrNull() ?: 0f
+                                            if (rate <= 0.01f) {
+                                                saveReadingRate()
+                                                onPrevious()
+                                            } else {
+                                                scope.launch(Dispatchers.IO) {
+                                                    repository.updateReadingRate(ncode, episodeNo, rate)
+                                                }
+                                            }
+                                        }
+                                    } else if (dragAmountX < -100f) {
+                                        webView?.evaluateJavascript(
+                                            """
+                                            (function(){
+                                                var max=document.body.scrollWidth - window.innerWidth;
+                                                var pos=Math.min(max, window.scrollX + window.innerWidth);
+                                                window.scrollTo({left:pos, behavior:'smooth'});
+                                                return (max>0)?pos/max:0;
+                                            })();
+                                            """.trimIndent()
+                                        ) { progress ->
+                                            val rate = progress.toFloatOrNull() ?: 0f
+                                            if (rate >= 0.99f) {
+                                                saveReadingRate()
+                                                onNext()
+                                            } else {
+                                                scope.launch(Dispatchers.IO) {
+                                                    repository.updateReadingRate(ncode, episodeNo, rate)
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if (dragAmountX > 100f) {
+                                        saveReadingRate()
+                                        onPrevious()
+                                    } else if (dragAmountX < -100f) {
+                                        saveReadingRate()
+                                        onNext()
+                                    }
                                 }
                                 dragAmountX = 0f
                             },
@@ -481,6 +527,11 @@ private fun convertPlainTextToHtml(plainText: String): String {
             "<p>&nbsp;</p>" // Empty paragraph for blank lines
         }
     }
+}
+
+private fun convertBrToParagraphs(html: String): String {
+    val content = html.replace("<br\\s*/?>".toRegex(), "</p><p>")
+    return "<p>$content</p>"
 }
 
 // EpisodeViewScreen.kt内に追加するWebViewScrollInterfaceクラス
@@ -610,7 +661,11 @@ fun EnhancedHtmlRubyWebView(
     }
 
     // HTMLを修正
-    val fixedHtml = fixRubyTags(processedContent)
+    var fixedHtml = fixRubyTags(processedContent)
+
+    if (textOrientation == "Vertical") {
+        fixedHtml = convertBrToParagraphs(fixedHtml)
+    }
 
     // スクロール位置を保存・復元するためのJavaScriptを追加
     val scrollMonitorScript = if (textOrientation == "Vertical") {
