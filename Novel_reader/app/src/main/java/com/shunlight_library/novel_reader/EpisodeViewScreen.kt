@@ -162,15 +162,29 @@ fun EpisodeViewScreen(
         }
     }
     fun saveReadingRate() {
-        webView?.evaluateJavascript("""
-        (function() {
-            var maxScroll = document.body.scrollHeight - window.innerHeight;
-            if (maxScroll <= 0) return 0;
-            var currentScroll = window.scrollY;
-            var scrollRatio = currentScroll / maxScroll;
-            return Math.max(0, Math.min(1, scrollRatio));
-        })();
-    """.trimIndent()) { result ->
+        val jsCode = if (textOrientation == "Vertical") {
+            """
+            (function() {
+                var maxScroll = document.body.scrollWidth - window.innerWidth;
+                if (maxScroll <= 0) return 0;
+                var currentScroll = window.scrollX;
+                var scrollRatio = currentScroll / maxScroll;
+                return Math.max(0, Math.min(1, scrollRatio));
+            })();
+            """.trimIndent()
+        } else {
+            """
+            (function() {
+                var maxScroll = document.body.scrollHeight - window.innerHeight;
+                if (maxScroll <= 0) return 0;
+                var currentScroll = window.scrollY;
+                var scrollRatio = currentScroll / maxScroll;
+                return Math.max(0, Math.min(1, scrollRatio));
+            })();
+            """.trimIndent()
+        }
+
+        webView?.evaluateJavascript(jsCode) { result ->
             val readingRate = result.toFloatOrNull() ?: 0f
             scope.launch(Dispatchers.IO) {
                 repository.updateReadingRate(ncode, episodeNo, readingRate)
@@ -599,45 +613,67 @@ fun EnhancedHtmlRubyWebView(
     val fixedHtml = fixRubyTags(processedContent)
 
     // スクロール位置を保存・復元するためのJavaScriptを追加
-    val scrollMonitorScript = """
-    <script>
-        // ページ読み込み完了後の処理
-        window.onload = function() {
-            // 保存された位置があれば復元
-            if (${savedReadingRate} > 0) {
-                // スクロール位置の計算
-                var maxScroll = document.body.scrollHeight - window.innerHeight;
-                var targetPosition = maxScroll * ${savedReadingRate};
-                // スクロール位置の復元（少し遅延させて確実に実行）
-                setTimeout(function() {
-                    window.scrollTo(0, targetPosition);
-                }, 100);
-            }
-            
-            // スクロール位置を監視して保存
-            var scrollTimeout;
-            window.addEventListener('scroll', function() {
-                clearTimeout(scrollTimeout);
-                scrollTimeout = setTimeout(function() {
-                    // 現在のスクロール位置を0～1の範囲に正規化
+    val scrollMonitorScript = if (textOrientation == "Vertical") {
+        """
+        <script>
+            window.onload = function() {
+                if (${savedReadingRate} > 0) {
+                    var maxScroll = document.body.scrollWidth - window.innerWidth;
+                    var targetPosition = maxScroll * ${savedReadingRate};
+                    setTimeout(function() {
+                        window.scrollTo(targetPosition, 0);
+                    }, 100);
+                }
+
+                var scrollTimeout;
+                window.addEventListener('scroll', function() {
+                    clearTimeout(scrollTimeout);
+                    scrollTimeout = setTimeout(function() {
+                        var maxScroll = document.body.scrollWidth - window.innerWidth;
+                        if (maxScroll <= 0) return;
+
+                        var currentScroll = window.scrollX;
+                        var scrollRatio = currentScroll / maxScroll;
+                        scrollRatio = Math.max(0, Math.min(1, scrollRatio));
+                        if (typeof Android !== 'undefined') {
+                            Android.saveScrollPosition(scrollRatio);
+                        }
+                    }, 300);
+                });
+            };
+        </script>
+        """.trimIndent()
+    } else {
+        """
+        <script>
+            window.onload = function() {
+                if (${savedReadingRate} > 0) {
                     var maxScroll = document.body.scrollHeight - window.innerHeight;
-                    if (maxScroll <= 0) return;
-                    
-                    var currentScroll = window.scrollY;
-                    var scrollRatio = currentScroll / maxScroll;
-                    
-                    // 値の範囲を制限（0～1の範囲内に収める）
-                    scrollRatio = Math.max(0, Math.min(1, scrollRatio));
-                    
-                    // JavaScriptインターフェースを通じて値を保存
-                    if (typeof Android !== 'undefined') {
-                        Android.saveScrollPosition(scrollRatio);
-                    }
-                }, 300); // 300ms後に実行（スクロール中の頻繁な更新を防ぐ）
-            });
-        };
-    </script>
-    """.trimIndent()
+                    var targetPosition = maxScroll * ${savedReadingRate};
+                    setTimeout(function() {
+                        window.scrollTo(0, targetPosition);
+                    }, 100);
+                }
+
+                var scrollTimeout;
+                window.addEventListener('scroll', function() {
+                    clearTimeout(scrollTimeout);
+                    scrollTimeout = setTimeout(function() {
+                        var maxScroll = document.body.scrollHeight - window.innerHeight;
+                        if (maxScroll <= 0) return;
+
+                        var currentScroll = window.scrollY;
+                        var scrollRatio = currentScroll / maxScroll;
+                        scrollRatio = Math.max(0, Math.min(1, scrollRatio));
+                        if (typeof Android !== 'undefined') {
+                            Android.saveScrollPosition(scrollRatio);
+                        }
+                    }, 300);
+                });
+            };
+        </script>
+        """.trimIndent()
+    }
 
     // HTMLコンテンツを整形
     val formattedHtml = """
