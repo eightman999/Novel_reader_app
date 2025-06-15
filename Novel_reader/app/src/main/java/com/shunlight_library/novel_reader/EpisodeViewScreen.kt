@@ -356,28 +356,38 @@ fun EpisodeViewScreen(
         // エピソード本文の表示
         if (episode != null) {
             var dragAmountX by remember { mutableStateOf(0f) }
+            var dragAmountY by remember { mutableStateOf(0f) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .background(actualBackgroundColor)
-                    .pointerInput(episodeNo) {
+                    .pointerInput(episodeNo, textOrientation) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
                                 dragAmountX += dragAmount.x
+                                dragAmountY += dragAmount.y
                             },
                             onDragEnd = {
-                                if (dragAmountX > 100f) {
+                                val threshold = if (textOrientation == "Horizontal") 150f else 100f
+                                val isHorizontalSwipe =
+                                    kotlin.math.abs(dragAmountX) > threshold &&
+                                            kotlin.math.abs(dragAmountX) > kotlin.math.abs(dragAmountY)
+
+                                if (isHorizontalSwipe) {
                                     saveReadingRate()
-                                    onPrevious()
-                                } else if (dragAmountX < -100f) {
-                                    saveReadingRate()
-                                    onNext()
+                                    if (dragAmountX > 0) {
+                                        onPrevious()
+                                    } else {
+                                        onNext()
+                                    }
                                 }
                                 dragAmountX = 0f
+                                dragAmountY = 0f
                             },
                             onDragCancel = {
                                 dragAmountX = 0f
+                                dragAmountY = 0f
                             }
                         )
                     }
