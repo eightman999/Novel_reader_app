@@ -273,8 +273,10 @@ when (val currentScreen = navigationManager.currentScreen) {
             episodeNo = currentScreen.episodeNo,
             onBack = { navigationManager.navigateBack() },
             onBackToToc = {
-                // 現在の ncode を使って EpisodeList に戻る
-                navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
+                // Back to the previous screen without adding a new entry
+                if (!navigationManager.navigateBack()) {
+                    navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
+                }
 
             },
             onPrevious = {

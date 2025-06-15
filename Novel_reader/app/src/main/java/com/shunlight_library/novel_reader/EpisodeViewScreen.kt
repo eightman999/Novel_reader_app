@@ -27,6 +27,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -353,11 +355,32 @@ fun EpisodeViewScreen(
         
         // エピソード本文の表示
         if (episode != null) {
+            var dragAmountX by remember { mutableStateOf(0f) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .background(actualBackgroundColor)
+                    .pointerInput(episodeNo) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                dragAmountX += dragAmount.x
+                            },
+                            onDragEnd = {
+                                if (dragAmountX > 100f) {
+                                    saveReadingRate()
+                                    onPrevious()
+                                } else if (dragAmountX < -100f) {
+                                    saveReadingRate()
+                                    onNext()
+                                }
+                                dragAmountX = 0f
+                            },
+                            onDragCancel = {
+                                dragAmountX = 0f
+                            }
+                        )
+                    }
             ) {
                 Column(
                     modifier = Modifier
