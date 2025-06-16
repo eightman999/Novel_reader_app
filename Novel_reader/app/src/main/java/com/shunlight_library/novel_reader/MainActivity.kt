@@ -31,6 +31,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.shunlight_library.novel_reader.navigation.NavigationManager
 import com.shunlight_library.novel_reader.navigation.Screen
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
+import com.shunlight_library.novel_reader.ui.DatabaseExportActivity
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.ui.components.NotificationDialog
 import kotlinx.coroutines.launch
@@ -348,6 +349,18 @@ when (val currentScreen = navigationManager.currentScreen) {
                 navigationManager.navigateBack()
             }
             // アクティビティが起動している間、ローディングまたは空の画面を表示
+            Box(modifier = Modifier.fillMaxSize()) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+        }
+
+        is Screen.DatabaseExport -> {
+            val context = LocalContext.current
+            LaunchedEffect(Unit) {
+                val intent = Intent(context, DatabaseExportActivity::class.java)
+                context.startActivity(intent)
+                navigationManager.navigateBack()
+            }
             Box(modifier = Modifier.fillMaxSize()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
@@ -746,6 +759,14 @@ fun MainScreen(
                         text = "DB同期",
                         onClick = {
                             onNavigate(Screen.DatabaseSync)
+                        }
+                    )
+
+                    MenuButton(
+                        icon = "",
+                        text = "DB書き出し",
+                        onClick = {
+                            onNavigate(Screen.DatabaseExport)
                         }
                     )
                 }

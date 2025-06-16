@@ -9,6 +9,9 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE ncode = :ncode ORDER BY episode_no")
     fun getEpisodesByNcode(ncode: String): Flow<List<EpisodeEntity>>
 
+    @Query("SELECT * FROM episodes WHERE ncode = :ncode ORDER BY episode_no")
+    suspend fun getEpisodesByNcodeList(ncode: String): List<EpisodeEntity>
+
     @Query("SELECT * FROM episodes WHERE ncode = :ncode AND episode_no = :episodeNo")
     suspend fun getEpisode(ncode: String, episodeNo: String): EpisodeEntity?
 

@@ -46,6 +46,12 @@
                 android:label="データベース同期"
                 android:theme="@style/Theme.Novel_reader" />
 
+        <activity
+                android:name=".ui.DatabaseExportActivity"
+                android:exported="false"
+                android:label="データベース書き出し"
+                android:theme="@style/Theme.Novel_reader" />
+
         <!-- 更新サービスを追加 -->
         <service
                 android:name=".service.UpdateService"

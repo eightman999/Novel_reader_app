@@ -26,6 +26,9 @@ class NovelRepository(
 ) {
     // Novel Description関連メソッド
     val allNovels: Flow<List<NovelDescEntity>> = novelDescDao.getAllNovels()
+    suspend fun getAllNovelsList(): List<NovelDescEntity> {
+        return novelDescDao.getAllNovelsList()
+    }
 
     suspend fun getNovelByNcode(ncode: String): NovelDescEntity? {
         return novelDescDao.getNovelByNcode(ncode)
@@ -50,6 +53,10 @@ class NovelRepository(
     // Episode関連メソッド
     fun getEpisodesByNcode(ncode: String): Flow<List<EpisodeEntity>> {
         return episodeDao.getEpisodesByNcode(ncode)
+    }
+
+    suspend fun getEpisodesListByNcode(ncode: String): List<EpisodeEntity> {
+        return episodeDao.getEpisodesByNcodeList(ncode)
     }
 
     suspend fun getEpisode(ncode: String, episodeNo: String): EpisodeEntity? {

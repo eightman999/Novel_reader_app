@@ -9,6 +9,9 @@ interface NovelDescDao {
     @Query("SELECT * FROM novels_descs ORDER BY last_update_date DESC")
     fun getAllNovels(): Flow<List<NovelDescEntity>>
 
+    @Query("SELECT * FROM novels_descs ORDER BY last_update_date DESC")
+    suspend fun getAllNovelsList(): List<NovelDescEntity>
+
     @Query("SELECT * FROM novels_descs WHERE ncode = :ncode")
     suspend fun getNovelByNcode(ncode: String): NovelDescEntity?
 
