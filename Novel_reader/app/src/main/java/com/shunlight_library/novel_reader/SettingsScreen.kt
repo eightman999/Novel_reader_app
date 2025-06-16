@@ -57,6 +57,7 @@ fun SettingsScreenUpdated(
     var backgroundColor by remember { mutableStateOf("White") }
     var selfServerAccess by remember { mutableStateOf(false) }
     var textOrientation by remember { mutableStateOf("Horizontal") }
+    var swipeEnabled by remember { mutableStateOf(true) }
     var selfServerPath by remember { mutableStateOf("") }
 
     // 新しい状態変数を追加
@@ -138,6 +139,7 @@ fun SettingsScreenUpdated(
             fontSize = settingsStore.fontSize.first()
             selfServerAccess = settingsStore.selfServerAccess.first()
             textOrientation = settingsStore.textOrientation.first()
+            swipeEnabled = settingsStore.swipeEnabled.first()
             selfServerPath = settingsStore.selfServerPath.first()
 
             // 表示関連の設定読み込み
@@ -432,6 +434,9 @@ fun SettingsScreenUpdated(
                                     episodeBackgroundColor = episodeBackgroundColor,
                                     useDefaultBackground = useDefaultBackground
                                 )
+
+                                // 左右スワイプ設定を保存
+                                settingsStore.saveSwipeEnabled(swipeEnabled)
 
                                 // 表示設定を保存
                                 settingsStore.saveDisplaySettings(
@@ -874,6 +879,21 @@ fun SettingsScreenUpdated(
                                 )
                         )
                     }
+                }
+
+                // 左右スワイプ切替
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("左右スワイプで話を移動")
+                    Spacer(modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = swipeEnabled,
+                        onCheckedChange = { swipeEnabled = it }
+                    )
                 }
             }
             HorizontalDivider()
