@@ -70,6 +70,9 @@ class SettingsStore(private val context: Context) {
         val EPISODE_BACKGROUND_COLOR = stringPreferencesKey("episode_background_color")
         val USE_DEFAULT_BACKGROUND = booleanPreferencesKey("use_default_background")
 
+        // 左右スワイプ機能のキー
+        val SWIPE_ENABLED = booleanPreferencesKey("swipe_enabled")
+
         // 自動更新設定のキー
         val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
         val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
@@ -95,6 +98,7 @@ class SettingsStore(private val context: Context) {
     val defaultFontColor = "#000000" // 黒
     val defaultEpisodeBackgroundColor = "#F5F5DC" // クリーム色
     val defaultUseDefaultBackground = true
+    val defaultSwipeEnabled = true
 
     val defaultThemeMode = "System"
     val defaultFontFamily = "Gothic"
@@ -236,6 +240,18 @@ class SettingsStore(private val context: Context) {
         }
         .map { preferences: Preferences ->
             preferences[USE_DEFAULT_BACKGROUND] ?: defaultUseDefaultBackground
+        }
+
+    val swipeEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[SWIPE_ENABLED] ?: defaultSwipeEnabled
         }
 
     // 自動更新有効/無効の設定値を取得
@@ -419,6 +435,12 @@ class SettingsStore(private val context: Context) {
     suspend fun saveUseDefaultBackground(useDefault: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[USE_DEFAULT_BACKGROUND] = useDefault
+        }
+    }
+
+    suspend fun saveSwipeEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SWIPE_ENABLED] = enabled
         }
     }
     suspend fun saveFontSize(size: Int) {

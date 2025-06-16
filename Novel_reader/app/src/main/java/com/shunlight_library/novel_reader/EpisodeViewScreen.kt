@@ -67,6 +67,7 @@ fun EpisodeViewScreen(
     var backgroundColor by remember { mutableStateOf("#FFFFFF") }
     var useDefaultBackground by remember { mutableStateOf(true) }
     var textOrientation by remember { mutableStateOf("Horizontal") }
+    var swipeEnabled by remember { mutableStateOf(true) }
 
     // カスタムフォント情報
     var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
@@ -89,6 +90,7 @@ fun EpisodeViewScreen(
             backgroundColor = settingsStore.episodeBackgroundColor.first()
             useDefaultBackground = settingsStore.useDefaultBackground.first()
             textOrientation = settingsStore.textOrientation.first()
+            swipeEnabled = settingsStore.swipeEnabled.first()
 
             // カスタムフォント情報を読み込む
             customFonts = settingsStore.getAllCustomFontInfo()
@@ -362,7 +364,7 @@ fun EpisodeViewScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .background(actualBackgroundColor)
-                    .pointerInput(episodeNo, textOrientation) {
+                    .pointerInput(episodeNo, textOrientation, swipeEnabled) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
                                 dragAmountX += dragAmount.x
@@ -374,7 +376,7 @@ fun EpisodeViewScreen(
                                     kotlin.math.abs(dragAmountX) > threshold &&
                                             kotlin.math.abs(dragAmountX) > kotlin.math.abs(dragAmountY)
 
-                                if (isHorizontalSwipe) {
+                                if (swipeEnabled && isHorizontalSwipe) {
                                     saveReadingRate()
                                     if (dragAmountX > 0) {
                                         onPrevious()
