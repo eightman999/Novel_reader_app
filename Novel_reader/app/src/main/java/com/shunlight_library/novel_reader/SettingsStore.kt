@@ -78,6 +78,9 @@ class SettingsStore(private val context: Context) {
         val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
         val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
 
+        // GitHubリリース通知用のキー
+        val LAST_NOTIFIED_RELEASE = stringPreferencesKey("last_notified_release")
+
         // カスタムフォント管理のためのキー
         val CUSTOM_FONTS = stringSetPreferencesKey("custom_fonts")
         private const val CUSTOM_FONT_NAME_PREFIX = "custom_font_name_"
@@ -120,6 +123,7 @@ class SettingsStore(private val context: Context) {
     val defaultAutoUpdateTime = "03:00" // デフォルトは午前3時
     val defaultCustomFontPath = ""
     val defaultCustomFonts = emptySet<String>()
+    val defaultLastNotifiedRelease = ""
     
     // 小説リストフィルター設定のデフォルト値
     val defaultNovelListSortField = "LAST_UPDATE_DATE"
@@ -278,6 +282,19 @@ class SettingsStore(private val context: Context) {
         }
         .map { preferences: Preferences ->
             preferences[AUTO_UPDATE_TIME] ?: defaultAutoUpdateTime
+        }
+
+    // 最後に通知したGitHubリリースバージョンを取得
+    val lastNotifiedRelease: Flow<String> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[LAST_NOTIFIED_RELEASE] ?: defaultLastNotifiedRelease
         }
 
     // カスタムフォントIDのリストを取得するFlow
@@ -462,6 +479,19 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[CUSTOM_FONT_PATH] = path
         }
+    }
+
+    // GitHubリリース通知バージョンを保存
+    suspend fun saveLastNotifiedRelease(version: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_NOTIFIED_RELEASE] = version
+        }
+    }
+
+    // 最後に通知したリリースバージョンを取得
+    suspend fun getLastNotifiedRelease(): String {
+        val preferences = context.dataStore.data.first()
+        return preferences[LAST_NOTIFIED_RELEASE] ?: defaultLastNotifiedRelease
     }
     
     // 小説リストフィルター設定の取得
