@@ -774,6 +774,25 @@ fun EpisodeListScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                     }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            novel?.let {
+                                val newValue = !it.is_favorite
+                                scope.launch {
+                                    repository.updateFavoriteStatus(it.ncode, newValue)
+                                    novel = it.copy(is_favorite = newValue)
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (novel?.is_favorite == true) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = if (novel?.is_favorite == true) "お気に入りから削除" else "お気に入りに追加",
+                            tint = if (novel?.is_favorite == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             )
         },
