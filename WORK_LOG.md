@@ -305,3 +305,10 @@
 - Back to Table of Contents also clears stacked EpisodeViews
 - Fixed navigateBackTo logic to properly remove EpisodeView screens
 
+
+## 2025/7/15
+### GitHub release check and version display
+- Notify when a new GitHub release is available during auto update and on startup
+- Added ReleaseUtils utility and DataStore key for last notified release
+- Added version info button at bottom of main menu
+- Background check runs in AutoUpdateWorker and MainActivity

@@ -19,6 +19,7 @@ import com.shunlight_library.novel_reader.data.AppNotification
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.data.NotificationType
 import com.shunlight_library.novel_reader.worker.AutoUpdateScheduler
+import com.shunlight_library.novel_reader.utils.ReleaseUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -55,9 +56,12 @@ class AutoUpdateWorker(
             
             // 更新確認処理
             val updateResults = performUpdateCheck()
-            
+
             // 結果の処理と通知
             handleUpdateResults(updateResults)
+
+            // GitHubの最新リリースを確認
+            ReleaseUtils.checkForNewRelease(applicationContext)
 
             // 次回のスケジュールを再設定
             reschedule()

@@ -33,6 +33,8 @@ import com.shunlight_library.novel_reader.navigation.Screen
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.ui.components.NotificationDialog
+import com.shunlight_library.novel_reader.utils.ReleaseUtils
+import com.shunlight_library.novel_reader.BuildConfig
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -94,6 +96,13 @@ class MainActivity : ComponentActivity() {
                         // 通知があることを示すフラグを設定
                         // 実際の通知表示はメイン画面で行う
                     }
+                }
+            }
+
+            // GitHubの最新リリースをバックグラウンドで確認
+            LaunchedEffect(Unit) {
+                scope.launch {
+                    ReleaseUtils.checkForNewRelease(this@MainActivity)
                 }
             }
 
@@ -747,6 +756,22 @@ fun MainScreen(
                         onClick = {
                             onNavigate(Screen.DatabaseSync)
                         }
+                    )
+                }
+            }
+
+            // アプリバージョン表示
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    MenuButton(
+                        icon = "ℹ",
+                        text = "バージョン ${BuildConfig.VERSION_NAME}",
+                        onClick = {}
                     )
                 }
             }
