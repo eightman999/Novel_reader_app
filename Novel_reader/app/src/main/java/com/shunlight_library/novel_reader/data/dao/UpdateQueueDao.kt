@@ -29,4 +29,7 @@ interface UpdateQueueDao {
 
     @Query("SELECT * FROM update_queue")
     suspend fun getAllUpdateQueueList(): List<UpdateQueueEntity>
+
+    @Query("SELECT COUNT(*) FROM update_queue")
+    suspend fun getUpdateQueueCount(): Int
 }

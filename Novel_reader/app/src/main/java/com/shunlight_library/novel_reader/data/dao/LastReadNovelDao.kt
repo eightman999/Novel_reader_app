@@ -23,4 +23,7 @@ interface LastReadNovelDao {
 
     @Delete
     suspend fun deleteLastRead(lastRead: LastReadNovelEntity)
+
+    @Query("SELECT COUNT(*) FROM last_read_novel")
+    suspend fun getLastReadCount(): Int
 }

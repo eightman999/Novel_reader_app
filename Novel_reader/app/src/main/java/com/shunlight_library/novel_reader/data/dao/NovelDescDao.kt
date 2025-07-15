@@ -38,4 +38,7 @@ interface NovelDescDao {
     @Query("SELECT * FROM novels_descs WHERE is_favorite = 1 ORDER BY last_update_date DESC")
     fun getFavoriteNovels(): Flow<List<NovelDescEntity>>
 
+    @Query("SELECT COUNT(*) FROM novels_descs")
+    suspend fun getNovelCount(): Int
+
 }

@@ -231,4 +231,15 @@ class NovelRepository(
 
     val favoriteNovels: Flow<List<NovelDescEntity>> = novelDescDao.getFavoriteNovels()
 
+    suspend fun getDatabaseDebugInfo(): String {
+        return withContext(Dispatchers.IO) {
+            val novels = novelDescDao.getNovelCount()
+            val episodes = episodeDao.getEpisodeCount()
+            val lastReads = lastReadNovelDao.getLastReadCount()
+            val queues = updateQueueDao.getUpdateQueueCount()
+            val urls = urlEntityDao.getURLCount()
+            "小説数:$novels, エピソード数:$episodes, 読書履歴:$lastReads, 更新キュー:$queues, URL:$urls"
+        }
+    }
+
 }

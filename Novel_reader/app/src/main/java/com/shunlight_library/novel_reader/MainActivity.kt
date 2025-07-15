@@ -2,6 +2,7 @@ package com.shunlight_library.novel_reader
 
 import RecentlyUpdatedNovelsScreen
 import android.content.Intent
+import android.content.Context
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -35,6 +36,12 @@ import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.ui.components.NotificationDialog
 import com.shunlight_library.novel_reader.utils.ReleaseUtils
 import com.shunlight_library.novel_reader.AppInfo
+import com.shunlight_library.novel_reader.data.AppNotification
+import com.shunlight_library.novel_reader.data.NotificationType
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -276,6 +283,33 @@ when (val currentScreen = navigationManager.currentScreen) {
         )
     }
 
+    fun onVersionTap() {
+        val current = System.currentTimeMillis()
+        if (current - lastVersionTapTime < versionTapThreshold) {
+            versionTapCount++
+            if (versionTapCount == 7) {
+                versionTapCount = 0
+                scope.launch {
+                    val info = repository.getDatabaseDebugInfo()
+                    val message = "おめでとう！あなたも開発者だ！"
+                    notificationStore?.addNotification(
+                        AppNotification(
+                            id = "dev_${System.currentTimeMillis()}",
+                            title = message,
+                            content = info,
+                            timestamp = System.currentTimeMillis(),
+                            type = NotificationType.INFO
+                        )
+                    )
+                    sendDevNotification(context, message, info)
+                }
+            }
+        } else {
+            versionTapCount = 1
+        }
+        lastVersionTapTime = current
+    }
+
     is Screen.EpisodeView -> {
         EpisodeViewScreen(
             ncode = currentScreen.ncode,
@@ -428,6 +462,10 @@ fun MainScreen(
     // 通知関連の状態
     var unreadNotificationCount by remember { mutableStateOf(0) }
     var showNotificationDialog by remember { mutableStateOf(false) }
+
+    var versionTapCount by remember { mutableStateOf(0) }
+    var lastVersionTapTime by remember { mutableStateOf(0L) }
+    val versionTapThreshold = 1000
 
     // 通知データの監視
     if (notificationStore != null) {
@@ -771,7 +809,7 @@ fun MainScreen(
                     MenuButton(
                         icon = "ℹ",
                         text = "バージョン ${AppInfo.VERSION_NAME}",
-                        onClick = {}
+                        onClick = { onVersionTap() }
                     )
                 }
             }
@@ -785,4 +823,25 @@ fun MainScreen(
             onDismiss = { showNotificationDialog = false }
         )
     }
+}
+
+private const val DEV_CHANNEL_ID = "dev_info"
+private const val DEV_NOTIFICATION_ID = 2001
+
+private fun sendDevNotification(context: Context, title: String, content: String) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = NotificationChannel(DEV_CHANNEL_ID, "Developer", NotificationManager.IMPORTANCE_DEFAULT)
+        manager.createNotificationChannel(channel)
+    }
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val notification = NotificationCompat.Builder(context, DEV_CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_launcher_foreground)
+        .setContentTitle(title)
+        .setContentText(content)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        .setAutoCancel(true)
+        .build()
+    manager.notify(DEV_NOTIFICATION_ID, notification)
 }
