@@ -27,4 +27,7 @@ interface URLEntityDao {
 
     @Query("DELETE FROM url_entity WHERE ncode = :ncode")
     suspend fun deleteURLByNcode(ncode: String)
+
+    @Query("SELECT COUNT(*) FROM url_entity")
+    suspend fun getURLCount(): Int
 }
