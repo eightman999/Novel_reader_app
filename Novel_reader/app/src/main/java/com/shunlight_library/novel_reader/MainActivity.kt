@@ -34,7 +34,7 @@ import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.ui.components.NotificationDialog
 import com.shunlight_library.novel_reader.utils.ReleaseUtils
-import com.shunlight_library.novel_reader.BuildConfig
+import com.shunlight_library.novel_reader.AppInfo
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -770,7 +770,7 @@ fun MainScreen(
                 ) {
                     MenuButton(
                         icon = "ℹ",
-                        text = "バージョン ${BuildConfig.VERSION_NAME}",
+                        text = "バージョン ${AppInfo.VERSION_NAME}",
                         onClick = {}
                     )
                 }

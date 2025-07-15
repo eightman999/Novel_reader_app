@@ -9,7 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.shunlight_library.novel_reader.BuildConfig
+import com.shunlight_library.novel_reader.AppInfo
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.SettingsStore
 import com.shunlight_library.novel_reader.data.AppNotification
@@ -55,7 +55,7 @@ object ReleaseUtils {
                     val tag = json.getString("tag_name")
                     val store = SettingsStore(context)
                     val last = store.getLastNotifiedRelease()
-                    if (isNewerVersion(tag, BuildConfig.VERSION_NAME) && last != tag) {
+                    if (isNewerVersion(tag, AppInfo.VERSION_NAME) && last != tag) {
                         sendSystemNotification(context, tag)
                         NotificationStore(context).addNotification(
                             AppNotification(
