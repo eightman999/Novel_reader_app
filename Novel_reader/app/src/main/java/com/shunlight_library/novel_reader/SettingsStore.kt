@@ -73,6 +73,9 @@ class SettingsStore(private val context: Context) {
         // 左右スワイプ機能のキー
         val SWIPE_ENABLED = booleanPreferencesKey("swipe_enabled")
 
+        // タップでページ移動機能のキー
+        val TAP_ENABLED = booleanPreferencesKey("tap_enabled")
+
         // 自動更新設定のキー
         val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
         val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
@@ -102,6 +105,7 @@ class SettingsStore(private val context: Context) {
     val defaultEpisodeBackgroundColor = "#F5F5DC" // クリーム色
     val defaultUseDefaultBackground = true
     val defaultSwipeEnabled = true
+    val defaultTapEnabled = false
 
     val defaultThemeMode = "System"
     val defaultFontFamily = "Gothic"
@@ -256,6 +260,18 @@ class SettingsStore(private val context: Context) {
         }
         .map { preferences: Preferences ->
             preferences[SWIPE_ENABLED] ?: defaultSwipeEnabled
+        }
+
+    val tapEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[TAP_ENABLED] ?: defaultTapEnabled
         }
 
     // 自動更新有効/無効の設定値を取得
@@ -458,6 +474,12 @@ class SettingsStore(private val context: Context) {
     suspend fun saveSwipeEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[SWIPE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveTapEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[TAP_ENABLED] = enabled
         }
     }
     suspend fun saveFontSize(size: Int) {

@@ -28,6 +28,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
@@ -68,6 +69,7 @@ fun EpisodeViewScreen(
     var useDefaultBackground by remember { mutableStateOf(true) }
     var textOrientation by remember { mutableStateOf("Horizontal") }
     var swipeEnabled by remember { mutableStateOf(true) }
+    var tapEnabled by remember { mutableStateOf(false) }
 
     // カスタムフォント情報
     var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
@@ -91,6 +93,7 @@ fun EpisodeViewScreen(
             useDefaultBackground = settingsStore.useDefaultBackground.first()
             textOrientation = settingsStore.textOrientation.first()
             swipeEnabled = settingsStore.swipeEnabled.first()
+            tapEnabled = settingsStore.tapEnabled.first()
 
             // カスタムフォント情報を読み込む
             customFonts = settingsStore.getAllCustomFontInfo()
@@ -366,21 +369,23 @@ fun EpisodeViewScreen(
                     .background(actualBackgroundColor)
                     .pointerInput(episodeNo, textOrientation, swipeEnabled) {
                         detectDragGestures(
-                            onDrag = { change, dragAmount ->
+                            onDrag = { _, dragAmount ->
                                 dragAmountX += dragAmount.x
                                 dragAmountY += dragAmount.y
                             },
                             onDragEnd = {
                                 val threshold = if (textOrientation == "Horizontal") 150f else 100f
                                 val isHorizontalSwipe =
-                                    kotlin.math.abs(dragAmountX) > threshold &&
-                                            kotlin.math.abs(dragAmountX) > kotlin.math.abs(dragAmountY)
+                                    abs(dragAmountX) > threshold && abs(dragAmountX) > abs(dragAmountY)
 
                                 if (swipeEnabled && isHorizontalSwipe) {
+                                    val currentEp = episodeNo.toIntOrNull() ?: 1
+                                    val canPrev = currentEp > 1
+                                    val canNext = novel?.let { currentEp < it.total_ep } ?: true
                                     saveReadingRate()
-                                    if (dragAmountX > 0) {
+                                    if (dragAmountX > 0 && canPrev) {
                                         onPrevious()
-                                    } else {
+                                    } else if (dragAmountX < 0 && canNext) {
                                         onNext()
                                     }
                                 }
@@ -392,6 +397,22 @@ fun EpisodeViewScreen(
                                 dragAmountY = 0f
                             }
                         )
+                    }
+                    .pointerInput(episodeNo, tapEnabled) {
+                        if (tapEnabled) {
+                            detectTapGestures { offset ->
+                                val width = size.width
+                                val currentEp = episodeNo.toIntOrNull() ?: 1
+                                val canPrev = currentEp > 1
+                                val canNext = novel?.let { currentEp < it.total_ep } ?: true
+                                saveReadingRate()
+                                if (offset.x < width / 2f && canPrev) {
+                                    onPrevious()
+                                } else if (offset.x >= width / 2f && canNext) {
+                                    onNext()
+                                }
+                            }
+                        }
                     }
             ) {
                 Column(
