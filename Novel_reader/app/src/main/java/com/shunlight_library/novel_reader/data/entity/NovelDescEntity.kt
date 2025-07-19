@@ -1,7 +1,7 @@
 /*
  * eightman 2005-2025
  * Furin-lab All Rights Reserved.
- * Entity for novel metadata.
+ * 小説のメタデータを保持するエンティティ。
  */
 package com.shunlight_library.novel_reader.data.entity
 
@@ -17,11 +17,27 @@ import androidx.room.Index
         Index(value = ["is_favorite"], name = "idx_novels_favorite")
     ]
 )
+/**
+ * 小説の基本情報をまとめたエンティティ。
+ *
+ * @property ncode 小説を一意に識別する N コード
+ * @property title タイトル
+ * @property author 作者名
+ * @property Synopsis あらすじ（DB の列名に合わせて先頭大文字）
+ * @property main_tag メインタグ
+ * @property sub_tag サブタグ
+ * @property rating レーティング種別 (1=R18, 2=一般)
+ * @property last_update_date 最終更新日
+ * @property total_ep エピソード総数
+ * @property general_all_no 評価ポイント総数
+ * @property updated_at メタデータ更新日時
+ * @property is_favorite お気に入り登録フラグ
+ */
 data class NovelDescEntity(
     val ncode: String,
     val title: String,
     val author: String,
-    val Synopsis: String,  // 注意: データベース名と一致させるため頭文字大文字
+    val Synopsis: String,
     val main_tag: String,
     val sub_tag: String,
     val rating: Int,

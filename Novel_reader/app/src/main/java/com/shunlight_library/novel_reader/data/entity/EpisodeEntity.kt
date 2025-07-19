@@ -1,7 +1,7 @@
 /*
  * eightman 2005-2025
  * Furin-lab All Rights Reserved.
- * Entity representing novel episodes.
+ * 小説のエピソード本文を保持するエンティティ。
  */
 package com.shunlight_library.novel_reader.data.entity
 
@@ -13,13 +13,25 @@ import androidx.room.Index
     primaryKeys = ["ncode", "episode_no"],
     indices = [Index(value = ["ncode", "episode_no"], name = "idx_episodes_ncode")]
 )
+/**
+ * 1 話分の情報を表すエンティティ。
+ *
+ * @property ncode このエピソードが属する小説の N コード
+ * @property episode_no エピソード番号（1 からの連番）
+ * @property body 本文 HTML
+ * @property e_title エピソードタイトル
+ * @property update_time 最終更新日時（yyyy-MM-dd HH:mm:ss）
+ * @property is_read 既読フラグ
+ * @property is_bookmark しおり登録フラグ
+ * @property reading_rate 読了率（0.0～1.0）
+ */
 data class EpisodeEntity(
     val ncode: String,
     val episode_no: String,
     val body: String,
     val e_title: String,
     val update_time: String,
-    val is_read: Boolean = false,      // 既読フラグ
-    val is_bookmark: Boolean = false,   // しおりフラグ
-    val reading_rate: Float = 0f       // 追加：読書の進行度（0.0f～1.0f）
+    val is_read: Boolean = false,
+    val is_bookmark: Boolean = false,
+    val reading_rate: Float = 0f
 )

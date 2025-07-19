@@ -1,7 +1,7 @@
 /*
  * eightman 2005-2025
  * Furin-lab All Rights Reserved.
- * Application class initializing database and repository.
+ * データベースとリポジトリの初期化を担当するアプリケーションクラス。
  */
 package com.shunlight_library.novel_reader
 
@@ -17,9 +17,16 @@ import kotlinx.coroutines.flow.first
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
+/**
+ * アプリケーション全体で使用するシングルトンを初期化するクラス。
+ * Room データベースとリポジトリへの参照を提供し、
+ * WorkManager を利用して自動更新のスケジュールを設定する。
+ */
 class NovelReaderApplication : Application() {
-    // データベースとリポジトリのlazy初期化
+    /** Room データベースを遅延初期化したインスタンス */
     val database by lazy { NovelDatabase.getDatabase(this) }
+
+    /** データベースから生成されるリポジトリ */
     val repository by lazy {
         NovelRepository(
             database.episodeDao(),
@@ -39,7 +46,7 @@ class NovelReaderApplication : Application() {
         fun getRepository(): NovelRepository = instance.repository
     }
 
-    // WorkManagerのインスタンス
+    /** 自動更新ワークを管理する WorkManager インスタンス */
     private lateinit var workManager: WorkManager
 
     override fun onCreate() {
