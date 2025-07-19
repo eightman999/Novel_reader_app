@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Displays novels recently updated.
+ */
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Entity mapping ncodes to URLs.
+ */
 // app/src/main/java/com/shunlight_library/novel_reader/data/entity/URLEntity.kt
 package com.shunlight_library.novel_reader.data.entity
 

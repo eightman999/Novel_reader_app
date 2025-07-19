@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * WebView screen for browsing novel sites.
+ */
 // WebViewScreen.kt - Ensure proper WebView configuration with cookies, cache, and JavaScript
 
 package com.shunlight_library.novel_reader

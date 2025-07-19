@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Composable screen listing episodes of a novel.
+ */
 package com.shunlight_library.novel_reader
 
 import android.provider.ContactsContract.CommonDataKinds.Website.URL

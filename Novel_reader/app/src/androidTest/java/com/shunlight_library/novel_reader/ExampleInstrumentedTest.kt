@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Android instrumentation test verifying application context.
+ */
 package com.shunlight_library.novel_reader
 
 import androidx.test.platform.app.InstrumentationRegistry

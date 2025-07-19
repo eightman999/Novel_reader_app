@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Repository coordinating DAO operations.
+ */
 package com.shunlight_library.novel_reader.data.repository
 
 import com.shunlight_library.novel_reader.data.dao.EpisodeDao

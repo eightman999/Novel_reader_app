@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Screen for adjusting user settings.
+ */
 package com.shunlight_library.novel_reader
 
 import android.app.Activity

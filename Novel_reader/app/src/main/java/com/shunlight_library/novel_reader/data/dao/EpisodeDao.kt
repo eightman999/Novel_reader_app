@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Room DAO for episodes table.
+ */
 package com.shunlight_library.novel_reader.data.dao
 
 import androidx.room.*

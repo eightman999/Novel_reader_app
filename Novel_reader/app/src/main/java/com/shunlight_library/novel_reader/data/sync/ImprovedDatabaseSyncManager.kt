@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Enhanced manager for syncing external data.
+ */
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context

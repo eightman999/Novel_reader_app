@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Typography definitions for theme.
+ */
 package com.shunlight_library.novel_reader.ui.theme
 
 import androidx.compose.material3.Typography

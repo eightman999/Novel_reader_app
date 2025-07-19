@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Utility for release checks and notifications.
+ */
 package com.shunlight_library.novel_reader.utils
 
 import android.app.NotificationChannel

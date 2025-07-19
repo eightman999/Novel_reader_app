@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Room database configuration with migrations.
+ */
 package com.shunlight_library.novel_reader.data.database
 
 import android.content.Context
