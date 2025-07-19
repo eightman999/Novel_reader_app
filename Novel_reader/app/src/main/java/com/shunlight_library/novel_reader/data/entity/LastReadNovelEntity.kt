@@ -1,7 +1,7 @@
 /*
  * eightman 2005-2025
  * Furin-lab All Rights Reserved.
- * Entity tracking last read episode per novel.
+ * 各小説の最終読了位置を記録するエンティティ。
  */
 package com.shunlight_library.novel_reader.data.entity
 
@@ -13,6 +13,13 @@ import androidx.room.Index
     primaryKeys = ["ncode"],
     indices = [Index(value = ["ncode", "date"], name = "idx_last_read")]
 )
+/**
+ * 最終読了エピソードを保持する。
+ *
+ * @property ncode 対象小説の N コード
+ * @property date 読了日時（ISO 8601 形式）
+ * @property episode_no 最後に読んだエピソード番号
+ */
 data class LastReadNovelEntity(
     val ncode: String,
     val date: String,

@@ -1,9 +1,8 @@
 /*
  * eightman 2005-2025
  * Furin-lab All Rights Reserved.
- * Manages screen navigation stack.
+ * 画面遷移用のスタックを管理するクラス。
  */
-// NavigationManager.kt
 package com.shunlight_library.novel_reader.navigation
 
 import androidx.compose.runtime.Composable
@@ -11,25 +10,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 
 /**
- * 画面遷移を管理するためのクラス
+ * シンプルなバックスタック方式で画面遷移を管理するナビゲーションコントローラ。
  */
 class NavigationManager {
-    // 画面のスタック
+    /** これまでに訪れた画面のスタック */
     private val screenStack = mutableListOf<Screen>()
 
-    // 現在表示している画面
+    /** 現在表示中の画面 */
     private var _currentScreen = mutableStateOf<Screen>(Screen.Main)
     val currentScreen: Screen
         get() = _currentScreen.value
 
-    // 画面を開く
+    /** 新しい [screen] を表示し、現在の画面をスタックに積む */
     fun navigateTo(screen: Screen) {
-        // 現在の画面をスタックに追加
         screenStack.add(_currentScreen.value)
         _currentScreen.value = screen
     }
 
-    // 前の画面に戻る
+    /**
+     * 1 つ前の画面に戻る。
+     * @return 遷移できた場合は true
+     */
     fun navigateBack(): Boolean {
         return if (screenStack.isNotEmpty()) {
             _currentScreen.value = screenStack.removeAt(screenStack.size - 1)
@@ -39,7 +40,9 @@ class NavigationManager {
         }
     }
 
-    // 特定の画面まで戻る
+    /**
+     * 指定した [screen] が現れるまで戻る。
+     */
     fun navigateBackTo(screen: Screen): Boolean {
         // 目的の画面が見つかるまでスタックを巻き戻す
         while (screenStack.isNotEmpty() && screenStack.last() != screen) {
@@ -54,7 +57,9 @@ class NavigationManager {
         }
     }
 
-    // スタックをクリアして特定の画面に移動
+    /**
+     * バックスタックを全て破棄して [screen] へ遷移する。
+     */
     fun navigateClearingBackStack(screen: Screen) {
         screenStack.clear()
         _currentScreen.value = screen
@@ -62,7 +67,7 @@ class NavigationManager {
 }
 
 /**
- * アプリの画面を表す sealed class
+ * アプリ内の各画面を表現する sealed class
  */
 // navigation/Screen.kt
 sealed class Screen {
@@ -80,7 +85,7 @@ sealed class Screen {
 }
 
 /**
- * NavigationManager のインスタンスを管理する Composable 関数
+ * NavigationManager のインスタンスを Compose で保持するための関数
  */
 @Composable
 fun rememberNavigationManager(): NavigationManager {
