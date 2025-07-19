@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Composable to select server directory path.
+ */
 package com.shunlight_library.novel_reader.ui.components
 
 import android.app.Activity

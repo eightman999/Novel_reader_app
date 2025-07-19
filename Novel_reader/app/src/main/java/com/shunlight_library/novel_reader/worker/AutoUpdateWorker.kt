@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Worker performing scheduled updates.
+ */
 package com.shunlight_library.novel_reader.worker
 
 import android.app.NotificationChannel

@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Activity UI for database synchronization.
+ */
 package com.shunlight_library.novel_reader.ui
 
 import android.app.Activity

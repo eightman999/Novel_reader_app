@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Simple unit test verifying addition.
+ */
 package com.shunlight_library.novel_reader
 
 import org.junit.Test

@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Main activity hosting Compose UI and navigation.
+ */
 package com.shunlight_library.novel_reader
 
 import RecentlyUpdatedNovelsScreen

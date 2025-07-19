@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Helper for working with external SQLite files.
+ */
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context

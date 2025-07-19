@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Foreground service performing manual updates.
+ */
 // UpdateService.kt
 package com.shunlight_library.novel_reader.service
 

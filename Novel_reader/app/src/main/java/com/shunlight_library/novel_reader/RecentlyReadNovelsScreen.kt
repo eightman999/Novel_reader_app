@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Displays recently read novels.
+ */
 package com.shunlight_library.novel_reader
 
 import androidx.compose.foundation.clickable

@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Material3 theme configuration.
+ */
 package com.shunlight_library.novel_reader.ui.theme
 
 import android.app.Activity

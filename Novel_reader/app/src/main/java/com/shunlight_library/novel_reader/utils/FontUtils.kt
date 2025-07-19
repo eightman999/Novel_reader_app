@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Utilities for handling custom fonts.
+ */
 package com.shunlight_library.novel_reader.utils
 
 import android.content.Context

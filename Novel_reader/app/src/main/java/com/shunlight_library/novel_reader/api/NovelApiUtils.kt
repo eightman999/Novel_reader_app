@@ -1,3 +1,8 @@
+/*
+ * eightman 2005-2025
+ * Furin-lab All Rights Reserved.
+ * Utility methods for accessing the novel API.
+ */
 // NovelApiUtils.kt
 package com.shunlight_library.novel_reader.api
 
