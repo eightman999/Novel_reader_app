@@ -137,7 +137,12 @@ fun UpdateInfoScreen(
                                 for (episodeNo in targets) {
                                     try {
                                         // NovelApiUtils.fetchEpisodeを使用
-                                        val episode = NovelApiUtils.fetchEpisode(novel.ncode, episodeNo, novel.rating == 1)
+                                        val episode = NovelApiUtils.fetchEpisode(
+                                            novel.ncode,
+                                            episodeNo,
+                                            novel.rating == 1,
+                                            novel.general_all_no
+                                        )
 
                                         if (episode != null) {
                                             // データベースに保存

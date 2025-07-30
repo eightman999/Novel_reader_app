@@ -277,7 +277,7 @@ fun EpisodeListScreen(
                 // スクレイピングの実行
                 for ((index, episodeNo) in episodeNumbers.withIndex()) {
                     novel?.let {
-                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1)
+                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, generalAllNo)
 
                         if (episode != null) {
                             // データベースに保存
@@ -456,7 +456,7 @@ fun EpisodeListScreen(
                 // スクレイピングの実行
                 novel?.let {
                     for ((index, episodeNo) in redownloadTargets.withIndex()) {
-                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1)
+                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, it.general_all_no)
 
                         if (episode != null) {
                             // データベースに保存

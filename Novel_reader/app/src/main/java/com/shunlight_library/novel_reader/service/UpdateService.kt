@@ -329,7 +329,12 @@ class UpdateService : Service() {
                     // Check if service is still running
                     if (!isRunning) break
 
-                    val episode = NovelApiUtils.fetchEpisode(novel.ncode, episodeNo, novel.rating == 1)
+                    val episode = NovelApiUtils.fetchEpisode(
+                        novel.ncode,
+                        episodeNo,
+                        novel.rating == 1,
+                        generalAllNoValue
+                    )
 
                     if (episode != null) {
                         repository.insertEpisode(episode)
@@ -430,7 +435,12 @@ class UpdateService : Service() {
                     // Check if service is still running
                     if (!isRunning) break
 
-                    val episode = NovelApiUtils.fetchEpisode(novel.ncode, episodeNo, novel.rating == 1)
+                    val episode = NovelApiUtils.fetchEpisode(
+                        novel.ncode,
+                        episodeNo,
+                        novel.rating == 1,
+                        novel.general_all_no
+                    )
 
                     if (episode != null) {
                         repository.insertEpisode(episode)
@@ -527,7 +537,12 @@ class UpdateService : Service() {
                             // Check if service is still running
                             if (!isRunning) break
 
-                            val episode = NovelApiUtils.fetchEpisode(novel.ncode, episodeNo, novel.rating == 1)
+                            val episode = NovelApiUtils.fetchEpisode(
+                                novel.ncode,
+                                episodeNo,
+                                novel.rating == 1,
+                                queueItem.general_all_no
+                            )
 
                             if (episode != null) {
                                 repository.insertEpisode(episode)
