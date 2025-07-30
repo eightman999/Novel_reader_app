@@ -183,7 +183,12 @@ object NovelApiUtils {
      */
     // NovelApiUtils.kt の fetchEpisode 関数を修正
     // NovelApiUtils.kt の fetchEpisode 関数を修正
-    suspend fun fetchEpisode(ncode: String, episodeNo: Int, isR18: Boolean = false): EpisodeEntity? {
+    suspend fun fetchEpisode(
+        ncode: String,
+        episodeNo: Int,
+        isR18: Boolean = false,
+        totalEpisodeCount: Int = -1
+    ): EpisodeEntity? {
         return withContext(Dispatchers.IO) {
             try {
                 val baseUrl = if (isR18) {
@@ -191,7 +196,11 @@ object NovelApiUtils {
                 } else {
                     "https://ncode.syosetu.com"
                 }
-                val url = "$baseUrl/$ncode/$episodeNo/"
+                val url = if (totalEpisodeCount == 1 && episodeNo == 1) {
+                    "$baseUrl/$ncode/"
+                } else {
+                    "$baseUrl/$ncode/$episodeNo/"
+                }
 
                 // ユーザーエージェントをランダムに設定（検出回避用）
                 val userAgents = listOf(
@@ -281,10 +290,16 @@ object NovelApiUtils {
     }
 
     // リダイレクトと複数回試行用のfetchEpisodeWithRetry関数を追加
-    suspend fun fetchEpisodeWithRetry(ncode: String, episodeNo: Int, isR18: Boolean = false, maxRetries: Int = 3): EpisodeEntity? {
+    suspend fun fetchEpisodeWithRetry(
+        ncode: String,
+        episodeNo: Int,
+        isR18: Boolean = false,
+        totalEpisodeCount: Int = -1,
+        maxRetries: Int = 3
+    ): EpisodeEntity? {
         for (attempt in 1..maxRetries) {
             try {
-                val episode = fetchEpisode(ncode, episodeNo, isR18)
+                val episode = fetchEpisode(ncode, episodeNo, isR18, totalEpisodeCount)
                 if (episode != null) {
                     return episode
                 }
