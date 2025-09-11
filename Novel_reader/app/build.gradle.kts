@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.shunlight_library.novel_reader"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.shunlight_library.novel_reader"
@@ -31,11 +31,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = rootProject.extra["kotlinJvmTarget"] as String
     }
     buildFeatures {
         compose = true
     }
+    buildToolsVersion = "36.0.0"
 }
 
 dependencies {
