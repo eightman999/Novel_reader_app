@@ -302,7 +302,10 @@ object NovelApiUtils {
         }
     }
 
-    // リダイレクトと複数回試行用のfetchEpisodeWithRetry関数を追加
+    /**
+     * リダイレクトに対応しつつエピソード取得を複数回試行する
+     * ネットワークエラー時には指定回数まで再試行を行う
+     */
     suspend fun fetchEpisodeWithRetry(
         ncode: String,
         episodeNo: Int,
@@ -327,7 +330,7 @@ object NovelApiUtils {
         return null
     }
     /**
-     * URLからncodeとR18フラグを抽出する
+     * URLからncodeとR18フラグを正規表現で解析して抽出する
      * @param url 小説のURL
      * @return Pair(ncode, isR18)、取得できなかった場合は (null, false)
      */
@@ -346,7 +349,7 @@ object NovelApiUtils {
     }
 
     /**
-     * 重複確認 - 既に小説が登録されているかどうかをチェックする
+     * 重複確認 - 既に小説が登録されているかをリポジトリでチェックする
      * @param repository リポジトリインスタンス
      * @param ncode 確認するNコード
      * @return 既に登録されている場合はtrue、そうでない場合はfalse

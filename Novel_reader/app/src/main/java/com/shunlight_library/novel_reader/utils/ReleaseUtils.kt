@@ -35,6 +35,12 @@ object ReleaseUtils {
     private const val RELEASE_API = "https://api.github.com/repos/eightman999/Novel_reader_app/releases/latest"
     private const val RELEASE_PAGE = "https://github.com/eightman999/Novel_reader_app/releases/latest"
 
+    /**
+     * バージョン文字列を比較して最新かどうかを判定する
+     * @param latest APIから取得した最新バージョン
+     * @param current 現在のアプリバージョン
+     * @return latestがcurrentより新しい場合はtrue
+     */
     private fun isNewerVersion(latest: String, current: String): Boolean {
         val l = latest.trimStart('v', 'V').split(".")
         val c = current.trimStart('v', 'V').split(".")
@@ -47,6 +53,10 @@ object ReleaseUtils {
         return false
     }
 
+    /**
+     * GitHub上の最新リリースをチェックし、必要に応じて通知を行う
+     * ネットワーク処理はIOスレッドで実行される
+     */
     suspend fun checkForNewRelease(context: Context) {
         withContext(Dispatchers.IO) {
             try {
@@ -80,6 +90,11 @@ object ReleaseUtils {
         }
     }
 
+    /**
+     * 新しいバージョンをシステム通知で知らせる
+     * @param context コンテキスト
+     * @param version 新しいバージョン名
+     */
     private fun sendSystemNotification(context: Context, version: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -23,6 +23,10 @@ import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
+
+/**
+ * v1→v2のマイグレーション: 更新キュー用テーブルを作成
+ */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -37,13 +41,19 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+/**
+ * v2→v3のマイグレーション: エピソードテーブルに既読・ブックマーク列を追加
+ */
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(database: SupportSQLiteDatabase) {
-        // Add new columns to the episodes table
         database.execSQL("ALTER TABLE episodes ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0")
         database.execSQL("ALTER TABLE episodes ADD COLUMN is_bookmark INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * v3→v4のマイグレーション: URL情報を保存するテーブルを追加
+ */
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -59,12 +69,18 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/**
+ * v4→v5のマイグレーション: エピソードに読書進捗率を追加
+ */
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE episodes ADD COLUMN reading_rate REAL NOT NULL DEFAULT 0.0")
     }
 }
 
+/**
+ * v5→v6のマイグレーション: 小説テーブルにお気に入りフラグを追加
+ */
 val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE novels_descs ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
@@ -72,6 +88,9 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/**
+ * v6→v7のマイグレーション: 画像キャッシュ用テーブルを追加
+ */
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -87,6 +106,9 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/**
+ * アプリ全体で使用するRoomデータベース定義
+ */
 @Database(
     entities = [
         EpisodeEntity::class,
@@ -111,6 +133,9 @@ abstract class NovelDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: NovelDatabase? = null
 
+        /**
+         * シングルトンとしてデータベースインスタンスを取得する
+         */
         fun getDatabase(context: Context): NovelDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
