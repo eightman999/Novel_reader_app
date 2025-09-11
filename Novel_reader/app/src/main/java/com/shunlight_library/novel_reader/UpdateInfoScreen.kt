@@ -141,7 +141,7 @@ fun UpdateInfoScreen(
                                             novel.ncode,
                                             episodeNo,
                                             novel.rating == 1,
-                                            novel.general_all_no
+                                            novel.noveltype
                                         )
 
                                         if (episode != null) {
@@ -768,10 +768,10 @@ fun UpdateInfoScreen(
                                                 }
 
                                                 // APIから最新情報を取得
-                                                val (newGeneralAllNo, _) = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                                val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
 
                                                 // 使用するgeneral_all_no値
-                                                val generalAllNoValue = if (newGeneralAllNo == -1) novel.general_all_no else newGeneralAllNo
+                                                val generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
 
                                                 // エピソードのマップを作成
                                                 val episodeNumberMap = episodes.associate { episode ->

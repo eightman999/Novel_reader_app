@@ -30,6 +30,14 @@ import java.util.zip.GZIPInputStream
 object NovelApiUtils {
     private const val TAG = "NovelApiUtils"
 
+    data class NovelApiInfo(
+        val generalAllNo: Int,
+        val updatedAt: String,
+        val userid: String?,
+        val noveltype: Int?,
+        val length: Int?
+    )
+
     /**
      * APIから小説情報を取得する
      * @param ncode 小説のNコード
@@ -37,16 +45,16 @@ object NovelApiUtils {
      * @return Pair(総エピソード数, 更新日時) 取得に失敗した場合は (-1, "")
      */
     // NovelApiUtils.kt の fetchNovelInfo 関数を修正
-    suspend fun fetchNovelInfo(ncode: String, isR18: Boolean = false, apiUrl: String? = null): Pair<Int, String> {
-        if (ncode.isEmpty()) return Pair(-1, "")
+    suspend fun fetchNovelInfo(ncode: String, isR18: Boolean = false, apiUrl: String? = null): NovelApiInfo? {
+        if (ncode.isEmpty()) return null
 
         return withContext(Dispatchers.IO) {
             try {
                 // API URLの構築
                 val actualApiUrl = apiUrl ?: if (isR18) {
-                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5&json"
                 } else {
-                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5&json"
                 }
 
                 val connection = URL(actualApiUrl).openConnection() as HttpURLConnection
@@ -71,6 +79,9 @@ object NovelApiUtils {
                     if (yamlData.size >= 2) {
                         val novelData = yamlData[1]
                         val newGeneralAllNo = novelData["general_all_no"] as Int
+                        val userid = novelData["userid"]?.toString()
+                        val noveltype = (novelData["noveltype"] as? Int)
+                        val length = (novelData["length"] as? Int)
 
                         // 更新日時の取得
                         val updatedAtObj = novelData["updated_at"]
@@ -80,16 +91,16 @@ object NovelApiUtils {
                             else -> DatabaseSyncUtils.getCurrentDateTimeString()
                         }
 
-                        Pair(newGeneralAllNo, newUpdatedAt)
+                        NovelApiInfo(newGeneralAllNo, newUpdatedAt, userid, noveltype, length)
                     } else {
-                        Pair(-1, "")
+                        null
                     }
                 } else {
-                    Pair(-1, "")
+                    null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "API取得エラー: ${e.message}", e)
-                Pair(-1, "")
+                null
             }
         }
     }
@@ -105,9 +116,9 @@ object NovelApiUtils {
             try {
                 // API URLの構築
                 val apiUrl = if (isR18) {
-                    "https://api.syosetu.com/novel18api/api/?of=t-n-u-w-s-k-g-ga-e-l-ua&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novel18api/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5&json"
                 } else {
-                    "https://api.syosetu.com/novelapi/api/?of=t-n-u-w-s-k-g-ga-e-l-ua&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novelapi/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5&json"
                 }
 
                 val connection = URL(apiUrl).openConnection() as HttpURLConnection
@@ -136,6 +147,9 @@ object NovelApiUtils {
                         val author = novelData["writer"] as String
                         val synopsis = novelData["story"] as? String ?: ""
                         val generalAllNo = novelData["general_all_no"] as Int
+                        val userid = novelData["userid"]?.toString()
+                        val noveltype = (novelData["noveltype"] as? Int)
+                        val length = (novelData["length"] as? Int)
                         val keyword = novelData["keyword"] as? String ?: ""
 
                         // キーワードから最初のタグをメインタグ、残りをサブタグとして扱う
@@ -160,6 +174,9 @@ object NovelApiUtils {
                             last_update_date = currentDate,
                             total_ep = 0, // 初期値は0、後で更新処理で正確な値が設定される
                             general_all_no = generalAllNo,
+                            userid = userid,
+                            noveltype = noveltype,
+                            length = length,
                             updated_at = currentDate
                         )
                     } else {
@@ -188,7 +205,7 @@ object NovelApiUtils {
         ncode: String,
         episodeNo: Int,
         isR18: Boolean = false,
-        totalEpisodeCount: Int = -1
+        noveltype: Int? = null
     ): EpisodeEntity? {
         return withContext(Dispatchers.IO) {
             try {
@@ -197,7 +214,7 @@ object NovelApiUtils {
                 } else {
                     "https://ncode.syosetu.com"
                 }
-                val url = if (totalEpisodeCount == 1 && episodeNo == 1) {
+                val url = if (noveltype == 2) {
                     "$baseUrl/$ncode/"
                 } else {
                     "$baseUrl/$ncode/$episodeNo/"
@@ -310,12 +327,12 @@ object NovelApiUtils {
         ncode: String,
         episodeNo: Int,
         isR18: Boolean = false,
-        totalEpisodeCount: Int = -1,
+        noveltype: Int? = null,
         maxRetries: Int = 3
     ): EpisodeEntity? {
         for (attempt in 1..maxRetries) {
             try {
-                val episode = fetchEpisode(ncode, episodeNo, isR18, totalEpisodeCount)
+                val episode = fetchEpisode(ncode, episodeNo, isR18, noveltype)
                 if (episode != null) {
                     return episode
                 }

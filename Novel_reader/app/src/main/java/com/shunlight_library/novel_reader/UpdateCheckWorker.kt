@@ -58,37 +58,39 @@ class UpdateCheckWorker(
             for (novel in novels) {
                 try {
                     // APIから最新情報を取得
-                    val (newGeneralAllNo, newUpdatedAt) = NovelApiUtils.fetchNovelInfo(
+                    val info = NovelApiUtils.fetchNovelInfo(
                         novel.ncode,
                         novel.rating == 1
                     )
-
-                    // 更新がある場合
-                    if (newGeneralAllNo > novel.general_all_no) {
-                        // 小説情報を更新
+                    if (info != null) {
+                        // 常に最新情報を保存
                         val updatedNovel = novel.copy(
-                            general_all_no = newGeneralAllNo,
-                            updated_at = newUpdatedAt
+                            general_all_no = info.generalAllNo,
+                            updated_at = info.updatedAt,
+                            userid = novel.userid ?: info.userid,
+                            noveltype = novel.noveltype ?: info.noveltype,
+                            length = novel.length ?: info.length
                         )
                         repository.updateNovel(updatedNovel)
 
-                        // 更新キューに追加
-                        val updateQueue = UpdateQueueEntity(
-                            ncode = novel.ncode,
-                            total_ep = novel.total_ep,
-                            general_all_no = newGeneralAllNo,
-                            update_time = newUpdatedAt
-                        )
-                        repository.insertUpdateQueue(updateQueue)
+                        // 更新がある場合
+                        if (info.generalAllNo > novel.general_all_no) {
+                            val updateQueue = UpdateQueueEntity(
+                                ncode = novel.ncode,
+                                total_ep = novel.total_ep,
+                                general_all_no = info.generalAllNo,
+                                update_time = info.updatedAt
+                            )
+                            repository.insertUpdateQueue(updateQueue)
 
-                        // 新規か更新かをカウント
-                        if (novel.general_all_no == 0) {
-                            newCount++
-                        } else {
-                            updatedCount++
+                            if (novel.general_all_no == 0) {
+                                newCount++
+                            } else {
+                                updatedCount++
+                            }
+
+                            Log.d(TAG, "小説「${novel.title}」の更新を検出: ${info.generalAllNo} > ${novel.general_all_no}")
                         }
-
-                        Log.d(TAG, "小説「${novel.title}」の更新を検出: $newGeneralAllNo > ${novel.general_all_no}")
                     }
 
                     // APIへの負荷軽減のために少し待機

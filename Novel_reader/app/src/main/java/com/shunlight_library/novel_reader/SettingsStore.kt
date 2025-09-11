@@ -45,7 +45,9 @@ data class NovelListFilterSettings(
     val hideRating5WithNoEpisodes: Boolean = false,
     val showCompleted: Boolean = true,
     val showOngoing: Boolean = true,
-    val showFavoritesOnly: Boolean = false
+    val showFavoritesOnly: Boolean = false,
+    val showLongNovels: Boolean = true,
+    val showShortNovels: Boolean = true
 )
 
 // DataStoreのインスタンスをトップレベルで定義
@@ -104,6 +106,8 @@ class SettingsStore(private val context: Context) {
         val NOVEL_LIST_SHOW_COMPLETED = booleanPreferencesKey("novel_list_show_completed")
         val NOVEL_LIST_SHOW_ONGOING = booleanPreferencesKey("novel_list_show_ongoing")
         val NOVEL_LIST_SHOW_FAVORITES_ONLY = booleanPreferencesKey("novel_list_show_favorites_only")
+        val NOVEL_LIST_SHOW_LONG = booleanPreferencesKey("novel_list_show_long")
+        val NOVEL_LIST_SHOW_SHORT = booleanPreferencesKey("novel_list_show_short")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -143,6 +147,8 @@ class SettingsStore(private val context: Context) {
     val defaultNovelListShowCompleted = true
     val defaultNovelListShowOngoing = true
     val defaultNovelListShowFavoritesOnly = false
+    val defaultNovelListShowLong = true
+    val defaultNovelListShowShort = true
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -532,10 +538,12 @@ class SettingsStore(private val context: Context) {
             hideRating5WithNoEpisodes = preferences[NOVEL_LIST_HIDE_RATING5_NO_EPISODES] ?: defaultNovelListHideRating5NoEpisodes,
             showCompleted = preferences[NOVEL_LIST_SHOW_COMPLETED] ?: defaultNovelListShowCompleted,
             showOngoing = preferences[NOVEL_LIST_SHOW_ONGOING] ?: defaultNovelListShowOngoing,
-            showFavoritesOnly = preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] ?: defaultNovelListShowFavoritesOnly
+            showFavoritesOnly = preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] ?: defaultNovelListShowFavoritesOnly,
+            showLongNovels = preferences[NOVEL_LIST_SHOW_LONG] ?: defaultNovelListShowLong,
+            showShortNovels = preferences[NOVEL_LIST_SHOW_SHORT] ?: defaultNovelListShowShort
         )
     }
-    
+
     // 小説リストフィルター設定の保存
     suspend fun saveNovelListFilterSettings(settings: NovelListFilterSettings) {
         context.dataStore.edit { preferences ->
@@ -547,6 +555,8 @@ class SettingsStore(private val context: Context) {
             preferences[NOVEL_LIST_SHOW_COMPLETED] = settings.showCompleted
             preferences[NOVEL_LIST_SHOW_ONGOING] = settings.showOngoing
             preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] = settings.showFavoritesOnly
+            preferences[NOVEL_LIST_SHOW_LONG] = settings.showLongNovels
+            preferences[NOVEL_LIST_SHOW_SHORT] = settings.showShortNovels
         }
     }
 }

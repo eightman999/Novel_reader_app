@@ -153,7 +153,11 @@ object DatabaseSyncUtils {
             ColumnInfo("last_update_date", "TEXT"),
             ColumnInfo("total_ep", "INTEGER"),
             ColumnInfo("general_all_no", "INTEGER"),
-            ColumnInfo("updated_at", "TEXT")
+            ColumnInfo("userid", "TEXT"),
+            ColumnInfo("noveltype", "INTEGER"),
+            ColumnInfo("length", "INTEGER"),
+            ColumnInfo("updated_at", "TEXT"),
+            ColumnInfo("is_favorite", "INTEGER")
         )
 
         // EpisodeEntityのテーブル定義

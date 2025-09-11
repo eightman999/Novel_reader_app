@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.api.NovelApiUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -36,6 +37,7 @@ enum class SortField(val displayName: String) {
     AUTHOR("作者"),
     TOTAL_EP("総話数"),
     UNREAD_COUNT("未読数"),
+    LENGTH("文字数"),
     LAST_UPDATE_DATE("更新日")
 }
 
@@ -59,7 +61,9 @@ data class FilterSettings(
     val hideRating5WithNoEpisodes: Boolean = false,
     val showCompleted: Boolean = true,
     val showOngoing: Boolean = true,
-    val showFavoritesOnly: Boolean = false
+    val showFavoritesOnly: Boolean = false,
+    val showLongNovels: Boolean = true,
+    val showShortNovels: Boolean = true
 )
 
 // 小説と既読情報を組み合わせたデータクラス
@@ -122,7 +126,9 @@ fun NovelListScreen(
                     hideRating5WithNoEpisodes = filterSettings.hideRating5WithNoEpisodes,
                     showCompleted = filterSettings.showCompleted,
                     showOngoing = filterSettings.showOngoing,
-                    showFavoritesOnly = filterSettings.showFavoritesOnly
+                    showFavoritesOnly = filterSettings.showFavoritesOnly,
+                    showLongNovels = filterSettings.showLongNovels,
+                    showShortNovels = filterSettings.showShortNovels
                 )
                 settingsStore.saveNovelListFilterSettings(settings)
             }
@@ -149,6 +155,14 @@ fun NovelListScreen(
 
             // お気に入りフィルターが有効な場合、お気に入りでない小説を除外
             if (filterSettings.showFavoritesOnly && !novel.is_favorite) {
+                return@filter false
+            }
+
+            // 長編・短編フィルター
+            if (!filterSettings.showLongNovels && novel.noveltype == 1) {
+                return@filter false
+            }
+            if (!filterSettings.showShortNovels && novel.noveltype == 2) {
                 return@filter false
             }
 
@@ -200,6 +214,11 @@ fun NovelListScreen(
             } else {
                 filtered.sortedByDescending { it.unreadCount }
             }
+            SortField.LENGTH -> if (sortDirection == SortDirection.ASCENDING) {
+                filtered.sortedBy { it.novel.length ?: 0 }
+            } else {
+                filtered.sortedByDescending { it.novel.length ?: 0 }
+            }
             SortField.LAST_UPDATE_DATE -> if (sortDirection == SortDirection.ASCENDING) {
                 filtered.sortedBy { it.novel.last_update_date }
             } else {
@@ -238,7 +257,9 @@ fun NovelListScreen(
             hideRating5WithNoEpisodes = savedFilterSettings.hideRating5WithNoEpisodes,
             showCompleted = savedFilterSettings.showCompleted,
             showOngoing = savedFilterSettings.showOngoing,
-            showFavoritesOnly = savedFilterSettings.showFavoritesOnly
+            showFavoritesOnly = savedFilterSettings.showFavoritesOnly,
+            showLongNovels = savedFilterSettings.showLongNovels,
+            showShortNovels = savedFilterSettings.showShortNovels
         )
     }
     
@@ -252,6 +273,23 @@ fun NovelListScreen(
     // 小説データの取得
     LaunchedEffect(key1 = Unit) {
         repository.allNovels.collect { novelsList ->
+            novelsList.forEach { novel ->
+                if (novel.userid == null || novel.noveltype == null || novel.length == null) {
+                    scope.launch {
+                        val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                        if (info != null) {
+                            repository.updateNovel(
+                                novel.copy(
+                                    userid = info.userid,
+                                    noveltype = info.noveltype,
+                                    length = info.length
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
             // 未読数を計算して小説情報を作成
             allNovels = novelsList.map { novel ->
                 val lastRead = lastReadMap[novel.ncode]
@@ -480,6 +518,54 @@ fun NovelListScreen(
                         )
                         Text(
                             text = "お気に入りのみ表示",
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+
+                    // 長編を表示
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                filterSettings = filterSettings.copy(
+                                    showLongNovels = !filterSettings.showLongNovels
+                                )
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = filterSettings.showLongNovels,
+                            onCheckedChange = { checked ->
+                                filterSettings = filterSettings.copy(showLongNovels = checked)
+                            }
+                        )
+                        Text(
+                            text = "長編を表示",
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+
+                    // 短編を表示
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                filterSettings = filterSettings.copy(
+                                    showShortNovels = !filterSettings.showShortNovels
+                                )
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = filterSettings.showShortNovels,
+                            onCheckedChange = { checked ->
+                                filterSettings = filterSettings.copy(showShortNovels = checked)
+                            }
+                        )
+                        Text(
+                            text = "短編を表示",
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }
