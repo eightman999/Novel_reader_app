@@ -12,6 +12,7 @@ import androidx.work.*
 import com.shunlight_library.novel_reader.data.database.NovelDatabase
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import com.shunlight_library.novel_reader.worker.UpdateCheckWorker
+import com.shunlight_library.novel_reader.api.NovelApiUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -59,6 +60,9 @@ class NovelReaderApplication : Application() {
 
         // アプリ起動時に自動更新スケジュールを設定
         setupUpdateSchedule()
+
+        // 既存DBの小説情報をチェックし不足データを補完
+        checkNovelMetadata()
     }
 
     /**
@@ -134,6 +138,31 @@ class NovelReaderApplication : Application() {
             )
         } catch (e: Exception) {
             Log.e("NovelReaderApp", "自動更新スケジュール設定エラー: ${e.message}", e)
+        }
+    }
+
+    /**
+     * データベース内の小説を走査し、作者IDなどの不足データを補完する
+     * すでに削除されているなどAPIから情報が取得できない場合は警告を出さない
+     */
+    private fun checkNovelMetadata() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val novels = repository.allNovels.first()
+            novels.forEach { novel ->
+                if (novel.userid == null || novel.noveltype == null || novel.length == null) {
+                    val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                    if (info != null) {
+                        Log.w("NovelReaderApp", "小説 ${novel.ncode} のメタデータが不足していたため取得しました")
+                        repository.updateNovel(
+                            novel.copy(
+                                userid = info.userid,
+                                noveltype = info.noveltype,
+                                length = info.length
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 }
