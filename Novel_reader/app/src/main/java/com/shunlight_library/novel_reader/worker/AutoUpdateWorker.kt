@@ -75,6 +75,8 @@ class AutoUpdateWorker(
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "自動更新処理中にエラーが発生", e)
+            // エラー発生時に通知
+            sendErrorNotification(e.message ?: "不明なエラー")
             reschedule()
             Result.failure()
         }
@@ -258,6 +260,30 @@ class AutoUpdateWorker(
             
             notificationStore.addNotification(notification)
         }
+    }
+
+    private suspend fun sendErrorNotification(message: String) {
+        createNotificationChannel()
+
+        val notificationManager =
+            applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("自動更新エラー")
+            .setContentText("更新処理中にエラーが発生しました: $message")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(NOTIFICATION_ID + 1, notification)
+
+        val appNotification = AppNotification(
+            id = "auto_update_error_${System.currentTimeMillis()}",
+            title = "自動更新エラー",
+            content = "更新処理中にエラーが発生しました: $message",
+            timestamp = System.currentTimeMillis(),
+            type = NotificationType.ERROR
+        )
+        notificationStore.addNotification(appNotification)
     }
 
     private fun createNotificationChannel() {
