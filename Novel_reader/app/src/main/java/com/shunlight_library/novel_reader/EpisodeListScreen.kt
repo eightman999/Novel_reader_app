@@ -38,6 +38,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisode
+import org.yaml.snakeyaml.Yaml
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.zip.GZIPInputStream
 
 enum class UpdateType {
     UPDATE,      // 更新（新しいエピソードのみチェック）
