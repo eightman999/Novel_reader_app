@@ -198,6 +198,9 @@ class DatabaseSyncManager(private val context: Context) {
             val columnLastUpdateDate = getColumnIndexOrDefault(cursor, "last_update_date")
             val columnTotalEp = getColumnIndexOrDefault(cursor, "total_ep")
             val columnGeneralAllNo = getColumnIndexOrDefault(cursor, "general_all_no")
+            val columnUserid = getColumnIndexOrDefault(cursor, "userid")
+            val columnNoveltype = getColumnIndexOrDefault(cursor, "noveltype")
+            val columnLength = getColumnIndexOrDefault(cursor, "length")
             val columnUpdatedAt = getColumnIndexOrDefault(cursor, "updated_at")
             val urlEntities = mutableListOf<URLEntity>() // URLEntityリスト追加
             val batchSize = 50
@@ -213,12 +216,13 @@ class DatabaseSyncManager(private val context: Context) {
                     main_tag = columnMainTag?.let { cursor.getString(it) } ?: "",
                     sub_tag = columnSubTag?.let { cursor.getString(it) } ?: "",
                     rating = columnRating?.let { cursor.getInt(it) } ?: 0,
-                    last_update_date = columnLastUpdateDate?.let { cursor.getString(it) } ?:
-                    getCurrentDateString(),
+                    last_update_date = columnLastUpdateDate?.let { cursor.getString(it) } ?: getCurrentDateString(),
                     total_ep = columnTotalEp?.let { cursor.getInt(it) } ?: 0,
                     general_all_no = columnGeneralAllNo?.let { cursor.getInt(it) } ?: 0,
-                    updated_at = columnUpdatedAt?.let { cursor.getString(it) } ?:
-                    getCurrentDateString()
+                    userid = columnUserid?.let { cursor.getString(it) }?.takeIf { it.isNotEmpty() },
+                    noveltype = columnNoveltype?.let { cursor.getInt(it) },
+                    length = columnLength?.let { cursor.getInt(it) },
+                    updated_at = columnUpdatedAt?.let { cursor.getString(it) } ?: getCurrentDateString()
                 )
 
                 novels.add(novel)

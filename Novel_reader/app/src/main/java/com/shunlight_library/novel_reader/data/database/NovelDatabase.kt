@@ -107,6 +107,19 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
 }
 
 /**
+ * v7→v8のマイグレーション: 作者ID、作品種別、文字数を追加
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN userid TEXT")
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN noveltype INTEGER")
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN length INTEGER")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_length ON novels_descs (length)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_type ON novels_descs (noveltype)")
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -118,7 +131,7 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
         URLEntity::class,
         ImageCacheEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -149,7 +162,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .build()
                 INSTANCE = instance

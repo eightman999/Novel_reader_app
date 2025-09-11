@@ -249,32 +249,35 @@ class UpdateService : Service() {
                 val urlEntity = repository.getOrCreateURL(ncode, novel.rating == 1)
 
                 // Fetch latest info from API
-                val (newGeneralAllNo, newUpdatedAt) = NovelApiUtils.fetchNovelInfo(
+                val info = NovelApiUtils.fetchNovelInfo(
                     ncode = ncode,
                     isR18 = novel.rating == 1,
                     apiUrl = urlEntity.api_url
                 )
 
-                if (newGeneralAllNo == -1) {
+                if (info == null) {
                     updateComplete(false, "APIからデータが取得できませんでした")
                     return@launch
                 }
 
-                // Check if update is available
-                if (newGeneralAllNo > novel.general_all_no) {
-                    // Update novel info
-                    val updatedNovel = novel.copy(
-                        general_all_no = newGeneralAllNo,
-                        updated_at = newUpdatedAt
-                    )
-                    repository.updateNovel(updatedNovel)
+                // 常に最新情報を保存
+                val updatedNovel = novel.copy(
+                    general_all_no = info.generalAllNo,
+                    updated_at = info.updatedAt,
+                    userid = novel.userid ?: info.userid,
+                    noveltype = novel.noveltype ?: info.noveltype,
+                    length = novel.length ?: info.length
+                )
+                repository.updateNovel(updatedNovel)
 
+                // Check if update is available
+                if (info.generalAllNo > novel.general_all_no) {
                     // Add to update queue
                     val updateQueue = UpdateQueueEntity(
                         ncode = novel.ncode,
                         total_ep = novel.total_ep,
-                        general_all_no = newGeneralAllNo,
-                        update_time = newUpdatedAt
+                        general_all_no = info.generalAllNo,
+                        update_time = info.updatedAt
                     )
                     repository.insertUpdateQueue(updateQueue)
 
@@ -303,12 +306,18 @@ class UpdateService : Service() {
                 updateProgress(0.2f, "APIで最新情報を確認中...")
 
                 // Get latest info from API
-                val (newGeneralAllNo, newUpdatedAt) = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+                val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
 
-                var generalAllNoValue = newGeneralAllNo
-                if (generalAllNoValue == -1) {
-                    generalAllNoValue = novel.general_all_no
-                }
+                var generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                val newUpdatedAt = info?.updatedAt ?: novel.updated_at
+                val updatedNovel = novel.copy(
+                    general_all_no = generalAllNoValue,
+                    updated_at = newUpdatedAt,
+                    userid = novel.userid ?: info?.userid,
+                    noveltype = novel.noveltype ?: info?.noveltype,
+                    length = novel.length ?: info?.length
+                )
+                repository.updateNovel(updatedNovel)
 
                 // Start downloading episodes
                 updateProgress(0.3f, "エピソードを取得中... (0/$generalAllNoValue)")
@@ -333,7 +342,7 @@ class UpdateService : Service() {
                         novel.ncode,
                         episodeNo,
                         novel.rating == 1,
-                        generalAllNoValue
+                        novel.noveltype
                     )
 
                     if (episode != null) {
@@ -397,12 +406,17 @@ class UpdateService : Service() {
                 updateProgress(0.2f, "APIで最新情報を確認中...")
 
                 // Get latest info from API
-                val (newGeneralAllNo, _) = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+                val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
 
-                var generalAllNoValue = newGeneralAllNo
-                if (generalAllNoValue == -1) {
-                    generalAllNoValue = novel.general_all_no
-                }
+                var generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                val updatedNovel = novel.copy(
+                    general_all_no = generalAllNoValue,
+                    updated_at = info?.updatedAt ?: novel.updated_at,
+                    userid = novel.userid ?: info?.userid,
+                    noveltype = novel.noveltype ?: info?.noveltype,
+                    length = novel.length ?: info?.length
+                )
+                repository.updateNovel(updatedNovel)
 
                 // Find missing episodes
                 val episodeNumberMap = episodes.associate { episode ->
@@ -439,7 +453,7 @@ class UpdateService : Service() {
                         novel.ncode,
                         episodeNo,
                         novel.rating == 1,
-                        novel.general_all_no
+                        novel.noveltype
                     )
 
                     if (episode != null) {
@@ -541,7 +555,7 @@ class UpdateService : Service() {
                                 novel.ncode,
                                 episodeNo,
                                 novel.rating == 1,
-                                queueItem.general_all_no
+                                novel.noveltype
                             )
 
                             if (episode != null) {

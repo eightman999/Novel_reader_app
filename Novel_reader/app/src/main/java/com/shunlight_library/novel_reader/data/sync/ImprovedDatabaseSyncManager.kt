@@ -316,6 +316,9 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
             val columnLastUpdateDate = getColumnIndexSafely(cursor, "last_update_date")
             val columnTotalEp = getColumnIndexSafely(cursor, "total_ep")
             val columnGeneralAllNo = getColumnIndexSafely(cursor, "general_all_no")
+            val columnUserid = getColumnIndexSafely(cursor, "userid")
+            val columnNoveltype = getColumnIndexSafely(cursor, "noveltype")
+            val columnLength = getColumnIndexSafely(cursor, "length")
             val columnUpdatedAt = getColumnIndexSafely(cursor, "updated_at")
 
             val batchSize = 50
@@ -323,6 +326,9 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
 
             // データの読み取りとバッチ処理
             while (cursor.moveToNext()) {
+                val userid = getStringSafely(cursor, columnUserid)
+                val noveltype = getIntSafely(cursor, columnNoveltype, -1)
+                val length = getIntSafely(cursor, columnLength, -1)
                 val novel = NovelDescEntity(
                     ncode = getStringSafely(cursor, columnNcode),
                     title = getStringSafely(cursor, columnTitle),
@@ -335,6 +341,9 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                         DatabaseSyncUtils.getCurrentDateTimeString()),
                     total_ep = getIntSafely(cursor, columnTotalEp),
                     general_all_no = getIntSafely(cursor, columnGeneralAllNo),
+                    userid = if (userid.isEmpty()) null else userid,
+                    noveltype = if (columnNoveltype != null && !cursor.isNull(columnNoveltype)) noveltype else null,
+                    length = if (columnLength != null && !cursor.isNull(columnLength)) length else null,
                     updated_at = getStringSafely(cursor, columnUpdatedAt,
                         DatabaseSyncUtils.getCurrentDateTimeString())
                 )

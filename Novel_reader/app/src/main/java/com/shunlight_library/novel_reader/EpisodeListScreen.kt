@@ -34,16 +34,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jsoup.Jsoup
-import org.yaml.snakeyaml.Yaml
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.zip.GZIPInputStream
 import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisode
 
 enum class UpdateType {
@@ -277,7 +270,7 @@ fun EpisodeListScreen(
                 // スクレイピングの実行
                 for ((index, episodeNo) in episodeNumbers.withIndex()) {
                     novel?.let {
-                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, generalAllNo)
+                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, it.noveltype)
 
                         if (episode != null) {
                             // データベースに保存
@@ -456,7 +449,7 @@ fun EpisodeListScreen(
                 // スクレイピングの実行
                 novel?.let {
                     for ((index, episodeNo) in redownloadTargets.withIndex()) {
-                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, it.general_all_no)
+                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, it.noveltype)
 
                         if (episode != null) {
                             // データベースに保存
@@ -900,18 +893,16 @@ fun EpisodeListScreen(
                             .weight(1f)
                             .clickable(enabled = novel != null) {
                                 novel?.let { novelEntity ->
-                                    scope.launch {
-                                        val userId = fetchUserId(novelEntity.ncode, novelEntity.rating == 1)
-                                        if (userId != null) {
-                                            val url = if (novelEntity.rating == 1) {
-                                                "https://xmypage.syosetu.com/$userId/"
-                                            } else {
-                                                "https://mypage.syosetu.com/$userId/"
-                                            }
-                                            onAuthorClick(url)
+                                    val userId = novelEntity.userid
+                                    if (userId != null) {
+                                        val url = if (novelEntity.rating == 1) {
+                                            "https://xmypage.syosetu.com/$userId/"
                                         } else {
-                                            Toast.makeText(context, "作者ページを取得できませんでした", Toast.LENGTH_SHORT).show()
+                                            "https://mypage.syosetu.com/$userId/"
                                         }
+                                        onAuthorClick(url)
+                                    } else {
+                                        Toast.makeText(context, "すでになろうにいません", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -1125,49 +1116,6 @@ fun EpisodeItem(
     }
 }
 
-// API呼び出し関数: 作者のユーザーIDを取得
-private suspend fun fetchUserId(ncode: String, isR18: Boolean): String? {
-    if (ncode.isEmpty()) return null
-
-    return withContext(Dispatchers.IO) {
-        try {
-            val apiUrl = if (isR18) {
-                "https://api.syosetu.com/novel18api/api/?of=u&ncode=$ncode&gzip=5&json"
-            } else {
-                "https://api.syosetu.com/novelapi/api/?of=u&ncode=$ncode&gzip=5&json"
-            }
-
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val inputStream = GZIPInputStream(connection.inputStream)
-                val reader = BufferedReader(InputStreamReader(inputStream))
-                val content = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    content.append(line).append("\n")
-                }
-
-                val yaml = Yaml()
-                val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
-                if (yamlData.size >= 2) {
-                    val userId = yamlData[1]["user_id"]
-                    userId?.toString()
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("EpisodeListScreen", "作者ID取得エラー: ${e.message}", e)
-            null
-        }
-    }
-}
 
 // API呼び出し関数: APIから小説情報を取得
 private suspend fun fetchNovelInfo(ncode: String): Pair<Int, String> {
