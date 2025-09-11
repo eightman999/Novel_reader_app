@@ -10,6 +10,7 @@ import android.util.Log
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
+import com.shunlight_library.novel_reader.utils.ImageCacheUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -253,6 +254,18 @@ object NovelApiUtils {
 
                 // タイトルと本文を取得
                 val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
+
+                // 画像をローカルキャッシュに置換
+                val imgElements = doc.select("div.p-novel__body img")
+                for (img in imgElements) {
+                    val srcUrl = img.absUrl("src")
+                    if (srcUrl.isNotEmpty()) {
+                        ImageCacheUtils.downloadAndCacheImage(srcUrl)?.let { localUri ->
+                            img.attr("src", localUri)
+                        }
+                    }
+                }
+
                 val bodyElements = doc.select("div.p-novel__body > div")
                 val body = StringBuilder()
 
