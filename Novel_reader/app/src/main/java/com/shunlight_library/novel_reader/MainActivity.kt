@@ -284,6 +284,9 @@ when (val currentScreen = navigationManager.currentScreen) {
             },
             onEpisodeClick = { ncode, episodeNo ->
                 navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo, currentScreen))
+            },
+            onAuthorClick = { url ->
+                navigationManager.navigateTo(Screen.WebView(url, currentScreen))
             }
         )
     }

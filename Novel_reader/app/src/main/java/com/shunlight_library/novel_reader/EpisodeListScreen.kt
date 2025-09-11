@@ -5,7 +5,6 @@
  */
 package com.shunlight_library.novel_reader
 
-import android.provider.ContactsContract.CommonDataKinds.Website.URL
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -57,7 +56,8 @@ enum class UpdateType {
 fun EpisodeListScreen(
     ncode: String,
     onBack: () -> Unit,
-    onEpisodeClick: (String, String) -> Unit // ncode, episodeNo
+    onEpisodeClick: (String, String) -> Unit, // ncode, episodeNo
+    onAuthorClick: (String) -> Unit
 ) {
     val repository = NovelReaderApplication.getRepository()
     val context = LocalContext.current
@@ -892,6 +892,34 @@ fun EpisodeListScreen(
                         Icon(Icons.Default.Edit, contentDescription = "タグを編集")
                         Text("タグを編集", style = MaterialTheme.typography.labelSmall)
                     }
+
+                    // 作者ページを開く
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(enabled = novel != null) {
+                                novel?.let { novelEntity ->
+                                    scope.launch {
+                                        val userId = fetchUserId(novelEntity.ncode, novelEntity.rating == 1)
+                                        if (userId != null) {
+                                            val url = if (novelEntity.rating == 1) {
+                                                "https://xmypage.syosetu.com/$userId/"
+                                            } else {
+                                                "https://mypage.syosetu.com/$userId/"
+                                            }
+                                            onAuthorClick(url)
+                                        } else {
+                                            Toast.makeText(context, "作者ページを取得できませんでした", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = "作者")
+                        Text("作者", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }
@@ -1093,6 +1121,50 @@ fun EpisodeItem(
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
+        }
+    }
+}
+
+// API呼び出し関数: 作者のユーザーIDを取得
+private suspend fun fetchUserId(ncode: String, isR18: Boolean): String? {
+    if (ncode.isEmpty()) return null
+
+    return withContext(Dispatchers.IO) {
+        try {
+            val apiUrl = if (isR18) {
+                "https://api.syosetu.com/novel18api/api/?of=u&ncode=$ncode&gzip=5&json"
+            } else {
+                "https://api.syosetu.com/novelapi/api/?of=u&ncode=$ncode&gzip=5&json"
+            }
+
+            val connection = URL(apiUrl).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                val inputStream = GZIPInputStream(connection.inputStream)
+                val reader = BufferedReader(InputStreamReader(inputStream))
+                val content = StringBuilder()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    content.append(line).append("\n")
+                }
+
+                val yaml = Yaml()
+                val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
+                if (yamlData.size >= 2) {
+                    val userId = yamlData[1]["user_id"]
+                    userId?.toString()
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("EpisodeListScreen", "作者ID取得エラー: ${e.message}", e)
+            null
         }
     }
 }
