@@ -33,7 +33,8 @@ class NovelReaderApplication : Application() {
             database.novelDescDao(),
             database.lastReadNovelDao(),
             database.updateQueueDao(),
-            database.urlEntityDao()
+            database.urlEntityDao(),
+            database.imageCacheDao()
         )
     }
 

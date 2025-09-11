@@ -10,11 +10,13 @@ import com.shunlight_library.novel_reader.data.dao.LastReadNovelDao
 import com.shunlight_library.novel_reader.data.dao.NovelDescDao
 import com.shunlight_library.novel_reader.data.dao.URLEntityDao
 import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
+import com.shunlight_library.novel_reader.data.dao.ImageCacheDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
+import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -27,7 +29,8 @@ class NovelRepository(
     private val novelDescDao: NovelDescDao,
     private val lastReadNovelDao: LastReadNovelDao,
     private val updateQueueDao: UpdateQueueDao,
-    private val urlEntityDao: URLEntityDao
+    private val urlEntityDao: URLEntityDao,
+    private val imageCacheDao: ImageCacheDao
 ) {
     // Novel Description関連メソッド
     val allNovels: Flow<List<NovelDescEntity>> = novelDescDao.getAllNovels()
@@ -196,6 +199,19 @@ class NovelRepository(
 
     suspend fun updateReadingRate(ncode: String, episodeNo: String, readingRate: Float) {
         episodeDao.updateReadingRate(ncode, episodeNo, readingRate)
+    }
+
+    // 画像キャッシュ関連メソッド
+    suspend fun getImageByHash(hash: String): ImageCacheEntity? {
+        return imageCacheDao.getImageByHash(hash)
+    }
+
+    suspend fun getImageByUrl(url: String): ImageCacheEntity? {
+        return imageCacheDao.getImageByUrl(url)
+    }
+
+    suspend fun insertImageCache(image: ImageCacheEntity) {
+        imageCacheDao.insertImage(image)
     }
 
     suspend fun getOrCreateURL(ncode: String, isR18: Boolean = false): URLEntity {

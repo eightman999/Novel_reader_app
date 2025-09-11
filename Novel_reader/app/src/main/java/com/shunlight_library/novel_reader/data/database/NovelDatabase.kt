@@ -16,11 +16,13 @@ import com.shunlight_library.novel_reader.data.dao.LastReadNovelDao
 import com.shunlight_library.novel_reader.data.dao.NovelDescDao
 import com.shunlight_library.novel_reader.data.dao.URLEntityDao
 import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
+import com.shunlight_library.novel_reader.data.dao.ImageCacheDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
+import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -70,15 +72,31 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS image_cache (" +
+                    "hash TEXT NOT NULL PRIMARY KEY, " +
+                    "original_url TEXT NOT NULL, " +
+                    "local_path TEXT NOT NULL, " +
+                    "mime_type TEXT NOT NULL)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_image_cache_hash ON image_cache (hash)"
+        )
+    }
+}
+
 @Database(
     entities = [
         EpisodeEntity::class,
         NovelDescEntity::class,
         LastReadNovelEntity::class,
         UpdateQueueEntity::class,
-        URLEntity::class
+        URLEntity::class,
+        ImageCacheEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -87,6 +105,7 @@ abstract class NovelDatabase : RoomDatabase() {
     abstract fun lastReadNovelDao(): LastReadNovelDao
     abstract fun updateQueueDao(): UpdateQueueDao
     abstract fun urlEntityDao(): URLEntityDao
+    abstract fun imageCacheDao(): ImageCacheDao
 
     companion object {
         @Volatile
@@ -99,7 +118,14 @@ abstract class NovelDatabase : RoomDatabase() {
                     NovelDatabase::class.java,
                     "novel_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7
+                    )
                     .build()
                 INSTANCE = instance
                 instance
