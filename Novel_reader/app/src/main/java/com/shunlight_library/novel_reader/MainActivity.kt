@@ -291,33 +291,6 @@ when (val currentScreen = navigationManager.currentScreen) {
         )
     }
 
-    fun onVersionTap() {
-        val current = System.currentTimeMillis()
-        if (current - lastVersionTapTime < versionTapThreshold) {
-            versionTapCount++
-            if (versionTapCount == 7) {
-                versionTapCount = 0
-                scope.launch {
-                    val info = repository.getDatabaseDebugInfo()
-                    val message = "おめでとう！あなたも開発者だ！"
-                    notificationStore?.addNotification(
-                        AppNotification(
-                            id = "dev_${System.currentTimeMillis()}",
-                            title = message,
-                            content = info,
-                            timestamp = System.currentTimeMillis(),
-                            type = NotificationType.INFO
-                        )
-                    )
-                    sendDevNotification(context, message, info)
-                }
-            }
-        } else {
-            versionTapCount = 1
-        }
-        lastVersionTapTime = current
-    }
-
     is Screen.EpisodeView -> {
         EpisodeViewScreen(
             ncode = currentScreen.ncode,
@@ -474,6 +447,33 @@ fun MainScreen(
     var versionTapCount by remember { mutableStateOf(0) }
     var lastVersionTapTime by remember { mutableStateOf(0L) }
     val versionTapThreshold = 1000
+
+    fun onVersionTap() {
+        val current = System.currentTimeMillis()
+        if (current - lastVersionTapTime < versionTapThreshold) {
+            versionTapCount++
+            if (versionTapCount == 7) {
+                versionTapCount = 0
+                scope.launch {
+                    val info = repository.getDatabaseDebugInfo()
+                    val message = "おめでとう！あなたも開発者だ！"
+                    notificationStore?.addNotification(
+                        AppNotification(
+                            id = "dev_${System.currentTimeMillis()}",
+                            title = message,
+                            content = info,
+                            timestamp = System.currentTimeMillis(),
+                            type = NotificationType.INFO
+                        )
+                    )
+                    sendDevNotification(context, message, info)
+                }
+            }
+        } else {
+            versionTapCount = 1
+        }
+        lastVersionTapTime = current
+    }
 
     // 通知データの監視
     if (notificationStore != null) {
