@@ -805,111 +805,112 @@ fun NovelListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
-            .clickable(onClick = onClick),
+            .padding(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            if (showTitle) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick)
+            ) {
+                if (showTitle) {
                     Text(
                         text = novel.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
+                        fontWeight = FontWeight.Bold
                     )
-                    IconButton(
-                        onClick = { onFavoriteClick(!novel.is_favorite) },
-                        modifier = Modifier.size(32.dp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                if (showAuthor) {
+                    Text(
+                        text = "作者: ${novel.author}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                if (showSynopsis) {
+                    Text(
+                        text = novel.Synopsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (showTags) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (novel.is_favorite) Icons.Default.Star else Icons.Default.StarBorder,
-                            contentDescription = if (novel.is_favorite) "お気に入りから削除" else "お気に入りに追加",
-                            tint = if (novel.is_favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-
-            if (showAuthor) {
-                Text(
-                    text = "作者: ${novel.author}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-
-            if (showSynopsis) {
-                Text(
-                    text = novel.Synopsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            if (showTags) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "タグ: ${novel.main_tag}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    if (novel.sub_tag.isNotEmpty()) {
                         Text(
-                            text = ", ${novel.sub_tag}",
+                            text = "タグ: ${novel.main_tag}",
                             style = MaterialTheme.typography.bodySmall
                         )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (showRating) {
-                    Text(
-                        text = "評価: ${novel.rating}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                if (showUpdateDate) {
-                    Text(
-                        text = "更新: ${novel.last_update_date}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                if (showEpisodeCount) {
-                    Row {
-                        Text(
-                            text = "全${novel.total_ep}話",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        if (unreadCount > 0) {
+                        if (novel.sub_tag.isNotEmpty()) {
                             Text(
-                                text = "(未読${unreadCount}話)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
+                                text = ", ${novel.sub_tag}",
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    if (showRating) {
+                        Text(
+                            text = "評価: ${novel.rating}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    if (showUpdateDate) {
+                        Text(
+                            text = "更新: ${novel.last_update_date}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    if (showEpisodeCount) {
+                        Row {
+                            Text(
+                                text = "全${novel.total_ep}話",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            if (unreadCount > 0) {
+                                Text(
+                                    text = "(未読${unreadCount}話)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = { onFavoriteClick(!novel.is_favorite) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = if (novel.is_favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (novel.is_favorite) "お気に入りから削除" else "お気に入りに追加",
+                    tint = if (novel.is_favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
             }
         }
     }

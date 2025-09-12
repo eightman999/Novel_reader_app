@@ -312,3 +312,8 @@
 - Added ReleaseUtils utility and DataStore key for last notified release
 - Added version info button at bottom of main menu
 - Background check runs in AutoUpdateWorker and MainActivity
+
+## 2025/9/12
+### Fix favorite toggle on novel list screen
+- Separated favorite star from list item click area
+- Enabled toggling favorites without navigating to novel detail
