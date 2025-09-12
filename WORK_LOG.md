@@ -312,3 +312,33 @@
 - Added ReleaseUtils utility and DataStore key for last notified release
 - Added version info button at bottom of main menu
 - Background check runs in AutoUpdateWorker and MainActivity
+
+## 2025/9/11
+### 1. NovelListScreen フィルター設定自動保存
+
+**問題**: フィルター変更後にダイアログ外をタップすると設定が保存されず、画面遷移するとリセットされる
+
+**解決策**:
+- 設定読み込み完了フラグを導入
+- `LaunchedEffect` で `sortField`・`sortDirection`・`filterSettings` の変更時に自動保存
+
+**変更ファイル**:
+- `NovelListScreen.kt`
+- `WORK_LOG.md`
+
+**効果**: 小説一覧ページのフィルター・ソート設定が画面遷移後も維持される
+
+## 2025/9/15
+### NovelListScreen フィルター設定再保存の改善
+
+**問題**: 設定を保存しても画面遷移時にリセットされることがあった
+
+**解決策**:
+- 設定保存処理をサスペンド関数化して確実に完了させる
+- 画面離脱時にも設定を保存する `DisposableEffect` を追加
+
+**変更ファイル**:
+- `NovelListScreen.kt`
+- `WORK_LOG.md`
+
+**効果**: フィルター設定が画面遷移後も確実に維持される

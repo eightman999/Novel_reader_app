@@ -114,25 +114,24 @@ fun NovelListScreen(
     var displayedNovels by remember { mutableStateOf<List<NovelWithReadInfo>>(emptyList()) }
     var lastReadMap by remember { mutableStateOf<Map<String, LastReadNovelEntity>>(emptyMap()) }
 
-    // 設定を保存する関数（手動呼び出し時のみ）
-    val saveCurrentSettings = remember {
-        {
-            scope.launch {
-                val settings = NovelListFilterSettings(
-                    sortField = sortField.name,
-                    sortDirection = sortDirection.name,
-                    minRating = filterSettings.minRating,
-                    maxRating = filterSettings.maxRating,
-                    hideRating5WithNoEpisodes = filterSettings.hideRating5WithNoEpisodes,
-                    showCompleted = filterSettings.showCompleted,
-                    showOngoing = filterSettings.showOngoing,
-                    showFavoritesOnly = filterSettings.showFavoritesOnly,
-                    showLongNovels = filterSettings.showLongNovels,
-                    showShortNovels = filterSettings.showShortNovels
-                )
-                settingsStore.saveNovelListFilterSettings(settings)
-            }
-        }
+    // 設定読み込み完了フラグ
+    var settingsLoaded by remember { mutableStateOf(false) }
+
+    // 設定を保存する関数
+    val saveCurrentSettings: suspend () -> Unit = {
+        val settings = NovelListFilterSettings(
+            sortField = sortField.name,
+            sortDirection = sortDirection.name,
+            minRating = filterSettings.minRating,
+            maxRating = filterSettings.maxRating,
+            hideRating5WithNoEpisodes = filterSettings.hideRating5WithNoEpisodes,
+            showCompleted = filterSettings.showCompleted,
+            showOngoing = filterSettings.showOngoing,
+            showFavoritesOnly = filterSettings.showFavoritesOnly,
+            showLongNovels = filterSettings.showLongNovels,
+            showShortNovels = filterSettings.showShortNovels
+        )
+        settingsStore.saveNovelListFilterSettings(settings)
     }
 
     // フィルターとソートを適用する関数
@@ -261,6 +260,8 @@ fun NovelListScreen(
             showLongNovels = savedFilterSettings.showLongNovels,
             showShortNovels = savedFilterSettings.showShortNovels
         )
+
+        settingsLoaded = true
     }
     
     // 最終既読情報の取得
@@ -309,6 +310,22 @@ fun NovelListScreen(
     // 検索、フィルター、ソートが変更されたとき
     LaunchedEffect(searchText, searchField, sortField, sortDirection, filterSettings, allNovels) {
         applyFiltersAndSort()
+    }
+
+    // 設定変更時の自動保存
+    LaunchedEffect(sortField, sortDirection, filterSettings, settingsLoaded) {
+        if (settingsLoaded) {
+            saveCurrentSettings()
+        }
+    }
+
+    // 画面離脱時にも設定を保存
+    DisposableEffect(Unit) {
+        onDispose {
+            if (settingsLoaded) {
+                scope.launch { saveCurrentSettings() }
+            }
+        }
     }
 
     // 並び替えダイアログ
