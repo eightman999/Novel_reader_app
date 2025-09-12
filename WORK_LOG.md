@@ -313,6 +313,7 @@
 - Added version info button at bottom of main menu
 - Background check runs in AutoUpdateWorker and MainActivity
 
+
 ## 2025/9/11
 ### 1. NovelListScreen フィルター設定自動保存
 
@@ -328,7 +329,12 @@
 
 **効果**: 小説一覧ページのフィルター・ソート設定が画面遷移後も維持される
 
-## 2025/9/15
+## 2025/9/12
+### Fix favorite toggle on novel list screen
+- Separated favorite star from list item click area
+- Enabled toggling favorites without navigating to novel detail
+
+## 2025/9/12
 ### NovelListScreen フィルター設定再保存の改善
 
 **問題**: 設定を保存しても画面遷移時にリセットされることがあった
@@ -342,3 +348,4 @@
 - `WORK_LOG.md`
 
 **効果**: フィルター設定が画面遷移後も確実に維持される
+
