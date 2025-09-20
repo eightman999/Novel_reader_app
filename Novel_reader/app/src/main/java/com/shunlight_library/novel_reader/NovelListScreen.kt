@@ -402,7 +402,7 @@ fun NovelListScreen(
             confirmButton = {
                 Button(onClick = { 
                     showSortDialog = false
-                    saveCurrentSettings()
+                    scope.launch { saveCurrentSettings() }
                 }) {
                     Text("適用")
                 }
@@ -591,7 +591,7 @@ fun NovelListScreen(
             confirmButton = {
                 Button(onClick = { 
                     showFilterDialog = false
-                    saveCurrentSettings()
+                    scope.launch { saveCurrentSettings() }
                 }) {
                     Text("適用")
                 }
@@ -601,7 +601,7 @@ fun NovelListScreen(
                     // すべてのフィルターをリセット
                     filterSettings = FilterSettings()
                     showFilterDialog = false
-                    saveCurrentSettings()
+                    scope.launch { saveCurrentSettings() }
                 }) {
                     Text("リセット")
                 }
