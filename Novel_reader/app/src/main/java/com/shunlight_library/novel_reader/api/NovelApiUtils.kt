@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import org.yaml.snakeyaml.Yaml
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -29,6 +30,8 @@ import java.util.zip.GZIPInputStream
  */
 object NovelApiUtils {
     private const val TAG = "NovelApiUtils"
+    private val IMAGE_EXTENSION_REGEX =
+        ".*\\.(jpe?g|png|gif|bmp|webp|avif)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)
 
     data class NovelApiInfo(
         val generalAllNo: Int,
@@ -276,8 +279,9 @@ object NovelApiUtils {
                 val imgElements = doc.select("div.p-novel__body img")
                 for (img in imgElements) {
                     val srcUrl = img.absUrl("src")
-                    if (srcUrl.isNotEmpty()) {
-                        ImageCacheUtils.downloadAndCacheImage(srcUrl)?.let { localUri ->
+                    val resolvedUrl = resolveImageSource(img, srcUrl, randomUserAgent)
+                    if (!resolvedUrl.isNullOrEmpty()) {
+                        ImageCacheUtils.downloadAndCacheImage(resolvedUrl)?.let { localUri ->
                             img.attr("src", localUri)
                         }
                     }
@@ -316,6 +320,43 @@ object NovelApiUtils {
                 Log.e(TAG, "エピソード取得エラー: $episodeNo", e)
                 null
             }
+        }
+    }
+
+    private fun resolveImageSource(img: Element, defaultSrc: String, userAgent: String): String? {
+        if (defaultSrc.isBlank()) return null
+
+        if (hasImageExtension(defaultSrc)) {
+            return defaultSrc
+        }
+
+        val anchorElement = img.parents().firstOrNull { it.tagName() == "a" }
+        val linkedUrl = anchorElement?.absUrl("href")
+
+        if (!linkedUrl.isNullOrEmpty() && linkedUrl.contains("mitemin.net")) {
+            fetchMiteminOriginalImage(linkedUrl, userAgent)?.let { return it }
+        }
+
+        return defaultSrc
+    }
+
+    private fun hasImageExtension(url: String): Boolean {
+        return IMAGE_EXTENSION_REGEX.matches(url)
+    }
+
+    private fun fetchMiteminOriginalImage(pageUrl: String, userAgent: String): String? {
+        return try {
+            val pageDoc = Jsoup.connect(pageUrl)
+                .userAgent(userAgent)
+                .timeout(30000)
+                .get()
+
+            pageDoc.selectFirst("td.imageview a[href]")
+                ?.absUrl("href")
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.e(TAG, "ミテミン画像の取得に失敗しました: ${e.message}", e)
+            null
         }
     }
 
