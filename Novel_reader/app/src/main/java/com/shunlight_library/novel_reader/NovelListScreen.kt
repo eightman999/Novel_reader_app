@@ -81,7 +81,7 @@ fun NovelListScreen(
 ) {
     val repository = NovelReaderApplication.getRepository()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val settingsStore = remember { SettingsStore(context) }
+    val settingsStore = remember(context) { SettingsStore(context.applicationContext) }
     val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -135,6 +135,22 @@ fun NovelListScreen(
         settingsStore.saveNovelListFilterSettings(settings)
     }
 
+
+    // フィルターとソートを適用する関数
+    fun applyFiltersAndSort() {
+        if (!settingsLoaded) {
+            return
+        }
+        // フィルターの適用
+        // フィルターの適用
+        var filtered = allNovels.filter { novelWithInfo ->
+            val novel = novelWithInfo.novel
+
+            // rating5かつtotal_ep=0の場合は非表示にする設定
+            if (filterSettings.hideRating5WithNoEpisodes &&
+                novel.rating == 5 && novel.total_ep == 0) {
+                return@filter false
+
     val allNovels by remember(novelList, lastReadMap) {
         derivedStateOf {
             novelList.map { novel ->
@@ -145,6 +161,7 @@ fun NovelListScreen(
                     novel.total_ep
                 }
                 NovelWithReadInfo(novel, lastRead, unreadCount)
+
             }
         }
     }
@@ -282,17 +299,21 @@ fun NovelListScreen(
         )
 
         settingsLoaded = true
+        applyFiltersAndSort()
     }
-    
+
     // 最終既読情報の取得
-    LaunchedEffect(key1 = Unit) {
+    LaunchedEffect(settingsLoaded) {
+        if (!settingsLoaded) return@LaunchedEffect
         repository.allLastReadNovels.collect { lastReadList ->
             lastReadMap = lastReadList.associateBy { it.ncode }
+            applyFiltersAndSort()
         }
     }
 
     // 小説データの取得
-    LaunchedEffect(key1 = Unit) {
+    LaunchedEffect(settingsLoaded) {
+        if (!settingsLoaded) return@LaunchedEffect
         repository.allNovels.collect { novelsList ->
             novelsList.forEach { novel ->
                 if (novel.userid == null || novel.noveltype == null || novel.length == null) {
@@ -315,19 +336,13 @@ fun NovelListScreen(
         }
     }
 
-    // 設定変更時の自動保存
-    LaunchedEffect(sortField, sortDirection, filterSettings, settingsLoaded) {
-        if (settingsLoaded) {
-            saveCurrentSettings()
-        }
-    }
+    // 検索、フィルター、ソートが変更されたとき
+    LaunchedEffect(searchText, searchField, sortField, sortDirection, filterSettings, allNovels, settingsLoaded) {
 
-    // 画面離脱時にも設定を保存
-    DisposableEffect(Unit) {
-        onDispose {
-            if (settingsLoaded) {
-                scope.launch { saveCurrentSettings() }
-            }
+    // 設定変更時の自動保存
+
+        if (settingsLoaded) {
+            applyFiltersAndSort()
         }
     }
 
@@ -337,6 +352,9 @@ fun NovelListScreen(
             onDismissRequest = { showSortDialog = false },
             title = { Text("並び替え") },
             text = {
+                var tempSortField by remember(sortField) { mutableStateOf(sortField) }
+                var tempSortDirection by remember(sortDirection) { mutableStateOf(sortDirection) }
+
                 Column(modifier = Modifier.padding(8.dp)) {
                     // 並び替えフィールドの選択
                     Text("並び替え項目", style = MaterialTheme.typography.titleMedium)
@@ -346,13 +364,13 @@ fun NovelListScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { sortField = field }
+                                .clickable { tempSortField = field }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
-                                selected = sortField == field,
-                                onClick = { sortField = field }
+                                selected = tempSortField == field,
+                                onClick = { tempSortField = field }
                             )
                             Text(
                                 text = field.displayName,
@@ -370,13 +388,13 @@ fun NovelListScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { sortDirection = SortDirection.ASCENDING }
+                            .clickable { tempSortDirection = SortDirection.ASCENDING }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
-                            selected = sortDirection == SortDirection.ASCENDING,
-                            onClick = { sortDirection = SortDirection.ASCENDING }
+                            selected = tempSortDirection == SortDirection.ASCENDING,
+                            onClick = { tempSortDirection = SortDirection.ASCENDING }
                         )
                         Text(
                             text = "昇順 (A→Z, 小→大)",
@@ -387,13 +405,13 @@ fun NovelListScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { sortDirection = SortDirection.DESCENDING }
+                            .clickable { tempSortDirection = SortDirection.DESCENDING }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
-                            selected = sortDirection == SortDirection.DESCENDING,
-                            onClick = { sortDirection = SortDirection.DESCENDING }
+                            selected = tempSortDirection == SortDirection.DESCENDING,
+                            onClick = { tempSortDirection = SortDirection.DESCENDING }
                         )
                         Text(
                             text = "降順 (Z→A, 大→小)",
@@ -403,9 +421,13 @@ fun NovelListScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { 
+                Button(onClick = {
+                    sortField = tempSortField
+                    sortDirection = tempSortDirection
                     showSortDialog = false
-                    scope.launch { saveCurrentSettings() }
+                    if (settingsLoaded) {
+                        scope.launch { saveCurrentSettings() }
+                    }
                 }) {
                     Text("適用")
                 }
@@ -425,18 +447,20 @@ fun NovelListScreen(
             onDismissRequest = { showFilterDialog = false },
             title = { Text("フィルター設定") },
             text = {
+                var tempFilterSettings by remember(filterSettings) { mutableStateOf(filterSettings) }
+
                 Column(modifier = Modifier.padding(8.dp)) {
                     // 最低レーティング
-                    Text("最低レーティング: ${filterSettings.minRating}",
+                    Text("最低レーティング: ${tempFilterSettings.minRating}",
                         style = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Slider(
-                        value = filterSettings.minRating.toFloat(),
+                        value = tempFilterSettings.minRating.toFloat(),
                         onValueChange = {
                             // 最低値は最高値を超えないようにする
-                            val newMinRating = minOf(it.toInt(), filterSettings.maxRating)
-                            filterSettings = filterSettings.copy(minRating = newMinRating)
+                            val newMinRating = minOf(it.toInt(), tempFilterSettings.maxRating)
+                            tempFilterSettings = tempFilterSettings.copy(minRating = newMinRating)
                         },
                         valueRange = 0f..5f,
                         steps = 4,
@@ -458,16 +482,16 @@ fun NovelListScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // 最高レーティング
-                    Text("最高レーティング: ${filterSettings.maxRating}",
+                    Text("最高レーティング: ${tempFilterSettings.maxRating}",
                         style = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Slider(
-                        value = filterSettings.maxRating.toFloat(),
+                        value = tempFilterSettings.maxRating.toFloat(),
                         onValueChange = {
                             // 最高値は最低値を下回らないようにする
-                            val newMaxRating = maxOf(it.toInt(), filterSettings.minRating)
-                            filterSettings = filterSettings.copy(maxRating = newMaxRating)
+                            val newMaxRating = maxOf(it.toInt(), tempFilterSettings.minRating)
+                            tempFilterSettings = tempFilterSettings.copy(maxRating = newMaxRating)
                         },
                         valueRange = 0f..5f,
                         steps = 4,
@@ -495,17 +519,17 @@ fun NovelListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                filterSettings = filterSettings.copy(
-                                    hideRating5WithNoEpisodes = !filterSettings.hideRating5WithNoEpisodes
+                                tempFilterSettings = tempFilterSettings.copy(
+                                    hideRating5WithNoEpisodes = !tempFilterSettings.hideRating5WithNoEpisodes
                                 )
                             }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = filterSettings.hideRating5WithNoEpisodes,
+                            checked = tempFilterSettings.hideRating5WithNoEpisodes,
                             onCheckedChange = { checked ->
-                                filterSettings = filterSettings.copy(
+                                tempFilterSettings = tempFilterSettings.copy(
                                     hideRating5WithNoEpisodes = checked
                                 )
                             }
@@ -521,17 +545,17 @@ fun NovelListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                filterSettings = filterSettings.copy(
-                                    showFavoritesOnly = !filterSettings.showFavoritesOnly
+                                tempFilterSettings = tempFilterSettings.copy(
+                                    showFavoritesOnly = !tempFilterSettings.showFavoritesOnly
                                 )
                             }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = filterSettings.showFavoritesOnly,
+                            checked = tempFilterSettings.showFavoritesOnly,
                             onCheckedChange = { checked ->
-                                filterSettings = filterSettings.copy(
+                                tempFilterSettings = tempFilterSettings.copy(
                                     showFavoritesOnly = checked
                                 )
                             }
@@ -547,17 +571,17 @@ fun NovelListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                filterSettings = filterSettings.copy(
-                                    showLongNovels = !filterSettings.showLongNovels
+                                tempFilterSettings = tempFilterSettings.copy(
+                                    showLongNovels = !tempFilterSettings.showLongNovels
                                 )
                             }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = filterSettings.showLongNovels,
+                            checked = tempFilterSettings.showLongNovels,
                             onCheckedChange = { checked ->
-                                filterSettings = filterSettings.copy(showLongNovels = checked)
+                                tempFilterSettings = tempFilterSettings.copy(showLongNovels = checked)
                             }
                         )
                         Text(
@@ -571,17 +595,17 @@ fun NovelListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                filterSettings = filterSettings.copy(
-                                    showShortNovels = !filterSettings.showShortNovels
+                                tempFilterSettings = tempFilterSettings.copy(
+                                    showShortNovels = !tempFilterSettings.showShortNovels
                                 )
                             }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = filterSettings.showShortNovels,
+                            checked = tempFilterSettings.showShortNovels,
                             onCheckedChange = { checked ->
-                                filterSettings = filterSettings.copy(showShortNovels = checked)
+                                tempFilterSettings = tempFilterSettings.copy(showShortNovels = checked)
                             }
                         )
                         Text(
@@ -592,9 +616,12 @@ fun NovelListScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { 
+                Button(onClick = {
+                    filterSettings = tempFilterSettings
                     showFilterDialog = false
-                    scope.launch { saveCurrentSettings() }
+                    if (settingsLoaded) {
+                        scope.launch { saveCurrentSettings() }
+                    }
                 }) {
                     Text("適用")
                 }
@@ -604,7 +631,9 @@ fun NovelListScreen(
                     // すべてのフィルターをリセット
                     filterSettings = FilterSettings()
                     showFilterDialog = false
-                    scope.launch { saveCurrentSettings() }
+                    if (settingsLoaded) {
+                        scope.launch { saveCurrentSettings() }
+                    }
                 }) {
                     Text("リセット")
                 }
@@ -667,6 +696,9 @@ fun NovelListScreen(
                                 SortDirection.DESCENDING
                             } else {
                                 SortDirection.ASCENDING
+                            }
+                            if (settingsLoaded) {
+                                scope.launch { saveCurrentSettings() }
                             }
                         }) {
                             Icon(
