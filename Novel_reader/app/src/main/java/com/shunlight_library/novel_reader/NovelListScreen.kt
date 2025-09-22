@@ -136,21 +136,6 @@ fun NovelListScreen(
     }
 
 
-    // フィルターとソートを適用する関数
-    fun applyFiltersAndSort() {
-        if (!settingsLoaded) {
-            return
-        }
-        // フィルターの適用
-        // フィルターの適用
-        var filtered = allNovels.filter { novelWithInfo ->
-            val novel = novelWithInfo.novel
-
-            // rating5かつtotal_ep=0の場合は非表示にする設定
-            if (filterSettings.hideRating5WithNoEpisodes &&
-                novel.rating == 5 && novel.total_ep == 0) {
-                return@filter false
-
     val allNovels by remember(novelList, lastReadMap) {
         derivedStateOf {
             novelList.map { novel ->
@@ -299,7 +284,6 @@ fun NovelListScreen(
         )
 
         settingsLoaded = true
-        applyFiltersAndSort()
     }
 
     // 最終既読情報の取得
@@ -307,7 +291,6 @@ fun NovelListScreen(
         if (!settingsLoaded) return@LaunchedEffect
         repository.allLastReadNovels.collect { lastReadList ->
             lastReadMap = lastReadList.associateBy { it.ncode }
-            applyFiltersAndSort()
         }
     }
 
@@ -336,13 +319,10 @@ fun NovelListScreen(
         }
     }
 
-    // 検索、フィルター、ソートが変更されたとき
-    LaunchedEffect(searchText, searchField, sortField, sortDirection, filterSettings, allNovels, settingsLoaded) {
-
-    // 設定変更時の自動保存
-
+    // フィルターや並び替え設定が変更されたら自動保存
+    LaunchedEffect(sortField, sortDirection, filterSettings, settingsLoaded) {
         if (settingsLoaded) {
-            applyFiltersAndSort()
+            saveCurrentSettings()
         }
     }
 
