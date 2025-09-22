@@ -63,6 +63,7 @@ class SettingsStore(private val context: Context) {
         val SELF_SERVER_ACCESS = booleanPreferencesKey("self_server_access")
         val TEXT_ORIENTATION = stringPreferencesKey("text_orientation")
         val SELF_SERVER_PATH_KEY = stringPreferencesKey("self_server_path")
+        val IMAGE_SAVE_LOCATION = stringPreferencesKey("image_save_location")
 
         // 追加する表示設定のキー
         val SHOW_TITLE = booleanPreferencesKey("show_title")
@@ -123,6 +124,7 @@ class SettingsStore(private val context: Context) {
     val defaultSelfServerAccess = false
     val defaultTextOrientation = "Horizontal"
     val defaultSelfServerPath = ""
+    val defaultImageSaveLocation = ""
 
     // デフォルト値
     val defaultShowTitle = true
@@ -225,6 +227,18 @@ class SettingsStore(private val context: Context) {
     val selfServerPath = context.dataStore.data.map { preferences: Preferences ->
         preferences[SELF_SERVER_PATH_KEY] ?: ""
     }
+
+    val imageSaveLocation: Flow<String> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[IMAGE_SAVE_LOCATION] ?: defaultImageSaveLocation
+        }
     val fontColor: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
             if (exception is IOException) {
@@ -463,6 +477,23 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { preferences: MutablePreferences ->
             preferences[SELF_SERVER_PATH_KEY] = path
         }
+    }
+
+    suspend fun saveImageSaveLocation(uri: String) {
+        context.dataStore.edit { preferences ->
+            preferences[IMAGE_SAVE_LOCATION] = uri
+        }
+    }
+
+    suspend fun clearImageSaveLocation() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(IMAGE_SAVE_LOCATION)
+        }
+    }
+
+    suspend fun getImageSaveLocation(): String {
+        val preferences = context.dataStore.data.first()
+        return preferences[IMAGE_SAVE_LOCATION] ?: defaultImageSaveLocation
     }
     suspend fun saveFontColor(color: String) {
         context.dataStore.edit { preferences ->

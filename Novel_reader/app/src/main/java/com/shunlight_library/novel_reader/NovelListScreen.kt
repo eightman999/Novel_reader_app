@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -27,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.api.NovelApiUtils
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // 並び替え条件を定義する列挙型
@@ -110,9 +110,10 @@ fun NovelListScreen(
     var showSearchFieldDialog by remember { mutableStateOf(false) }
 
     // 小説リストの状態
-    var allNovels by remember { mutableStateOf<List<NovelWithReadInfo>>(emptyList()) }
-    var displayedNovels by remember { mutableStateOf<List<NovelWithReadInfo>>(emptyList()) }
+    var novelList by remember { mutableStateOf<List<NovelDescEntity>>(emptyList()) }
     var lastReadMap by remember { mutableStateOf<Map<String, LastReadNovelEntity>>(emptyMap()) }
+
+    val listState = rememberLazyListState()
 
     // 設定読み込み完了フラグ
     var settingsLoaded by remember { mutableStateOf(false) }
@@ -134,6 +135,7 @@ fun NovelListScreen(
         settingsStore.saveNovelListFilterSettings(settings)
     }
 
+
     // フィルターとソートを適用する関数
     fun applyFiltersAndSort() {
         if (!settingsLoaded) {
@@ -148,83 +150,115 @@ fun NovelListScreen(
             if (filterSettings.hideRating5WithNoEpisodes &&
                 novel.rating == 5 && novel.total_ep == 0) {
                 return@filter false
-            }
 
-            // ratingでフィルタリング（最低値と最高値の両方）
-            if (novel.rating < filterSettings.minRating || novel.rating > filterSettings.maxRating) {
-                return@filter false
-            }
-
-            // お気に入りフィルターが有効な場合、お気に入りでない小説を除外
-            if (filterSettings.showFavoritesOnly && !novel.is_favorite) {
-                return@filter false
-            }
-
-            // 長編・短編フィルター
-            if (!filterSettings.showLongNovels && novel.noveltype == 1) {
-                return@filter false
-            }
-            if (!filterSettings.showShortNovels && novel.noveltype == 2) {
-                return@filter false
-            }
-
-            // 検索テキストで絞り込み（テキストが入力されている場合のみ）
-            if (searchText.isNotEmpty()) {
-                when (searchField) {
-                    SearchField.NCODE ->
-                        if (!novel.ncode.contains(searchText, ignoreCase = true)) {
-                            return@filter false
-                        }
-                    SearchField.TITLE ->
-                        if (!novel.title.contains(searchText, ignoreCase = true)) {
-                            return@filter false
-                        }
-                    SearchField.AUTHOR ->
-                        if (!novel.author.contains(searchText, ignoreCase = true)) {
-                            return@filter false
-                        }
+    val allNovels by remember(novelList, lastReadMap) {
+        derivedStateOf {
+            novelList.map { novel ->
+                val lastRead = lastReadMap[novel.ncode]
+                val unreadCount = if (lastRead != null) {
+                    maxOf(0, novel.total_ep - lastRead.episode_no)
+                } else {
+                    novel.total_ep
                 }
-            }
+                NovelWithReadInfo(novel, lastRead, unreadCount)
 
-            true
+            }
         }
+    }
 
-        // ソートの適用
-        displayedNovels = when (sortField) {
-            SortField.NCODE -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.novel.ncode }
-            } else {
-                filtered.sortedByDescending { it.novel.ncode }
+    val displayedNovels by remember(
+        allNovels,
+        filterSettings,
+        searchText,
+        searchField,
+        sortField,
+        sortDirection
+    ) {
+        derivedStateOf {
+            val filtered = allNovels.filter { novelWithInfo ->
+                val novel = novelWithInfo.novel
+
+                if (filterSettings.hideRating5WithNoEpisodes &&
+                    novel.rating == 5 && novel.total_ep == 0) {
+                    return@filter false
+                }
+
+                if (novel.rating < filterSettings.minRating || novel.rating > filterSettings.maxRating) {
+                    return@filter false
+                }
+
+                if (filterSettings.showFavoritesOnly && !novel.is_favorite) {
+                    return@filter false
+                }
+
+                if (!filterSettings.showLongNovels && novel.noveltype == 1) {
+                    return@filter false
+                }
+                if (!filterSettings.showShortNovels && novel.noveltype == 2) {
+                    return@filter false
+                }
+
+                if (searchText.isNotEmpty()) {
+                    when (searchField) {
+                        SearchField.NCODE -> if (!novel.ncode.contains(searchText, ignoreCase = true)) {
+                            return@filter false
+                        }
+
+                        SearchField.TITLE -> if (!novel.title.contains(searchText, ignoreCase = true)) {
+                            return@filter false
+                        }
+
+                        SearchField.AUTHOR -> if (!novel.author.contains(searchText, ignoreCase = true)) {
+                            return@filter false
+                        }
+                    }
+                }
+
+                true
             }
-            SortField.TITLE -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.novel.title }
-            } else {
-                filtered.sortedByDescending { it.novel.title }
-            }
-            SortField.AUTHOR -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.novel.author }
-            } else {
-                filtered.sortedByDescending { it.novel.author }
-            }
-            SortField.TOTAL_EP -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.novel.total_ep }
-            } else {
-                filtered.sortedByDescending { it.novel.total_ep }
-            }
-            SortField.UNREAD_COUNT -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.unreadCount }
-            } else {
-                filtered.sortedByDescending { it.unreadCount }
-            }
-            SortField.LENGTH -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.novel.length ?: 0 }
-            } else {
-                filtered.sortedByDescending { it.novel.length ?: 0 }
-            }
-            SortField.LAST_UPDATE_DATE -> if (sortDirection == SortDirection.ASCENDING) {
-                filtered.sortedBy { it.novel.last_update_date }
-            } else {
-                filtered.sortedByDescending { it.novel.last_update_date }
+
+            when (sortField) {
+                SortField.NCODE -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.ncode }
+                } else {
+                    filtered.sortedByDescending { it.novel.ncode }
+                }
+
+                SortField.TITLE -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.title }
+                } else {
+                    filtered.sortedByDescending { it.novel.title }
+                }
+
+                SortField.AUTHOR -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.author }
+                } else {
+                    filtered.sortedByDescending { it.novel.author }
+                }
+
+                SortField.TOTAL_EP -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.total_ep }
+                } else {
+                    filtered.sortedByDescending { it.novel.total_ep }
+                }
+
+                SortField.UNREAD_COUNT -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.unreadCount }
+                } else {
+                    filtered.sortedByDescending { it.unreadCount }
+                }
+
+                SortField.LENGTH -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.length ?: 0 }
+                } else {
+                    filtered.sortedByDescending { it.novel.length ?: 0 }
+                }
+
+                SortField.LAST_UPDATE_DATE -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.last_update_date }
+                } else {
+                    filtered.sortedByDescending { it.novel.last_update_date }
+                }
             }
         }
     }
@@ -298,24 +332,15 @@ fun NovelListScreen(
                 }
             }
 
-            // 未読数を計算して小説情報を作成
-            allNovels = novelsList.map { novel ->
-                val lastRead = lastReadMap[novel.ncode]
-                val unreadCount = if (lastRead != null) {
-                    maxOf(0, novel.total_ep - lastRead.episode_no)
-                } else {
-                    novel.total_ep // 未読なら全話が未読
-                }
-                NovelWithReadInfo(novel, lastRead, unreadCount)
-            }
-
-            // 初期表示用に適用
-            applyFiltersAndSort()
+            novelList = novelsList
         }
     }
 
     // 検索、フィルター、ソートが変更されたとき
     LaunchedEffect(searchText, searchField, sortField, sortDirection, filterSettings, allNovels, settingsLoaded) {
+
+    // 設定変更時の自動保存
+
         if (settingsLoaded) {
             applyFiltersAndSort()
         }
@@ -779,7 +804,8 @@ fun NovelListScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(innerPadding),
+                state = listState
             ) {
                 item {
                     // 結果件数を表示
@@ -790,7 +816,10 @@ fun NovelListScreen(
                     )
                 }
 
-                items(displayedNovels) { novelWithReadInfo ->
+                items(
+                    items = displayedNovels,
+                    key = { it.novel.ncode }
+                ) { novelWithReadInfo ->
                     NovelListItem(
                         novel = novelWithReadInfo.novel,
                         unreadCount = novelWithReadInfo.unreadCount,
@@ -805,6 +834,13 @@ fun NovelListScreen(
                         onFavoriteClick = { isFavorite ->
                             scope.launch {
                                 repository.updateFavoriteStatus(novelWithReadInfo.novel.ncode, isFavorite)
+                                novelList = novelList.map { novel ->
+                                    if (novel.ncode == novelWithReadInfo.novel.ncode) {
+                                        novel.copy(is_favorite = isFavorite)
+                                    } else {
+                                        novel
+                                    }
+                                }
                             }
                         }
                     )

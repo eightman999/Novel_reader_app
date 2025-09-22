@@ -47,7 +47,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.shunlight_library.novel_reader.metadata.MetadataUpdateManager
+import com.shunlight_library.novel_reader.metadata.MetadataUpdateResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private lateinit var navigationManager: NavigationManager
@@ -439,10 +443,20 @@ fun MainScreen(
     var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
     var updateInfoText by remember { mutableStateOf("新着0件・更新あり0件") }
     var showR18Dialog by remember { mutableStateOf(false) }
-    
+
     // 通知関連の状態
     var unreadNotificationCount by remember { mutableStateOf(0) }
     var showNotificationDialog by remember { mutableStateOf(false) }
+
+    // メタデータ補完ダイアログ用の状態
+    var showMetadataConfirm by remember { mutableStateOf(false) }
+    var showMetadataProgressDialog by remember { mutableStateOf(false) }
+    var isMetadataRunning by remember { mutableStateOf(false) }
+    var metadataProgress by remember { mutableStateOf(0f) }
+    var metadataStatusText by remember { mutableStateOf("処理を準備しています...") }
+    var metadataResult by remember { mutableStateOf<MetadataUpdateResult?>(null) }
+    var metadataProcessed by remember { mutableStateOf(0) }
+    var metadataTotal by remember { mutableStateOf(0) }
 
     var versionTapCount by remember { mutableStateOf(0) }
     var lastVersionTapTime by remember { mutableStateOf(0L) }
@@ -771,7 +785,7 @@ fun MainScreen(
                             onNavigate(Screen.Settings)
                         }
                     )
-                    
+
                     // 通知ボタン（バッジ付き）
                     Box {
                         MenuButton(
@@ -806,6 +820,24 @@ fun MainScreen(
                 }
             }
 
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MenuButton(
+                        icon = "🗂",
+                        text = "メタデータ補完",
+                        onClick = {
+                            showMetadataConfirm = true
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(160.dp))
+                }
+            }
+
             // アプリバージョン表示
             item {
                 Row(
@@ -824,6 +856,118 @@ fun MainScreen(
         }
     }
     
+    if (showMetadataConfirm) {
+        AlertDialog(
+            onDismissRequest = { showMetadataConfirm = false },
+            title = { Text("メタデータ補完の確認") },
+            text = { Text("不足しているメタデータをバッチ処理で取得しますか？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMetadataConfirm = false
+                    showMetadataProgressDialog = true
+                    isMetadataRunning = true
+                    metadataResult = null
+                    metadataProgress = 0f
+                    metadataProcessed = 0
+                    metadataTotal = 0
+                    metadataStatusText = "処理を準備しています..."
+                    scope.launch {
+                        val result = MetadataUpdateManager.updateMissingMetadata(repository) { processed, total ->
+                            withContext(Dispatchers.Main) {
+                                metadataTotal = total
+                                metadataProcessed = processed
+                                metadataProgress = if (total == 0) 1f else processed.toFloat() / total.toFloat()
+                                metadataStatusText = if (total == 0) {
+                                    "更新対象はありません。"
+                                } else {
+                                    "処理中... (${processed}/${total})"
+                                }
+                            }
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            isMetadataRunning = false
+                            metadataResult = result
+                            metadataStatusText = when {
+                                result.hadError -> {
+                                    "処理中にエラーが発生しました。ログを確認してください。"
+                                }
+                                result.targets == 0 -> {
+                                    "更新対象の小説は見つかりませんでした。"
+                                }
+                                else -> {
+                                    "処理が完了しました。${result.targets}件中${result.updated}件のメタデータを更新しました。"
+                                }
+                            }
+                            metadataProgress = 1f
+                        }
+                    }
+                }) {
+                    Text("実行")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMetadataConfirm = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    if (showMetadataProgressDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isMetadataRunning) {
+                    showMetadataProgressDialog = false
+                }
+            },
+            title = {
+                Text(if (isMetadataRunning) "メタデータ補完を実行中" else "メタデータ補完の結果")
+            },
+            text = {
+                Column {
+                    if (isMetadataRunning) {
+                        LinearProgressIndicator(
+                            progress = metadataProgress.coerceIn(0f, 1f),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(metadataStatusText)
+                        if (metadataTotal > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("${metadataProcessed}/${metadataTotal}")
+                        }
+                    } else {
+                        Text(metadataStatusText)
+                        metadataResult?.let { result ->
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("対象作品: ${result.targets}件")
+                            Text("更新された作品: ${result.updated}件")
+                            if (result.hadError) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "処理中に問題が発生しました。詳細はログを確認してください。",
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (isMetadataRunning) {
+                    TextButton(onClick = { }, enabled = false) {
+                        Text("処理中")
+                    }
+                } else {
+                    TextButton(onClick = { showMetadataProgressDialog = false }) {
+                        Text("閉じる")
+                    }
+                }
+            }
+        )
+    }
+
     // 通知ダイアログ
     if (showNotificationDialog && notificationStore != null) {
         NotificationDialog(

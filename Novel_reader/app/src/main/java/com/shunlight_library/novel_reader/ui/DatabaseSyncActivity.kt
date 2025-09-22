@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,11 +29,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
+import com.shunlight_library.novel_reader.data.sync.DatabaseExportManager
 import com.shunlight_library.novel_reader.data.sync.ImprovedDatabaseSyncManager
 import com.shunlight_library.novel_reader.ui.theme.Novel_readerTheme
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.background
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class DatabaseSyncActivity : ComponentActivity() {
 
@@ -72,6 +75,8 @@ fun DatabaseSyncScreen(
     // 追加の状態変数
     var currentCount by remember { mutableStateOf(0) }
     var totalCount by remember { mutableStateOf(0) }
+    var isExporting by remember { mutableStateOf(false) }
+    var exportResult by remember { mutableStateOf<DatabaseExportManager.ExportResult?>(null) }
 
     // ログメッセージに関する状態変数を修正
     val maxLogMessages = 20 // 最大ログ表示数
@@ -103,6 +108,36 @@ fun DatabaseSyncScreen(
                     addLog("エラー: アクセス権限の取得に失敗しました")
                 }
             }
+        }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            addLog("データベース書き出しを開始します ($timestamp)")
+            isExporting = true
+            exportResult = null
+            scope.launch {
+                val manager = DatabaseExportManager(context)
+                val result = manager.exportDatabase(uri)
+                exportResult = result
+                isExporting = false
+
+                if (result.success) {
+                    val sizeInKb = result.bytesCopied / 1024f
+                    val message = "書き出し完了: ${String.format(Locale.getDefault(), "%.1f", sizeInKb)}KB"
+                    addLog("完了: $message")
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                } else {
+                    val errorMsg = result.errorMessage ?: "不明なエラー"
+                    addLog("エラー: 書き出しに失敗しました - $errorMsg")
+                    Toast.makeText(context, "書き出しに失敗しました", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            addLog("書き出しをキャンセルしました")
         }
     }
 
@@ -341,11 +376,71 @@ fun DatabaseSyncScreen(
 
                         Button(
                             onClick = { startSync() },
-                            enabled = selectedUri != null && !isSyncing,
+                            enabled = selectedUri != null && !isSyncing && !isExporting,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("同期を開始")
                         }
+                    }
+                }
+            }
+
+            // データベース書き出しセクション
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "データベース書き出し",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Text(
+                        text = "現在の内部データベースをバックアップとして書き出します。", 
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    if (isExporting) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Text("書き出し中...")
+                        }
+                    } else {
+                        exportResult?.let { result ->
+                            if (result.success) {
+                                Text(
+                                    text = "直近の書き出し: ${String.format(Locale.getDefault(), "%.1fKB", result.bytesCopied / 1024f)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Text(
+                                    text = "書き出しに失敗しました: ${result.errorMessage ?: "不明なエラー"}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            val defaultName = "novel_database_backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.db"
+                            exportLauncher.launch(defaultName)
+                        },
+                        enabled = !isSyncing && !isExporting,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("データベースを書き出す")
                     }
                 }
             }
