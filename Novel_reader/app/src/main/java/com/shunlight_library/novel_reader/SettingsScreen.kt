@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.documentfile.provider.DocumentFile
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncManager
 import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import com.shunlight_library.novel_reader.ui.components.DatabaseFileSelector
@@ -65,6 +66,7 @@ fun SettingsScreenUpdated(
     var swipeEnabled by remember { mutableStateOf(true) }
     var tapEnabled by remember { mutableStateOf(false) }
     var selfServerPath by remember { mutableStateOf("") }
+    var imageSaveLocation by remember { mutableStateOf("") }
 
     // 新しい状態変数を追加
     var fontColor by remember { mutableStateOf("#000000") }
@@ -103,6 +105,21 @@ fun SettingsScreenUpdated(
         MaterialTheme.colorScheme.background
     }
 
+    val imageSaveLocationLabel = remember(imageSaveLocation) {
+        if (imageSaveLocation.isBlank()) {
+            "未設定"
+        } else {
+            runCatching {
+                val uri = Uri.parse(imageSaveLocation)
+                DocumentFile.fromTreeUri(context, uri)?.name
+                    ?: uri.lastPathSegment
+                    ?: imageSaveLocation
+            }.getOrElse {
+                imageSaveLocation
+            }
+        }
+    }
+
     // フォントピッカーランチャーを定義
     val fontPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -136,6 +153,43 @@ fun SettingsScreenUpdated(
         }
     }
 
+    val imageDirectoryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let {
+            val uriString = it.toString()
+            val contentResolver = context.contentResolver
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            try {
+                val alreadyPersisted = contentResolver.persistedUriPermissions.any { permission ->
+                    permission.uri == it
+                }
+                if (!alreadyPersisted) {
+                    contentResolver.takePersistableUriPermission(it, flags)
+                }
+
+                val previousUri = imageSaveLocation
+                imageSaveLocation = uriString
+                scope.launch {
+                    settingsStore.saveImageSaveLocation(uriString)
+                }
+
+                if (previousUri.isNotBlank() && previousUri != uriString) {
+                    runCatching {
+                        contentResolver.releasePersistableUriPermission(Uri.parse(previousUri), flags)
+                    }.onFailure { e ->
+                        Log.w("SettingsScreen", "前の保存先の権限解放に失敗: ${e.message}", e)
+                    }
+                }
+
+                Toast.makeText(context, "画像の保存先を設定しました", Toast.LENGTH_SHORT).show()
+            } catch (e: SecurityException) {
+                Log.e("SettingsScreen", "保存先ディレクトリの権限取得に失敗: ${e.message}", e)
+                Toast.makeText(context, "フォルダへのアクセス権限を取得できませんでした", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     // Load saved preferences when the screen is created
     LaunchedEffect(Unit) {
         try {
@@ -148,6 +202,7 @@ fun SettingsScreenUpdated(
             swipeEnabled = settingsStore.swipeEnabled.first()
             tapEnabled = settingsStore.tapEnabled.first()
             selfServerPath = settingsStore.selfServerPath.first()
+            imageSaveLocation = settingsStore.imageSaveLocation.first()
 
             // 表示関連の設定読み込み
             fontColor = settingsStore.fontColor.first()
@@ -461,6 +516,12 @@ fun SettingsScreenUpdated(
 
                                 // 自動更新設定を保存
                                 settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
+
+                                if (imageSaveLocation.isNotBlank()) {
+                                    settingsStore.saveImageSaveLocation(imageSaveLocation)
+                                } else {
+                                    settingsStore.clearImageSaveLocation()
+                                }
 
                                 // 自動更新スケジュールを設定
                                 autoUpdateScheduler.scheduleAutoUpdate(autoUpdateEnabled, autoUpdateTime)
@@ -919,6 +980,83 @@ fun SettingsScreenUpdated(
                     )
                 }
             }
+            HorizontalDivider()
+
+            SettingSection(title = "画像保存先") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = "現在の保存先",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = imageSaveLocationLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    if (imageSaveLocation.isNotBlank() && imageSaveLocationLabel != imageSaveLocation) {
+                        Text(
+                            text = imageSaveLocation,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = {
+                            val initialUri = imageSaveLocation
+                                .takeIf { it.isNotBlank() }
+                                ?.let { uriString -> runCatching { Uri.parse(uriString) }.getOrNull() }
+                            imageDirectoryPickerLauncher.launch(initialUri)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Folder, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("フォルダを選択")
+                    }
+
+                    if (imageSaveLocation.isNotBlank()) {
+                        OutlinedButton(
+                            onClick = {
+                                val previousUri = imageSaveLocation
+                                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                if (previousUri.isNotBlank()) {
+                                    runCatching {
+                                        val uri = Uri.parse(previousUri)
+                                        val hasPermission = context.contentResolver.persistedUriPermissions.any { it.uri == uri }
+                                        if (hasPermission) {
+                                            context.contentResolver.releasePersistableUriPermission(uri, flags)
+                                        }
+                                    }.onFailure { e ->
+                                        Log.w("SettingsScreen", "保存先の権限解放に失敗: ${e.message}", e)
+                                    }
+                                }
+
+                                imageSaveLocation = ""
+                                scope.launch {
+                                    settingsStore.clearImageSaveLocation()
+                                }
+                                Toast.makeText(context, "画像の保存先を未設定にしました", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("保存先をクリア")
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider()
 
             SettingSection(title = "自動更新設定") {
