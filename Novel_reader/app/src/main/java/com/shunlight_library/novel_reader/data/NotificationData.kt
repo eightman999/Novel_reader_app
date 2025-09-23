@@ -34,9 +34,10 @@ enum class NotificationType {
 }
 
 class NotificationStore(private val context: Context) {
-    
+
     companion object {
         val PENDING_NOTIFICATIONS = stringSetPreferencesKey("pending_notifications")
+        private const val MAX_NOTIFICATION_COUNT = 100
         private const val NOTIFICATION_TITLE_PREFIX = "notification_title_"
         private const val NOTIFICATION_CONTENT_PREFIX = "notification_content_"
         private const val NOTIFICATION_TIMESTAMP_PREFIX = "notification_timestamp_"
@@ -49,20 +50,52 @@ class NotificationStore(private val context: Context) {
             // 通知IDリストに追加
             val currentNotifications = preferences[PENDING_NOTIFICATIONS] ?: emptySet()
             preferences[PENDING_NOTIFICATIONS] = currentNotifications + notification.id
-            
+
             // 通知データを保存
             preferences[stringPreferencesKey("${NOTIFICATION_TITLE_PREFIX}${notification.id}")] = notification.title
             preferences[stringPreferencesKey("${NOTIFICATION_CONTENT_PREFIX}${notification.id}")] = notification.content
             preferences[longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${notification.id}")] = notification.timestamp
             preferences[stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${notification.id}")] = notification.type.name
             preferences[booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${notification.id}")] = notification.isRead
+
+            enforceNotificationLimit(preferences)
+        }
+    }
+
+    private fun enforceNotificationLimit(preferences: MutablePreferences) {
+        val notificationIds = preferences[PENDING_NOTIFICATIONS] ?: emptySet()
+        if (notificationIds.size <= MAX_NOTIFICATION_COUNT) {
+            return
+        }
+
+        val sortedByNewest = notificationIds
+            .map { id ->
+                val timestamp = preferences[longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${id}")] ?: Long.MIN_VALUE
+                id to timestamp
+            }
+            .sortedByDescending { it.second }
+
+        val idsToKeep = sortedByNewest
+            .take(MAX_NOTIFICATION_COUNT)
+            .mapTo(linkedSetOf<String>()) { it.first }
+
+        val idsToRemove = notificationIds - idsToKeep
+
+        preferences[PENDING_NOTIFICATIONS] = idsToKeep
+
+        idsToRemove.forEach { id ->
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_TITLE_PREFIX}${id}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_CONTENT_PREFIX}${id}"))
+            preferences.remove(longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${id}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${id}"))
+            preferences.remove(booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${id}"))
         }
     }
 
     suspend fun getAllNotifications(): List<AppNotification> {
         val preferences = context.notificationDataStore.data.first()
         val notificationIds = preferences[PENDING_NOTIFICATIONS] ?: emptySet()
-        
+
         return notificationIds.mapNotNull { id ->
             val title = preferences[stringPreferencesKey("${NOTIFICATION_TITLE_PREFIX}${id}")]
             val content = preferences[stringPreferencesKey("${NOTIFICATION_CONTENT_PREFIX}${id}")]
