@@ -328,13 +328,13 @@ fun NovelListScreen(
 
     // 並び替えダイアログ
     if (showSortDialog) {
+        var tempSortField by remember(showSortDialog, sortField) { mutableStateOf(sortField) }
+        var tempSortDirection by remember(showSortDialog, sortDirection) { mutableStateOf(sortDirection) }
+
         AlertDialog(
             onDismissRequest = { showSortDialog = false },
             title = { Text("並び替え") },
             text = {
-                var tempSortField by remember(sortField) { mutableStateOf(sortField) }
-                var tempSortDirection by remember(sortDirection) { mutableStateOf(sortDirection) }
-
                 Column(modifier = Modifier.padding(8.dp)) {
                     // 並び替えフィールドの選択
                     Text("並び替え項目", style = MaterialTheme.typography.titleMedium)
@@ -423,12 +423,12 @@ fun NovelListScreen(
     // フィルターダイアログ
     // フィルターダイアログ
     if (showFilterDialog) {
+        var tempFilterSettings by remember(showFilterDialog, filterSettings) { mutableStateOf(filterSettings) }
+
         AlertDialog(
             onDismissRequest = { showFilterDialog = false },
             title = { Text("フィルター設定") },
             text = {
-                var tempFilterSettings by remember(filterSettings) { mutableStateOf(filterSettings) }
-
                 Column(modifier = Modifier.padding(8.dp)) {
                     // 最低レーティング
                     Text("最低レーティング: ${tempFilterSettings.minRating}",
