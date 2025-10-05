@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 
 class NovelRepository(
     private val episodeDao: EpisodeDao,
@@ -124,6 +125,10 @@ class NovelRepository(
     }
 
     suspend fun deleteNovelWithRelations(novel: NovelDescEntity) {
+        val stopped = NovelUpdateCoordinator.cancelAndWait(novel.ncode)
+        if (!stopped) {
+            throw IllegalStateException("進行中の更新を停止できませんでした: ${novel.ncode}")
+        }
         withContext(Dispatchers.IO) {
             episodeDao.deleteEpisodesByNcode(novel.ncode)
             lastReadNovelDao.getLastReadByNcode(novel.ncode)?.let {
