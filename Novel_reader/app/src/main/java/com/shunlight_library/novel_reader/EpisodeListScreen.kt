@@ -28,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
-import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -38,13 +37,8 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisode
-import org.yaml.snakeyaml.Yaml
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.GZIPInputStream
+import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisodeWithRetry
+import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelInfo
 
 enum class UpdateType {
     UPDATE,      // 更新（新しいエピソードのみチェック）
@@ -138,69 +132,66 @@ fun EpisodeListScreen(
         updateMessage = "APIで最新情報を確認中..."
 
         scope.launch {
-            try {
-                val (newGeneralAllNo, newUpdatedAt) = fetchNovelInfo(novel?.ncode ?: "")
+            val targetNovel = novel ?: run {
+                updateProgress = 1f
+                updateMessage = "小説情報が読み込まれていません"
+                Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+                delay(1500)
+                isUpdating = false
+                showUpdateDialog = false
+                return@launch
+            }
 
-                if (newGeneralAllNo == -1) {
-                    // APIからデータが取得できなかった
-                    withContext(Dispatchers.Main) {
-                        updateProgress = 1f
-                        updateMessage = "APIからデータが取得できませんでした"
-                        Toast.makeText(context, "APIからデータが取得できませんでした", Toast.LENGTH_SHORT).show()
-                        delay(1500)
-                        isUpdating = false
-                        showUpdateDialog = false
-                    }
+            try {
+                val info = fetchNovelInfo(targetNovel.ncode, targetNovel.rating == 1)
+
+                if (info == null) {
+                    updateProgress = 1f
+                    updateMessage = "APIからデータが取得できませんでした"
+                    Toast.makeText(context, "APIからデータが取得できませんでした", Toast.LENGTH_SHORT).show()
+                    delay(1500)
+                    isUpdating = false
+                    showUpdateDialog = false
                     return@launch
                 }
 
-                // 更新があるか確認
-                if (novel != null && newGeneralAllNo > novel!!.general_all_no) {
-                    // 小説情報を更新
-                    val updatedNovel = novel!!.copy(
+                val newGeneralAllNo = info.generalAllNo
+                val newUpdatedAt = info.updatedAt
+
+                if (newGeneralAllNo > targetNovel.general_all_no) {
+                    val updatedNovel = targetNovel.copy(
                         general_all_no = newGeneralAllNo,
                         updated_at = newUpdatedAt
                     )
                     repository.updateNovel(updatedNovel)
 
-                    // 更新キューに追加
                     val updateQueue = UpdateQueueEntity(
-                        ncode = novel!!.ncode,
-                        total_ep = novel!!.total_ep,
+                        ncode = targetNovel.ncode,
+                        total_ep = targetNovel.total_ep,
                         general_all_no = newGeneralAllNo,
                         update_time = newUpdatedAt
                     )
                     repository.insertUpdateQueue(updateQueue)
 
-                    // 通知
-                    withContext(Dispatchers.Main) {
-                        updateProgress = 1f
-                        updateMessage = "更新を確認しました。更新キューに追加しました。"
-                        Toast.makeText(context, "更新を確認しました", Toast.LENGTH_SHORT).show()
-                        delay(1500)
-                        isUpdating = false
-                        showUpdateDialog = false
-                    }
-                } else {
-                    // 更新なし
-                    withContext(Dispatchers.Main) {
-                        updateProgress = 1f
-                        updateMessage = "更新はありません"
-                        Toast.makeText(context, "この小説に更新はありません", Toast.LENGTH_SHORT).show()
-                        delay(1500)
-                        isUpdating = false
-                        showUpdateDialog = false
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
                     updateProgress = 1f
-                    updateMessage = "エラー: ${e.message}"
-                    Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
-                    delay(1500)
-                    isUpdating = false
-                    showUpdateDialog = false
+                    updateMessage = "更新を確認しました。更新キューに追加しました。"
+                    Toast.makeText(context, "更新を確認しました", Toast.LENGTH_SHORT).show()
+                } else {
+                    updateProgress = 1f
+                    updateMessage = "更新はありません"
+                    Toast.makeText(context, "この小説に更新はありません", Toast.LENGTH_SHORT).show()
                 }
+
+                delay(1500)
+                isUpdating = false
+                showUpdateDialog = false
+            } catch (e: Exception) {
+                updateProgress = 1f
+                updateMessage = "エラー: ${e.message}"
+                Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
+                delay(1500)
+                isUpdating = false
+                showUpdateDialog = false
             }
         }
     }
@@ -281,18 +272,15 @@ fun EpisodeListScreen(
                     updateProgress = 0.3f
                     updateMessage = "APIで最新情報を確認中..."
 
-                    val (newGeneralAllNo, newUpdatedAt) = fetchNovelInfo(ncode)
+                    val info = fetchNovelInfo(ncode, targetNovel.rating == 1)
 
                     if (session.isCancelled()) {
                         handleCancellation()
                         return@launch
                     }
 
-                    var generalAllNoValue = newGeneralAllNo
-                    if (generalAllNoValue == -1) {
-                        // APIから取得失敗時は既存の値を使用
-                        generalAllNoValue = targetNovel.general_all_no
-                    }
+                    val generalAllNoValue = info?.generalAllNo ?: targetNovel.general_all_no
+                    val newUpdatedAt = info?.updatedAt ?: targetNovel.updated_at
 
                     // 小説情報を更新
                     val updatedNovel = targetNovel.copy(
@@ -406,7 +394,7 @@ fun EpisodeListScreen(
                             return@launch
                         }
 
-                        val episode = fetchEpisode(ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
+                        val episode = fetchEpisodeWithRetry(ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
 
                         if (episode != null) {
                             // データベースに保存
@@ -511,13 +499,9 @@ fun EpisodeListScreen(
                     updateProgress = 0.2f
                     updateMessage = "APIで最新情報を確認中..."
 
-                    val (newGeneralAllNo, _) = fetchNovelInfo(it.ncode)
+                    val info = fetchNovelInfo(it.ncode, it.rating == 1)
 
-                    var generalAllNoValue = newGeneralAllNo
-                    if (generalAllNoValue == -1) {
-                        // APIから取得失敗時は既存の値を使用
-                        generalAllNoValue = it.general_all_no
-                    }
+                    val generalAllNoValue = info?.generalAllNo ?: it.general_all_no
 
                     // エピソードの番号リスト（IntとStringの両方を持つ）
                     val episodeNumberMap = episodesList.associate { episode ->
@@ -646,7 +630,7 @@ fun EpisodeListScreen(
                             return@launch
                         }
 
-                        val episode = fetchEpisode(targetNovel.ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
+                        val episode = fetchEpisodeWithRetry(targetNovel.ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
 
                         if (episode != null) {
                             // データベースに保存
@@ -1399,59 +1383,6 @@ fun EpisodeItem(
     }
 }
 
-
-// API呼び出し関数: APIから小説情報を取得
-private suspend fun fetchNovelInfo(ncode: String): Pair<Int, String> {
-    if (ncode.isEmpty()) return Pair(-1, "")
-
-    return withContext(Dispatchers.IO) {
-        try {
-            // API URLの構築（R18判定は呼び出し側で対応）
-            val apiUrl = "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
-
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val inputStream = GZIPInputStream(connection.inputStream)
-                val reader = BufferedReader(InputStreamReader(inputStream))
-                val content = StringBuilder()
-                var line: String?
-
-                while (reader.readLine().also { line = it } != null) {
-                    content.append(line).append("\n")
-                }
-
-                val yaml = Yaml()
-                val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
-
-                if (yamlData.size >= 2) {
-                    val novelData = yamlData[1]
-                    val newGeneralAllNo = novelData["general_all_no"] as Int
-
-                    // 更新日時の取得
-                    val updatedAtObj = novelData["updated_at"]
-                    val newUpdatedAt = when (updatedAtObj) {
-                        is String -> updatedAtObj
-                        is Date -> SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(updatedAtObj)
-                        else -> DatabaseSyncUtils.getCurrentDateTimeString()
-                    }
-
-                    Pair(newGeneralAllNo, newUpdatedAt)
-                } else {
-                    Pair(-1, "")
-                }
-            } else {
-                Pair(-1, "")
-            }
-        } catch (e: Exception) {
-            Log.e("EpisodeListScreen", "API取得エラー: ${e.message}", e)
-            Pair(-1, "")
-        }
-    }
-}
 
 // エピソードを取得する関数（スクレイピング）
 // UpdateInfoScreen.kt

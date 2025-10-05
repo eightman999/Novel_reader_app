@@ -15,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
 import org.yaml.snakeyaml.Yaml
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -275,45 +274,109 @@ object NovelApiUtils {
                 // タイトルと本文を取得
                 val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
 
+                val miteminLinkMap = mutableMapOf<String, String>()
+
                 // 画像をローカルキャッシュに置換
                 val imgElements = doc.select("div.p-novel__body img")
                 for (img in imgElements) {
-                    val srcUrl = img.absUrl("src")
-                    val resolvedUrl = resolveImageSource(img, srcUrl, randomUserAgent)
+                    var srcUrl = img.absUrl("src")
+                    if (srcUrl.isBlank()) {
+                        srcUrl = img.absUrl("data-src")
+                    }
+                    if (srcUrl.isBlank()) {
+                        srcUrl = img.absUrl("data-original")
+                    }
+
+                    val anchorElement = img.parents().firstOrNull { it.tagName() == "a" }
+                    val linkedUrl = anchorElement?.absUrl("href")?.takeIf { it.isNotBlank() }
+
+                    val resolvedUrl = resolveImageSource(srcUrl, linkedUrl, randomUserAgent)
                     if (!resolvedUrl.isNullOrEmpty()) {
                         ImageCacheUtils.downloadAndCacheImage(resolvedUrl)?.let { localUri ->
                             img.attr("src", localUri)
+
+                            anchorElement?.attr("href", localUri)
+
+                            if (!linkedUrl.isNullOrEmpty()) {
+                                miteminLinkMap[linkedUrl] = localUri
+                            }
+                            if (srcUrl.isNotBlank()) {
+                                miteminLinkMap[srcUrl] = localUri
+                            }
+                            miteminLinkMap[resolvedUrl] = localUri
                         }
+                    }
+                }
+
+                // 本文内のミテミンリンクをローカルキャッシュへ置換
+                for (anchor in doc.select("a[href*='mitemin.net']")) {
+                    val rawHref = anchor.attr("href")
+                    val absoluteHref = anchor.absUrl("href").takeIf { it.isNotBlank() } ?: rawHref
+
+                    val replacement = miteminLinkMap[absoluteHref]
+                        ?: miteminLinkMap[rawHref]
+                        ?: run {
+                            if (absoluteHref.contains("mitemin.net")) {
+                                fetchMiteminOriginalImage(absoluteHref, randomUserAgent)?.let { directUrl ->
+                                    val cached = miteminLinkMap[directUrl]
+                                    if (cached != null) {
+                                        cached
+                                    } else {
+                                        ImageCacheUtils.downloadAndCacheImage(directUrl)?.also { localUri ->
+                                            miteminLinkMap[absoluteHref] = localUri
+                                            if (rawHref.isNotBlank()) {
+                                                miteminLinkMap[rawHref] = localUri
+                                            }
+                                            miteminLinkMap[directUrl] = localUri
+                                        }
+                                    }
+                                }
+                            } else {
+                                null
+                            }
+                        }
+
+                    if (!replacement.isNullOrEmpty()) {
+                        anchor.attr("href", replacement)
                     }
                 }
 
                 val bodyElements = doc.select("div.p-novel__body > div")
-                val body = StringBuilder()
-
+                var bodyHtml = StringBuilder()
+                
                 if (bodyElements.isNotEmpty()) {
                     bodyElements.forEachIndexed { index, element ->
-                        body.append(element.outerHtml())
+                        bodyHtml.append(element.outerHtml())
                         // 最後の要素でなければ<hr>を追加
                         if (index < bodyElements.size - 1) {
-                            body.append("\n<hr>\n")
+                            bodyHtml.append("\n<hr>\n")
                         }
                     }
                 }
 
-                if (title.isNotEmpty() && body.isNotEmpty()) {
+                var bodyString = bodyHtml.toString()
+                if (bodyString.isNotEmpty()) {
+                    miteminLinkMap.forEach { (remoteUrl, localUri) ->
+                        if (remoteUrl.isNotBlank() && localUri.isNotBlank()) {
+                            bodyString = bodyString.replace(remoteUrl, localUri)
+                        }
+                    }
+                }
+
+                if (title.isNotEmpty() && bodyString.isNotEmpty()) {
                     val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
                     EpisodeEntity(
                         ncode = ncode,
                         episode_no = episodeNo.toString(),
-                        body = body.toString(),
+                        body = bodyString,
                         e_title = title,
                         update_time = currentDate,
                         is_read = false,
                         is_bookmark = false
                     )
                 } else {
-                    Log.e(TAG, "タイトルまたは本文が空です: title=${title.isNotEmpty()}, body=${body.isNotEmpty()}")
+                    Log.e(TAG, "タイトルまたは本文が空です: title=${title.isNotEmpty()}, body=${bodyString.isNotEmpty()}")
                     null
                 }
             } catch (e: Exception) {
@@ -323,15 +386,12 @@ object NovelApiUtils {
         }
     }
 
-    private fun resolveImageSource(img: Element, defaultSrc: String, userAgent: String): String? {
+    private fun resolveImageSource(defaultSrc: String, linkedUrl: String?, userAgent: String): String? {
         if (defaultSrc.isBlank()) return null
 
         if (hasImageExtension(defaultSrc)) {
             return defaultSrc
         }
-
-        val anchorElement = img.parents().firstOrNull { it.tagName() == "a" }
-        val linkedUrl = anchorElement?.absUrl("href")
 
         if (!linkedUrl.isNullOrEmpty() && linkedUrl.contains("mitemin.net")) {
             fetchMiteminOriginalImage(linkedUrl, userAgent)?.let { return it }
