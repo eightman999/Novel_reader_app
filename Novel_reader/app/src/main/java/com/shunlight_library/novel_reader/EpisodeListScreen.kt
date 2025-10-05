@@ -92,6 +92,10 @@ fun EpisodeListScreen(
     var missingEpisodeCount by remember { mutableStateOf(0) }
     var redownloadTargets by remember { mutableStateOf<List<Int>>(emptyList()) }
 
+    var isMenuExpanded by remember { mutableStateOf(false) }
+    var showDeleteNovelDialog by remember { mutableStateOf(false) }
+    var isDeletingNovel by remember { mutableStateOf(false) }
+
     // データの取得
     LaunchedEffect(ncode) {
         // 小説情報の取得
@@ -752,6 +756,63 @@ fun EpisodeListScreen(
         )
     }
 
+    if (showDeleteNovelDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteNovelDialog = false },
+            title = { Text("小説を削除") },
+            text = {
+                Text("この小説と関連するデータを削除しますか？")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteNovelDialog = false
+                        val currentNovel = novel
+                        if (currentNovel == null) {
+                            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+                        } else {
+                            isDeletingNovel = true
+                            scope.launch {
+                                try {
+                                    repository.deleteNovelWithRelations(currentNovel)
+                                    Toast.makeText(context, "小説を削除しました", Toast.LENGTH_SHORT).show()
+                                    onBack()
+                                } catch (e: Exception) {
+                                    Log.e("EpisodeListScreen", "小説削除エラー: ${e.message}", e)
+                                    Toast.makeText(context, "小説の削除に失敗しました: ${e.message}", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    isDeletingNovel = false
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text("削除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteNovelDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    if (isDeletingNovel) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("処理中") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("小説を削除しています...")
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
     // 画面の構成
     Scaffold(
         topBar = {
@@ -796,6 +857,28 @@ fun EpisodeListScreen(
                             contentDescription = if (novel?.is_favorite == true) "お気に入りから削除" else "お気に入りに追加",
                             tint = if (novel?.is_favorite == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
+                    }
+                    Box {
+                        IconButton(
+                            onClick = { isMenuExpanded = true },
+                            enabled = novel != null
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "その他の操作")
+                        }
+                        DropdownMenu(
+                            expanded = isMenuExpanded,
+                            onDismissRequest = { isMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("小説を削除") },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    showDeleteNovelDialog = true
+                                },
+                                enabled = !isDeletingNovel
+                            )
+                        }
                     }
                 }
             )
