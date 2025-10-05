@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -206,46 +207,115 @@ fun EpisodeListScreen(
 
     // 「再取得」実行関数
     fun performRedownload() {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         isUpdating = true
         updateProgress = 0f
         updateMessage = "エピソードを削除中..."
 
         scope.launch {
+            val ncode = targetNovel.ncode
             try {
-                // エピソードを削除
-                withContext(Dispatchers.IO) {
-                    novel?.let {
-                        repository.deleteEpisodesByNcode(it.ncode)
+                updateMessage = "他の更新処理の終了を待機しています..."
+                val cancelled = NovelUpdateCoordinator.cancelAndWait(ncode)
+                if (!cancelled) {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "他の更新処理を停止できませんでした"
+                        Toast.makeText(
+                            context,
+                            "進行中の更新を停止できませんでした。時間を置いて再度お試しください。",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        delay(1500)
+                        isUpdating = false
+                        showUpdateDialog = false
+                    }
+                    return@launch
+                }
+
+                val session = NovelUpdateCoordinator.awaitUpdateSlot(ncode)
+                if (session == null) {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "他の更新処理を待機中です"
+                        Toast.makeText(context, "他の更新処理が進行中です。時間を置いて再度お試しください。", Toast.LENGTH_SHORT).show()
+                        delay(1500)
+                        isUpdating = false
+                        showUpdateDialog = false
+                    }
+                    return@launch
+                }
+
+                suspend fun handleCancellation() {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "処理が中断されました"
+                        Toast.makeText(context, "更新処理が中断されました", Toast.LENGTH_SHORT).show()
+                        delay(1500)
+                        isUpdating = false
+                        showUpdateDialog = false
                     }
                 }
 
-                updateProgress = 0.3f
-                updateMessage = "APIで最新情報を確認中..."
+                try {
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
 
-                val (newGeneralAllNo, newUpdatedAt) = fetchNovelInfo(novel?.ncode ?: "")
+                    // エピソードを削除
+                    withContext(Dispatchers.IO) {
+                        repository.deleteEpisodesByNcode(ncode)
+                    }
 
-                var generalAllNoValue = newGeneralAllNo
-                if (generalAllNoValue == -1) {
-                    // APIから取得失敗時は既存の値を使用
-                    generalAllNoValue = novel?.general_all_no ?: 0
-                }
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
 
-                // 小説情報を更新
-                novel?.let { currentNovel ->
-                    val updatedNovel = currentNovel.copy(
+                    updateProgress = 0.3f
+                    updateMessage = "APIで最新情報を確認中..."
+
+                    val (newGeneralAllNo, newUpdatedAt) = fetchNovelInfo(ncode)
+
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
+
+                    var generalAllNoValue = newGeneralAllNo
+                    if (generalAllNoValue == -1) {
+                        // APIから取得失敗時は既存の値を使用
+                        generalAllNoValue = targetNovel.general_all_no
+                    }
+
+                    // 小説情報を更新
+                    val updatedNovel = targetNovel.copy(
                         general_all_no = generalAllNoValue,
                         total_ep = 0, // エピソードを削除したので0に
                         updated_at = newUpdatedAt
                     )
                     repository.updateNovel(updatedNovel)
-                }
 
-                // 確認ダイアログを表示するためにUIスレッドに戻る
-                withContext(Dispatchers.Main) {
-                    tempGeneralAllNo = generalAllNoValue
-                    isUpdating = false
-                    showUpdateDialog = false
-                    showDownloadConfirmDialog = true
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
+
+                    // 確認ダイアログを表示するためにUIスレッドに戻る
+                    withContext(Dispatchers.Main) {
+                        tempGeneralAllNo = generalAllNoValue
+                        isUpdating = false
+                        showUpdateDialog = false
+                        showDownloadConfirmDialog = true
+                    }
+                } finally {
+                    NovelUpdateCoordinator.finishUpdate(session)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -262,25 +332,81 @@ fun EpisodeListScreen(
 
     // エピソードをダウンロードする関数
     fun performDownloadEpisodes(generalAllNo: Int) {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         isUpdating = true
         updateProgress = 0.3f
         updateMessage = "エピソードを取得中... (0/$generalAllNo)"
 
         scope.launch {
+            val ncode = targetNovel.ncode
             try {
-                // 更新日時
-                val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                updateMessage = "他の更新処理の終了を待機しています..."
+                val cancelled = NovelUpdateCoordinator.cancelAndWait(ncode)
+                if (!cancelled) {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "他の更新処理を停止できませんでした"
+                        Toast.makeText(
+                            context,
+                            "進行中の更新を停止できませんでした。時間を置いて再度お試しください。",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        delay(1500)
+                        isUpdating = false
+                    }
+                    return@launch
+                }
 
-                var successCount = 0
-                var failCount = 0
+                val session = NovelUpdateCoordinator.awaitUpdateSlot(ncode)
+                if (session == null) {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "他の更新処理を待機中です"
+                        Toast.makeText(context, "他の更新処理が進行中です。時間を置いて再度お試しください。", Toast.LENGTH_SHORT).show()
+                        delay(1500)
+                        isUpdating = false
+                    }
+                    return@launch
+                }
 
-                // エピソード番号のリスト
-                val episodeNumbers = (1..generalAllNo).toList()
+                suspend fun handleCancellation() {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "処理が中断されました"
+                        Toast.makeText(context, "更新処理が中断されました", Toast.LENGTH_SHORT).show()
+                        delay(1500)
+                        isUpdating = false
+                    }
+                }
 
-                // スクレイピングの実行
-                for ((index, episodeNo) in episodeNumbers.withIndex()) {
-                    novel?.let {
-                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, it.noveltype)
+                try {
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
+
+                    // 更新日時
+                    val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+                    var successCount = 0
+                    var failCount = 0
+
+                    // エピソード番号のリスト
+                    val episodeNumbers = (1..generalAllNo).toList()
+
+                    // スクレイピングの実行
+                    for ((index, episodeNo) in episodeNumbers.withIndex()) {
+                        if (session.isCancelled()) {
+                            handleCancellation()
+                            return@launch
+                        }
+
+                        val episode = fetchEpisode(ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
 
                         if (episode != null) {
                             // データベースに保存
@@ -291,33 +417,39 @@ fun EpisodeListScreen(
                         } else {
                             failCount++
                         }
+
+                        // サーバーに負荷をかけないように少し待機
+                        delay(50)
+
+                        // 進捗を更新
+                        val progress = (index + 1).toFloat() / generalAllNo
+                        updateProgress = 0.3f + (0.7f * progress)
+                        updateMessage = "エピソードを取得中... (${index + 1}/$generalAllNo)"
                     }
 
-                    // サーバーに負荷をかけないように少し待機
-                    delay(50) // 1秒待機
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
 
-                    // 進捗を更新
-                    val progress = (index + 1).toFloat() / generalAllNo
-                    updateProgress = 0.3f + (0.7f * progress)
-                    updateMessage = "エピソードを取得中... (${index + 1}/$generalAllNo)"
-                }
-
-                // 小説のtotal_epを更新
-                novel?.let {
-                    val updatedNovel = it.copy(
+                    // 小説のtotal_epを更新
+                    val updatedNovel = targetNovel.copy(
                         total_ep = successCount,
-                        general_all_no = generalAllNo
+                        general_all_no = generalAllNo,
+                        updated_at = currentDate
                     )
                     repository.updateNovel(updatedNovel)
-                }
 
-                // 処理結果の通知
-                withContext(Dispatchers.Main) {
-                    updateProgress = 1f
-                    updateMessage = "完了: 成功${successCount}件、失敗${failCount}件"
-                    Toast.makeText(context, "完了: 成功${successCount}件、失敗${failCount}件", Toast.LENGTH_SHORT).show()
-                    delay(2000)
-                    isUpdating = false
+                    // 処理結果の通知
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "完了: 成功${successCount}件、失敗${failCount}件"
+                        Toast.makeText(context, "完了: 成功${successCount}件、失敗${failCount}件", Toast.LENGTH_SHORT).show()
+                        delay(2000)
+                        isUpdating = false
+                    }
+                } finally {
+                    NovelUpdateCoordinator.finishUpdate(session)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -447,19 +579,74 @@ fun EpisodeListScreen(
 
     // エラー修正の実行関数
     fun executeErrorFix() {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         isUpdating = true
         updateProgress = 0.3f
         updateMessage = "エラーまたは欠番のあるエピソードを再取得中... (0/${redownloadTargets.size})"
 
         scope.launch {
             try {
-                var successCount = 0
-                var failCount = 0
+                updateMessage = "他の更新処理の終了を待機しています..."
+                val cancelled = NovelUpdateCoordinator.cancelAndWait(targetNovel.ncode)
+                if (!cancelled) {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "他の更新処理を停止できませんでした"
+                        Toast.makeText(
+                            context,
+                            "進行中の更新を停止できませんでした。時間を置いて再度お試しください。",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        delay(1500)
+                        isUpdating = false
+                    }
+                    return@launch
+                }
 
-                // スクレイピングの実行
-                novel?.let {
+                val session = NovelUpdateCoordinator.awaitUpdateSlot(targetNovel.ncode)
+                if (session == null) {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "他の更新処理を待機中です"
+                        Toast.makeText(context, "他の更新処理が進行中です。時間を置いて再度お試しください。", Toast.LENGTH_SHORT).show()
+                        delay(1500)
+                        isUpdating = false
+                    }
+                    return@launch
+                }
+
+                suspend fun handleCancellation() {
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "処理が中断されました"
+                        Toast.makeText(context, "更新処理が中断されました", Toast.LENGTH_SHORT).show()
+                        delay(1500)
+                        isUpdating = false
+                    }
+                }
+
+                try {
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
+
+                    var successCount = 0
+                    var failCount = 0
+
+                    // スクレイピングの実行
                     for ((index, episodeNo) in redownloadTargets.withIndex()) {
-                        val episode = fetchEpisode(it.ncode, episodeNo, it.rating == 1, it.noveltype)
+                        if (session.isCancelled()) {
+                            handleCancellation()
+                            return@launch
+                        }
+
+                        val episode = fetchEpisode(targetNovel.ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
 
                         if (episode != null) {
                             // データベースに保存
@@ -472,7 +659,7 @@ fun EpisodeListScreen(
                         }
 
                         // サーバーに負荷をかけないように少し待機
-                        delay(50) // 1秒待機
+                        delay(50)
 
                         // 進捗を更新
                         val progress = (index + 1).toFloat() / redownloadTargets.size
@@ -480,23 +667,30 @@ fun EpisodeListScreen(
                         updateMessage = "エラーまたは欠番のあるエピソードを再取得中... (${index + 1}/${redownloadTargets.size})"
                     }
 
+                    if (session.isCancelled()) {
+                        handleCancellation()
+                        return@launch
+                    }
+
                     // 小説のtotal_epを更新
-                    val updatedEpisodes = repository.getEpisodesByNcode(it.ncode).first()
+                    val updatedEpisodes = repository.getEpisodesByNcode(targetNovel.ncode).first()
                     val maxEpisodeNo = updatedEpisodes.mapNotNull { episode -> episode.episode_no.toIntOrNull() }.maxOrNull() ?: 0
 
-                    if (maxEpisodeNo > it.total_ep) {
-                        val updatedNovel = it.copy(total_ep = maxEpisodeNo)
+                    if (maxEpisodeNo > targetNovel.total_ep) {
+                        val updatedNovel = targetNovel.copy(total_ep = maxEpisodeNo)
                         repository.updateNovel(updatedNovel)
                     }
-                }
 
-                // 処理結果の通知
-                withContext(Dispatchers.Main) {
-                    updateProgress = 1f
-                    updateMessage = "完了: 成功${successCount}件、失敗${failCount}件"
-                    Toast.makeText(context, "完了: 成功${successCount}件、失敗${failCount}件", Toast.LENGTH_SHORT).show()
-                    delay(2000)
-                    isUpdating = false
+                    // 処理結果の通知
+                    withContext(Dispatchers.Main) {
+                        updateProgress = 1f
+                        updateMessage = "完了: 成功${successCount}件、失敗${failCount}件"
+                        Toast.makeText(context, "完了: 成功${successCount}件、失敗${failCount}件", Toast.LENGTH_SHORT).show()
+                        delay(2000)
+                        isUpdating = false
+                    }
+                } finally {
+                    NovelUpdateCoordinator.finishUpdate(session)
                 }
             } catch (e: Exception) {
                 // 例外発生

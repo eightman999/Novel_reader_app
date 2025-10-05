@@ -28,6 +28,7 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
+import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
@@ -520,153 +521,172 @@ fun UpdateInfoScreen(
                                                     val endEpisode = queueItem.general_all_no
 
                                                     if (startEpisode <= endEpisode) {
-                                                        // 更新状態を更新
                                                         syncMessage = "「${novel.title}」のエピソードを更新中..."
 
-                                                        // エピソードリストを作成
                                                         val episodesList = (startEpisode..endEpisode).toList()
+                                                        val session = NovelUpdateCoordinator.awaitUpdateSlot(queueItem.ncode)
+                                                        if (session == null) {
+                                                            val skipped = episodesList.size
+                                                            totalEpisodes -= skipped
+                                                            if (totalEpisodes < processedEpisodes) {
+                                                                totalEpisodes = processedEpisodes
+                                                            }
+                                                            val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
+                                                            totalCount = safeTotal
+                                                            syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
+                                                            syncMessage = "「${novel.title}」は他の更新処理中のためスキップしました"
+                                                            continue
+                                                        }
 
-                                                        // エピソードの取得とスクレイピング
                                                         val episodes = mutableListOf<EpisodeEntity>()
+                                                        var cancelledForNovel = false
+                                                        var processedForNovel = 0
 
-                                                        for (episodeNo in episodesList) {
-                                                            // 進捗状況の更新
-                                                            val episodeNoStr = episodeNo.toString()
-                                                            syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
-
-                                                            try {
-                                                                // 小説のURLを構築（通常版またはR18版）
-                                                                val baseUrl = if (novel.rating == 1) {
-                                                                    "https://novel18.syosetu.com"
-                                                                } else {
-                                                                    "https://ncode.syosetu.com"
+                                                        try {
+                                                            for (episodeNo in episodesList) {
+                                                                if (session.isCancelled()) {
+                                                                    cancelledForNovel = true
+                                                                    break
                                                                 }
 
-                                                                val url = "$baseUrl/${queueItem.ncode}/$episodeNoStr/"
+                                                                val episodeNoStr = episodeNo.toString()
+                                                                syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
 
-                                                                // JSoupを使用してスクレイピング
-                                                                // スクレイピング部分のコード修正
-                                                                withContext(Dispatchers.IO) {
-                                                                    connectionSemaphore.acquire()
-                                                                    try {
-                                                                        val baseUrl = if (novel.rating == 1) {
-                                                                            "https://novel18.syosetu.com"
-                                                                        } else {
-                                                                            "https://ncode.syosetu.com"
-                                                                        }
+                                                                try {
+                                                                    val baseUrl = if (novel.rating == 1) {
+                                                                        "https://novel18.syosetu.com"
+                                                                    } else {
+                                                                        "https://ncode.syosetu.com"
+                                                                    }
 
-                                                                        val url = "$baseUrl/${queueItem.ncode}/$episodeNoStr/"
+                                                                    val url = "$baseUrl/${queueItem.ncode}/$episodeNoStr/"
 
-                                                                        // リトライロジックを実装した関数を使用
-                                                                        val doc = fetchWithRetry(url)
+                                                                    withContext(Dispatchers.IO) {
+                                                                        connectionSemaphore.acquire()
+                                                                        try {
+                                                                            val baseUrl = if (novel.rating == 1) {
+                                                                                "https://novel18.syosetu.com"
+                                                                            } else {
+                                                                                "https://ncode.syosetu.com"
+                                                                            }
 
-                                                                        if (doc != null) {
-                                                                            try {
-                                                                                // タイトルの取得（text()でタグを除去）
-                                                                                var title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
-                                                                                val bodyElements = doc.select("div.p-novel__body > div")
-                                                                                val body = StringBuilder()
+                                                                            val url = "$baseUrl/${queueItem.ncode}/$episodeNoStr/"
 
-                                                                                if (bodyElements.isNotEmpty()) {
-                                                                                    bodyElements.forEachIndexed { index, element ->
-                                                                                        body.append(element.outerHtml())
-                                                                                        // 最後の要素でなければ<hr>を追加
-                                                                                        if (index < bodyElements.size - 1) {
-                                                                                            body.append("\n<hr>\n")
-                                                                                        }
-                                                                                    }
-                                                                                }
+                                                                            val doc = fetchWithRetry(url)
 
-                                                                                // タイトルまたは本文が空の場合はリトライ
-                                                                                if (title.isEmpty() || body.isEmpty()) {
-                                                                                    Log.d("UpdateInfo", "タイトルまたは本文が空のためリトライします: ${queueItem.ncode}-$episodeNoStr")
+                                                                            if (doc != null) {
+                                                                                try {
+                                                                                    var title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
+                                                                                    val bodyElements = doc.select("div.p-novel__body > div")
+                                                                                    val body = StringBuilder()
 
-                                                                                    // リトライロジック
-                                                                                    val retryDoc = fetchWithRetry(url)
-                                                                                    if (retryDoc != null) {
-                                                                                        // タイトルが空だった場合は再取得
-                                                                                        if (title.isEmpty()) {
-                                                                                            title = retryDoc.select("h1.p-novel__title.p-novel__title--rensai").text()
-                                                                                        }
-
-                                                                                        // 本文が空だった場合は再取得
-                                                                                        if (body.isEmpty()) {
-                                                                                            val bodyElements = doc.select("div.p-novel__body > div")
-                                                                                            val body = StringBuilder()
-
-                                                                                            if (bodyElements.isNotEmpty()) {
-                                                                                                bodyElements.forEachIndexed { index, element ->
-                                                                                                    body.append(element.outerHtml())
-                                                                                                    // 最後の要素でなければ<hr>を追加
-                                                                                                    if (index < bodyElements.size - 1) {
-                                                                                                        body.append("\n<hr>\n")
-                                                                                                    }
-                                                                                                }
+                                                                                    if (bodyElements.isNotEmpty()) {
+                                                                                        bodyElements.forEachIndexed { index, element ->
+                                                                                            body.append(element.outerHtml())
+                                                                                            if (index < bodyElements.size - 1) {
+                                                                                                body.append("\n<hr>\n")
                                                                                             }
                                                                                         }
                                                                                     }
+
+                                                                                    if (title.isEmpty() || body.isEmpty()) {
+                                                                                        Log.d("UpdateInfo", "タイトルまたは本文が空のためリトライします: ${queueItem.ncode}-$episodeNoStr")
+
+                                                                                        val retryDoc = fetchWithRetry(url)
+                                                                                        if (retryDoc != null) {
+                                                                                            if (title.isEmpty()) {
+                                                                                                title = retryDoc.select("h1.p-novel__title.p-novel__title--rensai").text()
+                                                                                            }
+
+                                                                                            if (body.isEmpty()) {
+                                                                                                val bodyElementsRetry = doc.select("div.p-novel__body > div")
+                                                                                                val bodyRetry = StringBuilder()
+
+                                                                                                if (bodyElementsRetry.isNotEmpty()) {
+                                                                                                    bodyElementsRetry.forEachIndexed { index, element ->
+                                                                                                        bodyRetry.append(element.outerHtml())
+                                                                                                        if (index < bodyElementsRetry.size - 1) {
+                                                                                                            bodyRetry.append("\n<hr>\n")
+                                                                                                        }
+                                                                                                    }
+                                                                                                }
+
+                                                                                                body.clear()
+                                                                                                body.append(bodyRetry)
+                                                                                            }
+                                                                                        }
+                                                                                    }
+
+                                                                                    if (title.isEmpty() || body.isEmpty()) {
+                                                                                        Log.e("UpdateInfo", "リトライ後も内容の取得に失敗: ${queueItem.ncode}-$episodeNoStr")
+                                                                                    }
+
+                                                                                    val now = Date()
+                                                                                    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(now)
+
+                                                                                    val episode = EpisodeEntity(
+                                                                                        ncode = queueItem.ncode,
+                                                                                        episode_no = episodeNoStr,
+                                                                                        body = body.toString(),
+                                                                                        e_title = title,
+                                                                                        update_time = dateFormat
+                                                                                    )
+
+                                                                                    episodes.add(episode)
+
+                                                                                    Log.d("UpdateInfo", "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr")
+                                                                                } catch (e: Exception) {
+                                                                                    Log.e("UpdateInfo", "エピソード解析エラー: ${queueItem.ncode}-$episodeNoStr", e)
                                                                                 }
-
-                                                                                // それでも空の場合はエラー記録して次へ
-                                                                                if (title.isEmpty() || body.isEmpty()) {
-                                                                                    Log.e("UpdateInfo", "リトライ後も内容の取得に失敗: ${queueItem.ncode}-$episodeNoStr")
-
-                                                                                }
-
-                                                                                // 更新日時の取得
-                                                                                val now = Date()
-                                                                                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(now)
-
-                                                                                // EpisodeEntityの作成（titleはtext()でタグ除去済み、bodyはhtml()でタグ保持）
-                                                                                val episode = EpisodeEntity(
-                                                                                    ncode = queueItem.ncode,
-                                                                                    episode_no = episodeNoStr,
-                                                                                    body = body.toString(),
-                                                                                    e_title = title,
-                                                                                    update_time = dateFormat
-                                                                                )
-
-                                                                                episodes.add(episode)
-
-                                                                                // 成功ログ
-                                                                                Log.d("UpdateInfo", "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr")
-                                                                            } catch (e: Exception) {
-                                                                                // 解析エラー
-                                                                                Log.e("UpdateInfo", "エピソード解析エラー: ${queueItem.ncode}-$episodeNoStr", e)
+                                                                            } else {
+                                                                                Log.e("UpdateInfo", "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr")
                                                                             }
-                                                                        } else {
-                                                                            // 取得失敗ログ
-                                                                            Log.e("UpdateInfo", "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr")
+                                                                        } finally {
+                                                                            connectionSemaphore.release()
                                                                         }
-                                                                    } finally {
-                                                                        connectionSemaphore.release() // 必ず解放
                                                                     }
+
+                                                                    processedEpisodes++
+                                                                    processedForNovel++
+                                                                    currentCount = processedEpisodes
+                                                                    val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
+                                                                    totalCount = safeTotal
+                                                                    syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
+
+                                                                } catch (e: Exception) {
+                                                                    Log.e("UpdateInfo", "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr", e)
                                                                 }
 
-                                                                // 進捗を更新
-                                                                processedEpisodes++
-                                                                currentCount = processedEpisodes
-                                                                syncProgress = processedEpisodes.toFloat() / totalEpisodes
-
-                                                            } catch (e: Exception) {
-                                                                Log.e("UpdateInfo", "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr", e)
-                                                                // エラーは記録するが処理は継続
+                                                                delay(100)
                                                             }
 
-                                                            // UIの反応性を向上させるための短い遅延
-                                                            delay(100)
-                                                        }
+                                                            if (!cancelledForNovel && session.isCancelled()) {
+                                                                cancelledForNovel = true
+                                                            }
 
-                                                        // バッチで保存
-                                                        if (episodes.isNotEmpty()) {
-                                                            repository.insertEpisodes(episodes)
+                                                            if (cancelledForNovel) {
+                                                                val remaining = episodesList.size - processedForNovel
+                                                                totalEpisodes -= remaining
+                                                                if (totalEpisodes < processedEpisodes) {
+                                                                    totalEpisodes = processedEpisodes
+                                                                }
+                                                                val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
+                                                                totalCount = safeTotal
+                                                                syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
+                                                                syncMessage = "「${novel.title}」の更新は中断されました"
+                                                                continue
+                                                            }
 
-                                                            // 小説のtotal_epを更新
-                                                            val updatedNovel = novel.copy(total_ep = endEpisode)
-                                                            repository.updateNovel(updatedNovel)
+                                                            if (episodes.isNotEmpty()) {
+                                                                repository.insertEpisodes(episodes)
 
-                                                            // 更新キューから削除
-                                                            repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                                                val updatedNovel = novel.copy(total_ep = endEpisode)
+                                                                repository.updateNovel(updatedNovel)
+
+                                                                repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                                            }
+                                                        } finally {
+                                                            NovelUpdateCoordinator.finishUpdate(session)
                                                         }
                                                     }
                                                 }

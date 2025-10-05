@@ -17,6 +17,7 @@ import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
+import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -56,13 +57,29 @@ class UpdateCheckWorker(
 
             // 各小説の更新をチェック
             for (novel in novels) {
+                val session = NovelUpdateCoordinator.beginUpdate(novel.ncode)
+                if (session == null) {
+                    Log.d(TAG, "小説\"${novel.ncode}\"は他の処理中のためスキップします")
+                    continue
+                }
+
                 try {
+                    if (session.isCancelled()) {
+                        Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                        continue
+                    }
+
                     // APIから最新情報を取得
                     val info = NovelApiUtils.fetchNovelInfo(
                         novel.ncode,
                         novel.rating == 1
                     )
                     if (info != null) {
+                        if (session.isCancelled()) {
+                            Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                            continue
+                        }
+
                         // 常に最新情報を保存
                         val updatedNovel = novel.copy(
                             general_all_no = info.generalAllNo,
@@ -72,6 +89,11 @@ class UpdateCheckWorker(
                             length = novel.length ?: info.length
                         )
                         repository.updateNovel(updatedNovel)
+
+                        if (session.isCancelled()) {
+                            Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                            continue
+                        }
 
                         // 更新がある場合
                         if (info.generalAllNo > novel.general_all_no) {
@@ -98,6 +120,8 @@ class UpdateCheckWorker(
                 } catch (e: Exception) {
                     Log.e(TAG, "小説「${novel.title}」の更新チェック中にエラー: ${e.message}")
                     // 1つの小説のエラーで全体が失敗しないよう、継続する
+                } finally {
+                    NovelUpdateCoordinator.finishUpdate(session)
                 }
             }
 

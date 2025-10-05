@@ -364,3 +364,22 @@
 
 **効果**: 古い通知が自動的に整理され、メモリ使用量とDataStoreサイズの膨張を防止
 
+## 2025/10/05
+### 更新処理の排他制御とキャンセル待機を強化
+
+**問題**: 同一ncodeの更新が並行して進行するとデータ不整合が発生する恐れがあり、削除や再取得を実行した際に進行中の更新が完全に停止するまで待機できていなかった。
+
+**解決策**:
+- `NovelUpdateCoordinator` に `cancelAndWait` と完了通知機構を追加し、キャンセル後に確実にスロット解放を待機
+- `EpisodeListScreen` の再取得・ダウンロード・エラー修正処理で更新停止待機を挟み、停止できない場合はユーザーへ警告表示
+- `NovelRepository.deleteNovelWithRelations` が進行中の更新停止を確認できた場合のみ削除を続行するように調整
+
+**変更ファイル**:
+- `NovelUpdateCoordinator.kt`
+- `EpisodeListScreen.kt`
+- `UpdateService.kt`
+- `NovelRepository.kt`
+- `WORK_LOG.md`
+
+**効果**: バックグラウンド更新とユーザー操作の競合を安全に解決し、同一ncodeに対する重複更新や削除時の整合性崩れを防止
+

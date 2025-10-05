@@ -22,6 +22,7 @@ import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -65,6 +66,7 @@ class UpdateService : Service() {
     private var isRunning = false
     private var updateType = 0
     private var currentNcode = ""
+    private var currentUpdateSession: NovelUpdateCoordinator.UpdateSession? = null
     private var updateListeners = mutableListOf<UpdateProgressListener>()
 
     // Interface for progress updates
@@ -159,7 +161,12 @@ class UpdateService : Service() {
     }
 
     private fun updateComplete(success: Boolean, resultMessage: String) {
+        currentUpdateSession?.let {
+            NovelUpdateCoordinator.finishUpdate(it)
+            currentUpdateSession = null
+        }
         isRunning = false
+        currentNcode = ""
         updateListeners.forEach { it.onUpdateComplete(success, resultMessage) }
 
         // Update notification one last time
@@ -183,9 +190,14 @@ class UpdateService : Service() {
 
     private fun stopUpdate() {
         if (isRunning) {
-            // Cancel ongoing operations
+            currentUpdateSession?.cancel()
+            val ncodeToCancel = currentNcode
+            if (ncodeToCancel.isNotEmpty()) {
+                serviceScope.launch {
+                    NovelUpdateCoordinator.cancelAndWait(ncodeToCancel)
+                }
+            }
             isRunning = false
-            updateComplete(false, "更新処理がキャンセルされました")
         }
     }
 
@@ -235,13 +247,32 @@ class UpdateService : Service() {
     // UpdateService.kt の checkForUpdates メソッドを修正
     private fun checkForUpdates(ncode: String) {
         serviceScope.launch {
+            val session = NovelUpdateCoordinator.beginUpdate(ncode)
+            if (session == null) {
+                updateComplete(false, "この小説はすでに更新処理中です")
+                return@launch
+            }
+
+            currentUpdateSession = session
+            currentNcode = ncode
+
             try {
                 updateProgress(0.1f, "APIで最新情報を確認中...")
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Get current novel info
                 val novel = repository.getNovelByNcode(ncode)
                 if (novel == null) {
                     updateComplete(false, "小説情報が見つかりませんでした")
+                    return@launch
+                }
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
                     return@launch
                 }
 
@@ -254,6 +285,11 @@ class UpdateService : Service() {
                     isR18 = novel.rating == 1,
                     apiUrl = urlEntity.api_url
                 )
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 if (info == null) {
                     updateComplete(false, "APIからデータが取得できませんでした")
@@ -269,6 +305,11 @@ class UpdateService : Service() {
                     length = novel.length ?: info.length
                 )
                 repository.updateNovel(updatedNovel)
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Check if update is available
                 if (info.generalAllNo > novel.general_all_no) {
@@ -288,13 +329,34 @@ class UpdateService : Service() {
             } catch (e: Exception) {
                 Log.e(TAG, "Update check error", e)
                 updateComplete(false, "エラー: ${e.message}")
+            } finally {
+                if (currentUpdateSession === session) {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                    currentUpdateSession = null
+                } else {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                }
             }
         }
     }
     private fun downloadEpisodes(ncode: String) {
         serviceScope.launch {
+            val session = NovelUpdateCoordinator.beginUpdate(ncode)
+            if (session == null) {
+                updateComplete(false, "この小説はすでに更新処理中です")
+                return@launch
+            }
+
+            currentUpdateSession = session
+            currentNcode = ncode
+
             try {
                 updateProgress(0.1f, "小説情報を取得中...")
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Get novel info
                 val novel = repository.getNovelByNcode(ncode)
@@ -303,10 +365,20 @@ class UpdateService : Service() {
                     return@launch
                 }
 
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
                 updateProgress(0.2f, "APIで最新情報を確認中...")
 
                 // Get latest info from API
                 val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 var generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
                 val newUpdatedAt = info?.updatedAt ?: novel.updated_at
@@ -318,6 +390,11 @@ class UpdateService : Service() {
                     length = novel.length ?: info?.length
                 )
                 repository.updateNovel(updatedNovel)
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Start downloading episodes
                 updateProgress(0.3f, "エピソードを取得中... (0/$generalAllNoValue)")
@@ -335,8 +412,10 @@ class UpdateService : Service() {
                 }
 
                 for ((index, episodeNo) in episodesToDownload.withIndex()) {
-                    // Check if service is still running
-                    if (!isRunning) break
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
 
                     val episode = NovelApiUtils.fetchEpisode(
                         novel.ncode,
@@ -360,17 +439,22 @@ class UpdateService : Service() {
                     delay(200)
                 }
 
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
                 // Update novel total_ep value
                 if (successCount > 0) {
-                    val updatedNovel = novel.copy(
+                    val updatedNovelAfterDownload = novel.copy(
                         total_ep = novel.total_ep + successCount,
                         general_all_no = generalAllNoValue,
                         updated_at = newUpdatedAt
                     )
-                    repository.updateNovel(updatedNovel)
+                    repository.updateNovel(updatedNovelAfterDownload)
 
                     // Remove from update queue if all episodes downloaded
-                    if (updatedNovel.total_ep >= generalAllNoValue) {
+                    if (updatedNovelAfterDownload.total_ep >= generalAllNoValue) {
                         repository.deleteUpdateQueueByNcode(ncode)
                     }
                 }
@@ -379,14 +463,35 @@ class UpdateService : Service() {
             } catch (e: Exception) {
                 Log.e(TAG, "Download episodes error", e)
                 updateComplete(false, "エラー: ${e.message}")
+            } finally {
+                if (currentUpdateSession === session) {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                    currentUpdateSession = null
+                } else {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                }
             }
         }
     }
 
     private fun fixEpisodeErrors(ncode: String) {
         serviceScope.launch {
+            val session = NovelUpdateCoordinator.beginUpdate(ncode)
+            if (session == null) {
+                updateComplete(false, "この小説はすでに更新処理中です")
+                return@launch
+            }
+
+            currentUpdateSession = session
+            currentNcode = ncode
+
             try {
                 updateProgress(0.1f, "エピソードをチェック中...")
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Get novel info
                 val novel = repository.getNovelByNcode(ncode)
@@ -395,8 +500,18 @@ class UpdateService : Service() {
                     return@launch
                 }
 
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
                 // Get episodes
                 val episodes = repository.getEpisodesByNcode(ncode).first()
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Find episodes with errors
                 val errorEpisodes = episodes.filter { episode ->
@@ -405,8 +520,18 @@ class UpdateService : Service() {
 
                 updateProgress(0.2f, "APIで最新情報を確認中...")
 
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
                 // Get latest info from API
                 val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 var generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
                 val updatedNovel = novel.copy(
@@ -417,6 +542,11 @@ class UpdateService : Service() {
                     length = novel.length ?: info?.length
                 )
                 repository.updateNovel(updatedNovel)
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Find missing episodes
                 val episodeNumberMap = episodes.associate { episode ->
@@ -446,8 +576,10 @@ class UpdateService : Service() {
 
                 // Download error episodes
                 for ((index, episodeNo) in redownloadTargets.withIndex()) {
-                    // Check if service is still running
-                    if (!isRunning) break
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
 
                     val episode = NovelApiUtils.fetchEpisode(
                         novel.ncode,
@@ -466,8 +598,11 @@ class UpdateService : Service() {
                     // Update progress
                     val progress = (index + 1).toFloat() / redownloadTargets.size
                     updateProgress(0.3f + (0.7f * progress), "エラーまたは欠番のあるエピソードを再取得中... (${index + 1}/${redownloadTargets.size})")
+                }
 
-
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
                 }
 
                 // Update novel total_ep value if needed
@@ -475,14 +610,21 @@ class UpdateService : Service() {
                 val maxEpisodeNoAfterFix = updatedEpisodes.mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: 0
 
                 if (maxEpisodeNoAfterFix > novel.total_ep) {
-                    val updatedNovel = novel.copy(total_ep = maxEpisodeNoAfterFix)
-                    repository.updateNovel(updatedNovel)
+                    val updatedNovelAfterFix = novel.copy(total_ep = maxEpisodeNoAfterFix)
+                    repository.updateNovel(updatedNovelAfterFix)
                 }
 
                 updateComplete(true, "完了: 成功${successCount}件、失敗${failCount}件")
             } catch (e: Exception) {
                 Log.e(TAG, "Fix episodes error", e)
                 updateComplete(false, "エラー: ${e.message}")
+            } finally {
+                if (currentUpdateSession === session) {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                    currentUpdateSession = null
+                } else {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                }
             }
         }
     }
@@ -491,6 +633,11 @@ class UpdateService : Service() {
         serviceScope.launch {
             try {
                 updateProgress(0.1f, "更新キューを取得中...")
+
+                if (!isRunning) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
 
                 // Get update queue
                 val updateQueue = repository.getAllUpdateQueue()
@@ -502,13 +649,15 @@ class UpdateService : Service() {
 
                 updateProgress(0.2f, "更新対象を計算中...")
 
-                // Count total episodes to download
+                // Count total episodes to download and prepare plan
                 var totalEpisodes = 0
+                val plannedEpisodes = mutableMapOf<String, Int>()
                 updateQueue.forEach { queueItem ->
                     val novel = repository.getNovelByNcode(queueItem.ncode)
                     if (novel != null) {
                         val episodesToDownload = queueItem.general_all_no - novel.total_ep
                         if (episodesToDownload > 0) {
+                            plannedEpisodes[queueItem.ncode] = episodesToDownload
                             totalEpisodes += episodesToDownload
                         }
                     }
@@ -524,32 +673,55 @@ class UpdateService : Service() {
                 var processedEpisodes = 0
                 var successCount = 0
                 var failCount = 0
+                val skippedNovels = mutableSetOf<String>()
 
                 // Process each queue item
                 for (queueItem in updateQueue) {
-                    // Check if service is still running
-                    if (!isRunning) break
-
-                    val novel = repository.getNovelByNcode(queueItem.ncode)
-                    if (novel == null) {
-                        continue
+                    if (!isRunning) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
                     }
 
-                    // Update progress with current novel info
-                    updateProgress(
-                        0.3f + (0.7f * processedEpisodes.toFloat() / totalEpisodes),
-                        "「${novel.title}」のエピソードをダウンロード中..."
-                    )
+                    val novel = repository.getNovelByNcode(queueItem.ncode) ?: continue
+                    val plannedCount = plannedEpisodes[queueItem.ncode] ?: continue
+                    if (plannedCount <= 0) continue
 
                     val startEpisode = novel.total_ep + 1
                     val endEpisode = queueItem.general_all_no
+                    if (startEpisode > endEpisode) {
+                        continue
+                    }
 
-                    if (startEpisode <= endEpisode) {
-                        val episodesToDownload = (startEpisode..endEpisode).toList()
+                    val session = NovelUpdateCoordinator.awaitUpdateSlot(queueItem.ncode)
+                    if (session == null) {
+                        skippedNovels.add(queueItem.ncode)
+                        totalEpisodes -= plannedCount
+                        if (totalEpisodes < processedEpisodes) {
+                            totalEpisodes = processedEpisodes
+                        }
+                        continue
+                    }
 
+                    currentUpdateSession = session
+                    currentNcode = queueItem.ncode
+
+                    val episodesToDownload = (startEpisode..endEpisode).toList()
+                    var processedForNovel = 0
+                    var successForNovel = 0
+                    var failForNovel = 0
+                    var cancelledForNovel = false
+
+                    try {
                         for (episodeNo in episodesToDownload) {
-                            // Check if service is still running
-                            if (!isRunning) break
+                            if (!isRunning) {
+                                updateComplete(false, "更新処理が中断されました")
+                                return@launch
+                            }
+
+                            if (session.isCancelled()) {
+                                cancelledForNovel = true
+                                break
+                            }
 
                             val episode = NovelApiUtils.fetchEpisode(
                                 novel.ncode,
@@ -560,39 +732,73 @@ class UpdateService : Service() {
 
                             if (episode != null) {
                                 repository.insertEpisode(episode)
-                                successCount++
+                                successForNovel++
                             } else {
-                                failCount++
+                                failForNovel++
                             }
 
+                            processedForNovel++
                             processedEpisodes++
 
-                            // Update progress
+                            val denominator = if (totalEpisodes <= 0) {
+                                if (processedEpisodes == 0) 1 else processedEpisodes
+                            } else {
+                                maxOf(totalEpisodes, processedEpisodes)
+                            }
+                            val fraction = processedEpisodes.toFloat() / denominator.toFloat()
                             updateProgress(
-                                0.3f + (0.7f * processedEpisodes.toFloat() / totalEpisodes),
-                                "エピソードをダウンロード中... ($processedEpisodes/$totalEpisodes)"
+                                0.3f + (0.7f * fraction),
+                                "エピソードをダウンロード中... ($processedEpisodes/$denominator)"
                             )
 
                             // Avoid server overload
                             delay(200)
                         }
-
-                        // Update novel info
-                        val updatedNovel = novel.copy(
-                            total_ep = endEpisode,
-                            general_all_no = endEpisode
-                        )
-                        repository.updateNovel(updatedNovel)
-
-                        // Remove from update queue
-                        repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                    } finally {
+                        NovelUpdateCoordinator.finishUpdate(session)
+                        if (currentUpdateSession === session) {
+                            currentUpdateSession = null
+                        }
                     }
+
+                    if (cancelledForNovel) {
+                        skippedNovels.add(queueItem.ncode)
+                        val remaining = episodesToDownload.size - processedForNovel
+                        totalEpisodes -= remaining
+                        if (totalEpisodes < processedEpisodes) {
+                            totalEpisodes = processedEpisodes
+                        }
+                        continue
+                    }
+
+                    successCount += successForNovel
+                    failCount += failForNovel
+
+                    // Update novel info
+                    val updatedNovel = novel.copy(
+                        total_ep = endEpisode,
+                        general_all_no = endEpisode
+                    )
+                    repository.updateNovel(updatedNovel)
+
+                    // Remove from update queue
+                    repository.deleteUpdateQueueByNcode(queueItem.ncode)
                 }
 
-                updateComplete(true, "完了: 成功${successCount}件、失敗${failCount}件")
+                val message = if (skippedNovels.isEmpty()) {
+                    "完了: 成功${successCount}件、失敗${failCount}件"
+                } else {
+                    "完了: 成功${successCount}件、失敗${failCount}件（${skippedNovels.size}件の小説をスキップ）"
+                }
+                updateComplete(true, message)
             } catch (e: Exception) {
                 Log.e(TAG, "Bulk update error", e)
                 updateComplete(false, "エラー: ${e.message}")
+            } finally {
+                currentUpdateSession?.let {
+                    NovelUpdateCoordinator.finishUpdate(it)
+                    currentUpdateSession = null
+                }
             }
         }
     }
