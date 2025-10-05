@@ -417,7 +417,7 @@ class UpdateService : Service() {
                         return@launch
                     }
 
-                    val episode = NovelApiUtils.fetchEpisode(
+                    val episode = NovelApiUtils.fetchEpisodeWithRetry(
                         novel.ncode,
                         episodeNo,
                         novel.rating == 1,
@@ -581,7 +581,7 @@ class UpdateService : Service() {
                         return@launch
                     }
 
-                    val episode = NovelApiUtils.fetchEpisode(
+                    val episode = NovelApiUtils.fetchEpisodeWithRetry(
                         novel.ncode,
                         episodeNo,
                         novel.rating == 1,
@@ -723,7 +723,7 @@ class UpdateService : Service() {
                                 break
                             }
 
-                            val episode = NovelApiUtils.fetchEpisode(
+                            val episode = NovelApiUtils.fetchEpisodeWithRetry(
                                 novel.ncode,
                                 episodeNo,
                                 novel.rating == 1,

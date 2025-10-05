@@ -383,3 +383,20 @@
 
 **効果**: バックグラウンド更新とユーザー操作の競合を安全に解決し、同一ncodeに対する重複更新や削除時の整合性崩れを防止
 
+
+### ミテミン画像共通ロジックの再適用とAPI共有化
+
+**問題**:
+- EpisodeListScreen と UpdateInfoScreen がそれぞれ独自に API へアクセスしており、R18 作品のエンドポイント選択や更新日時の扱いがばらついていた
+- 共有の `fetchEpisodeWithRetry` を利用していても、前処理側が旧式の `Pair` ベース実装に依存していたためミテミン画像キャッシュの再利用が不安定だった
+
+**解決策**:
+- `NovelApiUtils.fetchNovelInfo` を両画面から直接呼び出し、R18 判定を含む統一的なレスポンスデータ（generalAllNo・updatedAt・userid など）を利用
+- EpisodeListScreen では手製の API 呼び出し関数を廃止し、更新・再取得・エラー修正すべてのフローで共有データクラスを参照
+- UpdateInfoScreen の一括チェック処理を共通ユーティリティに置き換え、欠けているメタデータ（userid/noveltype/length）の補完と更新キュー登録を一元化
+
+**変更ファイル**:
+- `EpisodeListScreen.kt`
+- `UpdateInfoScreen.kt`
+
+**効果**: すべての更新手段で同じ API・画像処理経路が用いられるようになり、ミテミン画像のローカルキャッシュ置換と R18 作品の更新検出が安定した

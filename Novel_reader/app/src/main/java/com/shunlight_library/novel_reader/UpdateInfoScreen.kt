@@ -27,23 +27,11 @@ import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
-import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Semaphore
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.yaml.snakeyaml.Yaml
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.SocketTimeoutException
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.zip.GZIPInputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,8 +61,6 @@ fun UpdateInfoScreen(
     var syncMessage by remember { mutableStateOf("") }
     var currentCount by remember { mutableStateOf(0) }
     var totalCount by remember { mutableStateOf(0) }
-    val connectionSemaphore = Semaphore(3)
-
     // データ取得
     LaunchedEffect(key1 = Unit) {
         repository.allUpdateQueue.collect { queueList ->
@@ -138,7 +124,7 @@ fun UpdateInfoScreen(
                                 for (episodeNo in targets) {
                                     try {
                                         // NovelApiUtils.fetchEpisodeを使用
-                                        val episode = NovelApiUtils.fetchEpisode(
+                                        val episode = NovelApiUtils.fetchEpisodeWithRetry(
                                             novel.ncode,
                                             episodeNo,
                                             novel.rating == 1,
@@ -265,89 +251,47 @@ fun UpdateInfoScreen(
                                     val deferreds = batch.map { novel ->
                                         async(Dispatchers.IO) {
                                             try {
-                                                // 進捗状態を更新
-                                                val progressPercent = (processedNovels.toFloat() / totalCount * 100).toInt()
+                                                val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
 
-                                                // APIエンドポイントを選択
-                                                val apiUrl = if (novel.rating == 1) {
-                                                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5&json"
-                                                } else {
-                                                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5&json"
-                                                }
-
-                                                // APIからデータを取得
-                                                try {
-                                                    val connection = URL(apiUrl).openConnection() as HttpURLConnection
-                                                    connection.requestMethod = "GET"
-                                                    connection.connectTimeout = 5000 // タイムアウト設定を追加
-                                                    connection.readTimeout = 5000
-
-                                                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                                                        // gzipファイルを解凍
-                                                        val inputStream = GZIPInputStream(connection.inputStream)
-                                                        val reader = BufferedReader(InputStreamReader(inputStream))
-                                                        val content = StringBuilder()
-                                                        var line: String?
-
-                                                        while (reader.readLine().also { line = it } != null) {
-                                                            content.append(line).append("\n")
+                                                if (info != null) {
+                                                    // 追加情報が取得できた場合は欠けているメタデータを補完
+                                                    if (novel.userid == null || novel.noveltype == null || novel.length == null) {
+                                                        val enriched = novel.copy(
+                                                            userid = novel.userid ?: info.userid,
+                                                            noveltype = novel.noveltype ?: info.noveltype,
+                                                            length = novel.length ?: info.length
+                                                        )
+                                                        if (enriched != novel) {
+                                                            repository.updateNovel(enriched)
                                                         }
-
-                                                        // YAMLデータを解析
-                                                        val yaml = Yaml()
-                                                        val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
-
-                                                        if (yamlData.size >= 2) {
-                                                            val novelData = yamlData[1]
-                                                            val newGeneralAllNo = novelData["general_all_no"] as Int
-
-                                                            // データ型のキャストエラーを修正
-                                                            val updatedAtObj = novelData["updated_at"]
-                                                            val newUpdatedAt = when (updatedAtObj) {
-                                                                is String -> updatedAtObj
-                                                                is Date -> SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(updatedAtObj)
-                                                                else -> DatabaseSyncUtils.getCurrentDateTimeString() // 現在時刻をフォールバックとして使用
-                                                            }
-
-                                                            // データベースを更新
-                                                            if (newGeneralAllNo > novel.general_all_no) {
-                                                                // 小説情報を更新
-                                                                val updatedNovel = novel.copy(
-                                                                    general_all_no = newGeneralAllNo,
-                                                                    updated_at = newUpdatedAt
-                                                                )
-                                                                repository.updateNovel(updatedNovel)
-
-                                                                // 更新キューに追加
-                                                                val updateQueue = UpdateQueueEntity(
-                                                                    ncode = novel.ncode,
-                                                                    total_ep = novel.total_ep,
-                                                                    general_all_no = newGeneralAllNo,
-                                                                    update_time = newUpdatedAt
-                                                                )
-                                                                repository.insertUpdateQueue(updateQueue)
-
-                                                                // 新規追加か更新かをカウント
-                                                                if (novel.general_all_no == 0) {
-                                                                    newCount++
-                                                                } else {
-                                                                    updatedCount++
-                                                                }
-
-                                                                true // 更新あり
-                                                            } else {
-                                                                false // 更新なし
-                                                            }
-                                                        } else {
-                                                            false // データなし
-                                                        }
-                                                    } else {
-                                                        false // HTTP通信失敗
                                                     }
-                                                } catch (e: Exception) {
-                                                    Log.e("UpdateCheck", "エラー: ${novel.ncode} - ${e.message}")
-                                                    false // エラー発生
+
+                                                    if (info.generalAllNo > novel.general_all_no) {
+                                                        val updatedNovel = novel.copy(
+                                                            general_all_no = info.generalAllNo,
+                                                            updated_at = info.updatedAt
+                                                        )
+                                                        repository.updateNovel(updatedNovel)
+
+                                                        val updateQueue = UpdateQueueEntity(
+                                                            ncode = novel.ncode,
+                                                            total_ep = novel.total_ep,
+                                                            general_all_no = info.generalAllNo,
+                                                            update_time = info.updatedAt
+                                                        )
+                                                        repository.insertUpdateQueue(updateQueue)
+
+                                                        if (novel.general_all_no == 0) {
+                                                            newCount++
+                                                        } else {
+                                                            updatedCount++
+                                                        }
+
+                                                        return@async true
+                                                    }
                                                 }
+
+                                                false
                                             } catch (e: Exception) {
                                                 Log.e("UpdateCheck", "小説処理エラー: ${novel.ncode} - ${e.message}")
                                                 false
@@ -553,109 +497,39 @@ fun UpdateInfoScreen(
                                                                 syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
 
                                                                 try {
-                                                                    val baseUrl = if (novel.rating == 1) {
-                                                                        "https://novel18.syosetu.com"
+                                                                    val episode = NovelApiUtils.fetchEpisodeWithRetry(
+                                                                        novel.ncode,
+                                                                        episodeNo,
+                                                                        novel.rating == 1,
+                                                                        novel.noveltype
+                                                                    )
+
+                                                                    if (episode != null) {
+                                                                        episodes.add(episode)
+                                                                        Log.d(
+                                                                            "UpdateInfo",
+                                                                            "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr"
+                                                                        )
                                                                     } else {
-                                                                        "https://ncode.syosetu.com"
+                                                                        Log.e(
+                                                                            "UpdateInfo",
+                                                                            "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr"
+                                                                        )
                                                                     }
-
-                                                                    val url = "$baseUrl/${queueItem.ncode}/$episodeNoStr/"
-
-                                                                    withContext(Dispatchers.IO) {
-                                                                        connectionSemaphore.acquire()
-                                                                        try {
-                                                                            val baseUrl = if (novel.rating == 1) {
-                                                                                "https://novel18.syosetu.com"
-                                                                            } else {
-                                                                                "https://ncode.syosetu.com"
-                                                                            }
-
-                                                                            val url = "$baseUrl/${queueItem.ncode}/$episodeNoStr/"
-
-                                                                            val doc = fetchWithRetry(url)
-
-                                                                            if (doc != null) {
-                                                                                try {
-                                                                                    var title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
-                                                                                    val bodyElements = doc.select("div.p-novel__body > div")
-                                                                                    val body = StringBuilder()
-
-                                                                                    if (bodyElements.isNotEmpty()) {
-                                                                                        bodyElements.forEachIndexed { index, element ->
-                                                                                            body.append(element.outerHtml())
-                                                                                            if (index < bodyElements.size - 1) {
-                                                                                                body.append("\n<hr>\n")
-                                                                                            }
-                                                                                        }
-                                                                                    }
-
-                                                                                    if (title.isEmpty() || body.isEmpty()) {
-                                                                                        Log.d("UpdateInfo", "タイトルまたは本文が空のためリトライします: ${queueItem.ncode}-$episodeNoStr")
-
-                                                                                        val retryDoc = fetchWithRetry(url)
-                                                                                        if (retryDoc != null) {
-                                                                                            if (title.isEmpty()) {
-                                                                                                title = retryDoc.select("h1.p-novel__title.p-novel__title--rensai").text()
-                                                                                            }
-
-                                                                                            if (body.isEmpty()) {
-                                                                                                val bodyElementsRetry = doc.select("div.p-novel__body > div")
-                                                                                                val bodyRetry = StringBuilder()
-
-                                                                                                if (bodyElementsRetry.isNotEmpty()) {
-                                                                                                    bodyElementsRetry.forEachIndexed { index, element ->
-                                                                                                        bodyRetry.append(element.outerHtml())
-                                                                                                        if (index < bodyElementsRetry.size - 1) {
-                                                                                                            bodyRetry.append("\n<hr>\n")
-                                                                                                        }
-                                                                                                    }
-                                                                                                }
-
-                                                                                                body.clear()
-                                                                                                body.append(bodyRetry)
-                                                                                            }
-                                                                                        }
-                                                                                    }
-
-                                                                                    if (title.isEmpty() || body.isEmpty()) {
-                                                                                        Log.e("UpdateInfo", "リトライ後も内容の取得に失敗: ${queueItem.ncode}-$episodeNoStr")
-                                                                                    }
-
-                                                                                    val now = Date()
-                                                                                    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(now)
-
-                                                                                    val episode = EpisodeEntity(
-                                                                                        ncode = queueItem.ncode,
-                                                                                        episode_no = episodeNoStr,
-                                                                                        body = body.toString(),
-                                                                                        e_title = title,
-                                                                                        update_time = dateFormat
-                                                                                    )
-
-                                                                                    episodes.add(episode)
-
-                                                                                    Log.d("UpdateInfo", "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr")
-                                                                                } catch (e: Exception) {
-                                                                                    Log.e("UpdateInfo", "エピソード解析エラー: ${queueItem.ncode}-$episodeNoStr", e)
-                                                                                }
-                                                                            } else {
-                                                                                Log.e("UpdateInfo", "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr")
-                                                                            }
-                                                                        } finally {
-                                                                            connectionSemaphore.release()
-                                                                        }
-                                                                    }
-
-                                                                    processedEpisodes++
-                                                                    processedForNovel++
-                                                                    currentCount = processedEpisodes
-                                                                    val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
-                                                                    totalCount = safeTotal
-                                                                    syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
-
                                                                 } catch (e: Exception) {
-                                                                    Log.e("UpdateInfo", "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr", e)
+                                                                    Log.e(
+                                                                        "UpdateInfo",
+                                                                        "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr",
+                                                                        e
+                                                                    )
                                                                 }
+
+                                                                processedEpisodes++
+                                                                processedForNovel++
+                                                                currentCount = processedEpisodes
+                                                                val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
+                                                                totalCount = safeTotal
+                                                                syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
 
                                                                 delay(100)
                                                             }
@@ -1118,62 +992,3 @@ private fun formatDate(dateString: String): String {
         dateString
     }
 }
-// リトライロジックとランダムユーザーエージェント選択を実装した関数
-private suspend fun fetchWithRetry(url: String, maxRetries: Int = 3): Document? {
-    val USER_AGENTS = listOf(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/602.3.12 (KHTML, like Gecko) Version/10.0.3 Safari/602.3.12",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
-        "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:54.0) Gecko/20100101 Firefox/54.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/602.3.12 (KHTML, like Gecko) Version/10.0.3 Safari/602.3.12",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1"
-    )
-
-    var retryCount = 0
-    var lastException: Exception? = null
-
-    while (retryCount < maxRetries) {
-        try {
-            // ランダムなユーザーエージェントを選択
-            val randomUserAgent = USER_AGENTS.random()
-
-            Log.d("UpdateInfo", "接続試行 ${retryCount + 1}/$maxRetries: $url")
-            Log.d("UpdateInfo", "使用中のユーザーエージェント: $randomUserAgent")
-
-            return Jsoup.connect(url)
-                .userAgent(randomUserAgent)
-                .timeout(30000)  // 30秒に設定
-                .maxBodySize(0)  // 無制限のボディサイズ
-                .followRedirects(true)
-                .ignoreHttpErrors(true)
-                .get()
-        } catch (e: SocketTimeoutException) {
-            lastException = e
-            Log.w("UpdateInfo", "タイムアウト発生 ${retryCount + 1}/$maxRetries: $url - ${e.message}")
-            retryCount++
-
-            // 指数バックオフ（リトライ間隔を徐々に増加）
-            val delayTime = 2000L * (retryCount + 1)
-            Log.d("UpdateInfo", "$delayTime ミリ秒後に再試行します")
-            delay(delayTime)
-        } catch (e: IOException) {
-            lastException = e
-            Log.w("UpdateInfo", "IO例外発生 ${retryCount + 1}/$maxRetries: $url - ${e.message}")
-            retryCount++
-
-            // 指数バックオフ
-            val delayTime = 2000L * (retryCount + 1)
-            Log.d("UpdateInfo", "$delayTime ミリ秒後に再試行します")
-            delay(delayTime)
-        }
-    }
-
-    // 最大リトライ回数を超えた場合
-    Log.e("UpdateInfo", "最大リトライ回数を超えました: $url", lastException)
-    return null
-}
-
