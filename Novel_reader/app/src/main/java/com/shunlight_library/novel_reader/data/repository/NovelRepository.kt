@@ -122,6 +122,18 @@ class NovelRepository(
     suspend fun deleteUpdateQueueByNcode(ncode: String) {
         updateQueueDao.deleteUpdateQueueByNcode(ncode)
     }
+
+    suspend fun deleteNovelWithRelations(novel: NovelDescEntity) {
+        withContext(Dispatchers.IO) {
+            episodeDao.deleteEpisodesByNcode(novel.ncode)
+            lastReadNovelDao.getLastReadByNcode(novel.ncode)?.let {
+                lastReadNovelDao.deleteLastRead(it)
+            }
+            updateQueueDao.deleteUpdateQueueByNcode(novel.ncode)
+            urlEntityDao.deleteURLByNcode(novel.ncode)
+            novelDescDao.deleteNovel(novel)
+        }
+    }
     // NovelRepository.kt に追加
 
     // 更新チェック対象の小説を取得するメソッド
