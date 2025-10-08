@@ -39,6 +39,7 @@ class NovelReaderApplication : Application() {
     }
 
     companion object {
+        private const val TAG = "NovelReaderApp"
         private lateinit var instance: NovelReaderApplication
 
         fun getAppContext(): Context = instance.applicationContext
@@ -86,15 +87,28 @@ class NovelReaderApplication : Application() {
         workManager.cancelUniqueWork("novel_daily_update")
 
         if (!enabled) {
-            Log.d("NovelReaderApp", "自動更新が無効化されています")
+            Log.d(TAG, "自動更新が無効化されています")
             return
         }
 
         try {
             // 時間文字列をパース
-            val parts = timeString.split(":")
-            val hour = parts[0].toInt()
-            val minute = parts[1].toInt()
+            val (hour, minute) = parseUpdateTime(timeString) ?: run {
+                val settingsStore = SettingsStore(this)
+                val fallbackTime = settingsStore.defaultAutoUpdateTime
+                val fallbackParsed = parseUpdateTime(fallbackTime)
+
+                if (fallbackParsed == null) {
+                    Log.e(TAG, "自動更新時刻の解析に失敗しました: $timeString (fallback=$fallbackTime)")
+                    return
+                }
+
+                Log.w(
+                    TAG,
+                    "自動更新時刻の形式が不正です: '$timeString'。デフォルト値 '$fallbackTime' を使用します"
+                )
+                fallbackParsed
+            }
 
             // 次回の実行時間を計算
             val now = Calendar.getInstance()
@@ -113,7 +127,11 @@ class NovelReaderApplication : Application() {
             // 初回実行までの遅延時間をミリ秒で計算
             val initialDelay = scheduledTime.timeInMillis - now.timeInMillis
 
-            Log.d("NovelReaderApp", "次回の自動更新: ${hour}:${minute}, ${initialDelay / (60 * 60 * 1000)}時間${(initialDelay / (60 * 1000)) % 60}分後")
+            val hourMinute = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
+            Log.d(
+                TAG,
+                "次回の自動更新: $hourMinute, ${initialDelay / (60 * 60 * 1000)}時間${(initialDelay / (60 * 1000)) % 60}分後"
+            )
 
             // WorkManagerによる定期実行の設定
             val dailyUpdateRequest = PeriodicWorkRequestBuilder<UpdateCheckWorker>(
@@ -134,8 +152,29 @@ class NovelReaderApplication : Application() {
                 dailyUpdateRequest
             )
         } catch (e: Exception) {
-            Log.e("NovelReaderApp", "自動更新スケジュール設定エラー: ${e.message}", e)
+            Log.e(TAG, "自動更新スケジュール設定エラー: ${e.message}", e)
         }
+    }
+
+    private fun parseUpdateTime(timeString: String): Pair<Int, Int>? {
+        val parts = timeString.split(":")
+            .map { it.trim() }
+        if (parts.size != 2) {
+            return null
+        }
+
+        val hour = parts[0].toIntOrNull()
+        val minute = parts[1].toIntOrNull()
+
+        if (hour == null || minute == null) {
+            return null
+        }
+
+        if (hour !in 0..23 || minute !in 0..59) {
+            return null
+        }
+
+        return hour to minute
     }
 
 }
