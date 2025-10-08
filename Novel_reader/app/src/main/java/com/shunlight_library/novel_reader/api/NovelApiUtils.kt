@@ -6,6 +6,8 @@
 // NovelApiUtils.kt
 package com.shunlight_library.novel_reader.api
 
+import android.util.JsonReader
+import android.util.JsonToken
 import android.util.Log
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -66,42 +68,108 @@ object NovelApiUtils {
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0")  // User-Agentを追加
 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                    val inputStream = GZIPInputStream(connection.inputStream)
-                    val reader = BufferedReader(InputStreamReader(inputStream))
-                    val content = StringBuilder()
-                    var line: String?
-
-                    while (reader.readLine().also { line = it } != null) {
-                        content.append(line).append("\n")
+                    val shouldUseGzip = connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
+                    val inputStream = if (shouldUseGzip) {
+                        GZIPInputStream(connection.inputStream)
+                    } else {
+                        connection.inputStream
                     }
 
-                    val yaml = Yaml()
-                    val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
+                    inputStream.buffered().use { bufferedStream ->
+                        JsonReader(InputStreamReader(bufferedStream, Charsets.UTF_8)).use { reader ->
+                            reader.beginArray()
+                            if (!reader.hasNext()) {
+                                reader.endArray()
+                                return@withContext null
+                            }
 
-                    if (yamlData.size >= 2) {
-                        val novelData = yamlData[1]
-                        val newGeneralAllNo = novelData["general_all_no"] as Int
-                        val userid = novelData["userid"]?.toString()
-                        val noveltype = (novelData["noveltype"] as? Int)
-                        val length = (novelData["length"] as? Int)
+                            // Skip metadata block
+                            reader.skipValue()
 
-                        // 更新日時の取得
-                        val updatedAtObj = novelData["updated_at"]
-                        val newUpdatedAt = when (updatedAtObj) {
-                            is String -> updatedAtObj
-                            is Date -> SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(updatedAtObj)
-                            else -> DatabaseSyncUtils.getCurrentDateTimeString()
+                            if (!reader.hasNext()) {
+                                reader.endArray()
+                                return@withContext null
+                            }
+
+                            reader.beginObject()
+
+                            var generalAllNo: Int? = null
+                            var updatedAt: String? = null
+                            var userid: String? = null
+                            var noveltype: Int? = null
+                            var length: Int? = null
+
+                            while (reader.hasNext()) {
+                                when (reader.nextName()) {
+                                    "general_all_no" -> generalAllNo = reader.nextIntOrNull()
+                                    "updated_at" -> updatedAt = reader.nextStringOrNull()
+                                    "userid" -> userid = reader.nextStringOrNull()
+                                    "noveltype" -> noveltype = reader.nextIntOrNull()
+                                    "length" -> length = reader.nextIntOrNull()
+                                    else -> reader.skipValue()
+                                }
+                            }
+
+                            reader.endObject()
+
+                            // Drain remaining elements if present
+                            while (reader.hasNext()) {
+                                reader.skipValue()
+                            }
+                            reader.endArray()
+
+                            generalAllNo?.let { totalEpisodes ->
+                                val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
+                                    ?: DatabaseSyncUtils.getCurrentDateTimeString()
+
+                                NovelApiInfo(
+                                    generalAllNo = totalEpisodes,
+                                    updatedAt = normalizedUpdatedAt,
+                                    userid = userid,
+                                    noveltype = noveltype,
+                                    length = length
+                                )
+                            }
                         }
-
-                        NovelApiInfo(newGeneralAllNo, newUpdatedAt, userid, noveltype, length)
-                    } else {
-                        null
                     }
                 } else {
                     null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "API取得エラー: ${e.message}", e)
+                null
+            } finally {
+                try {
+                    connection.disconnect()
+                } catch (ignored: Exception) {
+                }
+            }
+        }
+    }
+
+    private fun JsonReader.nextStringOrNull(): String? {
+        return when (peek()) {
+            JsonToken.NULL -> {
+                nextNull()
+                null
+            }
+            JsonToken.STRING, JsonToken.NUMBER -> nextString()
+            else -> {
+                skipValue()
+                null
+            }
+        }
+    }
+
+    private fun JsonReader.nextIntOrNull(): Int? {
+        return when (peek()) {
+            JsonToken.NULL -> {
+                nextNull()
+                null
+            }
+            JsonToken.STRING, JsonToken.NUMBER -> nextString().toIntOrNull()
+            else -> {
+                skipValue()
                 null
             }
         }
