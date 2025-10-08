@@ -18,11 +18,18 @@ import org.jsoup.Jsoup
 import org.yaml.snakeyaml.Yaml
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.zip.GZIPInputStream
+import javax.net.ssl.SSLException
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.text.Charsets
 
 /**
  * 小説関連のAPI処理を行うユーティリティクラス
@@ -31,6 +38,11 @@ object NovelApiUtils {
     private const val TAG = "NovelApiUtils"
     private val IMAGE_EXTENSION_REGEX =
         ".*\\.(jpe?g|png|gif|bmp|webp|avif)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)
+    private val API_USER_AGENTS = listOf(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    )
 
     data class NovelApiInfo(
         val generalAllNo: Int,
@@ -47,64 +59,151 @@ object NovelApiUtils {
      * @return Pair(総エピソード数, 更新日時) 取得に失敗した場合は (-1, "")
      */
     // NovelApiUtils.kt の fetchNovelInfo 関数を修正
-    suspend fun fetchNovelInfo(ncode: String, isR18: Boolean = false, apiUrl: String? = null): NovelApiInfo? {
+    suspend fun fetchNovelInfo(
+        ncode: String,
+        isR18: Boolean = false,
+        apiUrl: String? = null,
+        maxRetries: Int = 3,
+        retryDelayMillis: Long = 1000L
+    ): NovelApiInfo? {
         if (ncode.isEmpty()) return null
 
-        return withContext(Dispatchers.IO) {
-            try {
-                // API URLの構築
-                val actualApiUrl = apiUrl ?: if (isR18) {
+        val apiCandidates = if (apiUrl != null) {
+            listOf(apiUrl)
+        } else {
+            listOf(
+                if (isR18) {
                     "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5&json"
                 } else {
                     "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5&json"
                 }
+            )
+        }
 
-                val connection = URL(actualApiUrl).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0")  // User-Agentを追加
+        var lastException: Exception? = null
 
-                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                    val inputStream = GZIPInputStream(connection.inputStream)
-                    val reader = BufferedReader(InputStreamReader(inputStream))
-                    val content = StringBuilder()
-                    var line: String?
-
-                    while (reader.readLine().also { line = it } != null) {
-                        content.append(line).append("\n")
+        for (attempt in 1..maxRetries) {
+            for (candidateUrl in apiCandidates) {
+                val userAgent = API_USER_AGENTS.random()
+                try {
+                    val result = requestNovelInfo(candidateUrl, userAgent)
+                    if (result != null) {
+                        return result
                     }
 
-                    val yaml = Yaml()
-                    val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
-
-                    if (yamlData.size >= 2) {
-                        val novelData = yamlData[1]
-                        val newGeneralAllNo = novelData["general_all_no"] as Int
-                        val userid = novelData["userid"]?.toString()
-                        val noveltype = (novelData["noveltype"] as? Int)
-                        val length = (novelData["length"] as? Int)
-
-                        // 更新日時の取得
-                        val updatedAtObj = novelData["updated_at"]
-                        val newUpdatedAt = when (updatedAtObj) {
-                            is String -> updatedAtObj
-                            is Date -> SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(updatedAtObj)
-                            else -> DatabaseSyncUtils.getCurrentDateTimeString()
-                        }
-
-                        NovelApiInfo(newGeneralAllNo, newUpdatedAt, userid, noveltype, length)
-                    } else {
-                        null
+                    Log.w(
+                        TAG,
+                        "API応答から必要なデータを取得できませんでした (attempt=$attempt/$maxRetries, url=$candidateUrl)"
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (e: Exception) {
+                    if (!isRetryableNetworkException(e)) {
+                        Log.e(TAG, "API取得エラー(非再試行): ${e.message}", e)
+                        return null
                     }
-                } else {
-                    null
+
+                    lastException = e
+                    Log.w(
+                        TAG,
+                        "API取得エラー (attempt=$attempt/$maxRetries, url=$candidateUrl): ${e.message}",
+                        e
+                    )
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "API取得エラー: ${e.message}", e)
-                null
+            }
+
+            if (attempt < maxRetries) {
+                val backoff = retryDelayMillis * attempt
+                Log.d(TAG, "fetchNovelInfo 再試行まで ${backoff}ms 待機します (attempt=$attempt/$maxRetries)")
+                delay(backoff)
             }
         }
+
+        lastException?.let { Log.e(TAG, "API取得エラー: ${it.message}", it) }
+        return null
+    }
+
+    private suspend fun requestNovelInfo(url: String, userAgent: String): NovelApiInfo? {
+        return withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                    setRequestProperty("User-Agent", userAgent)
+                    setRequestProperty("Accept-Encoding", "gzip")
+                    instanceFollowRedirects = true
+                }
+
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    Log.w(TAG, "HTTP ${connection.responseCode} 応答: $url")
+                    return@withContext null
+                }
+
+                val rawBytes = connection.inputStream.use { input ->
+                    input.readBytes()
+                }
+
+                val content = try {
+                    GZIPInputStream(rawBytes.inputStream()).bufferedReader().use { reader ->
+                        reader.readText()
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "GZIP展開に失敗しました。非圧縮として処理します: ${e.message}")
+                    String(rawBytes, Charsets.UTF_8)
+                }
+
+                parseNovelInfoResponse(content)
+            } finally {
+                connection?.disconnect()
+            }
+        }
+    }
+
+    private fun parseNovelInfoResponse(content: String): NovelApiInfo? {
+        if (content.isBlank()) {
+            return null
+        }
+
+        val yaml = Yaml()
+        val yamlData = try {
+            yaml.load<Any?>(content) as? List<*>
+        } catch (e: Exception) {
+            Log.e(TAG, "APIレスポンスの解析に失敗しました: ${e.message}", e)
+            return null
+        } ?: return null
+
+        val novelData = yamlData.getOrNull(1) as? Map<*, *> ?: return null
+
+        val generalAllNo = (novelData["general_all_no"] as? Number)?.toInt() ?: return null
+        val userid = novelData["userid"]?.toString()
+        val noveltype = (novelData["noveltype"] as? Number)?.toInt()
+        val length = (novelData["length"] as? Number)?.toInt()
+        val updatedAt = parseUpdatedAt(novelData["updated_at"])
+
+        return NovelApiInfo(generalAllNo, updatedAt, userid, noveltype, length)
+    }
+
+    private fun parseUpdatedAt(updatedAtObj: Any?): String {
+        return when (updatedAtObj) {
+            is String -> updatedAtObj
+            is Date -> SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(updatedAtObj)
+            is Number -> {
+                val epoch = updatedAtObj.toLong()
+                val millis = if (epoch < 1_000_000_000_000L) epoch * 1000L else epoch
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(millis))
+            }
+            else -> DatabaseSyncUtils.getCurrentDateTimeString()
+        }
+    }
+
+    private fun isRetryableNetworkException(exception: Exception): Boolean {
+        return exception is SocketTimeoutException ||
+            exception is ConnectException ||
+            exception is UnknownHostException ||
+            exception is SocketException ||
+            exception is SSLException
     }
 
     /**
