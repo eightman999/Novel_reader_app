@@ -143,132 +143,79 @@ object NovelApiUtils {
                     return@withContext null
                 }
 
-                val rawBytes = connection.inputStream.use { input ->
-                    input.readBytes()
+                val useGzip = connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
+                val inputStream = if (useGzip) {
+                    GZIPInputStream(connection.inputStream)
+                } else {
+                    connection.inputStream
                 }
 
-                val content = try {
-                    GZIPInputStream(rawBytes.inputStream()).bufferedReader().use { reader ->
-                        reader.readText()
-                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                    val shouldUseGzip = connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
-                    val inputStream = if (shouldUseGzip) {
-                        GZIPInputStream(connection.inputStream)
-                    } else {
-                        connection.inputStream
-                    }
-
-                    inputStream.buffered().use { bufferedStream ->
-                        JsonReader(InputStreamReader(bufferedStream, Charsets.UTF_8)).use { reader ->
-                            reader.beginArray()
-                            if (!reader.hasNext()) {
-                                reader.endArray()
-                                return@withContext null
-                            }
-
-                            // Skip metadata block
-                            reader.skipValue()
-
-                            if (!reader.hasNext()) {
-                                reader.endArray()
-                                return@withContext null
-                            }
-
-                            reader.beginObject()
-
-                            var generalAllNo: Int? = null
-                            var updatedAt: String? = null
-                            var userid: String? = null
-                            var noveltype: Int? = null
-                            var length: Int? = null
-
-                            while (reader.hasNext()) {
-                                when (reader.nextName()) {
-                                    "general_all_no" -> generalAllNo = reader.nextIntOrNull()
-                                    "updated_at" -> updatedAt = reader.nextStringOrNull()
-                                    "userid" -> userid = reader.nextStringOrNull()
-                                    "noveltype" -> noveltype = reader.nextIntOrNull()
-                                    "length" -> length = reader.nextIntOrNull()
-                                    else -> reader.skipValue()
-                                }
-                            }
-
-                            reader.endObject()
-
-                            // Drain remaining elements if present
-                            while (reader.hasNext()) {
-                                reader.skipValue()
-                            }
+                inputStream.buffered().use { bufferedStream ->
+                    JsonReader(InputStreamReader(bufferedStream, Charsets.UTF_8)).use { reader ->
+                        reader.beginArray()
+                        if (!reader.hasNext()) {
                             reader.endArray()
-
-                            generalAllNo?.let { totalEpisodes ->
-                                val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
-                                    ?: DatabaseSyncUtils.getCurrentDateTimeString()
-
-                                NovelApiInfo(
-                                    generalAllNo = totalEpisodes,
-                                    updatedAt = normalizedUpdatedAt,
-                                    userid = userid,
-                                    noveltype = noveltype,
-                                    length = length
-                                )
-                            }
+                            return@withContext null
                         }
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "GZIP展開に失敗しました。非圧縮として処理します: ${e.message}")
-                    String(rawBytes, Charsets.UTF_8)
-                }
 
-                parseNovelInfoResponse(content)
+                        // メタデータ要素をスキップ
+                        reader.skipValue()
+
+                        if (!reader.hasNext()) {
+                            reader.endArray()
+                            return@withContext null
+                        }
+
+                        val info = readNovelInfo(reader)
+
+                        // 配列内の残り要素を読み捨てる
+                        while (reader.hasNext()) {
+                            reader.skipValue()
+                        }
+                        reader.endArray()
+
+                        info
+                    }
+                }
             } finally {
                 connection?.disconnect()
             }
         }
     }
 
-    private fun parseNovelInfoResponse(content: String): NovelApiInfo? {
-        if (content.isBlank()) {
-            return null
-        }
+    private fun readNovelInfo(reader: JsonReader): NovelApiInfo? {
+        reader.beginObject()
 
-        val yaml = Yaml()
-        val yamlData = try {
-            yaml.load<Any?>(content) as? List<*>
-        } catch (e: Exception) {
-            Log.e(TAG, "APIレスポンスの解析に失敗しました: ${e.message}", e)
-            return null
-        } ?: return null
+        var generalAllNo: Int? = null
+        var updatedAt: String? = null
+        var userid: String? = null
+        var noveltype: Int? = null
+        var length: Int? = null
 
-        val novelData = yamlData.getOrNull(1) as? Map<*, *> ?: return null
-
-        val generalAllNo = (novelData["general_all_no"] as? Number)?.toInt() ?: return null
-        val userid = novelData["userid"]?.toString()
-        val noveltype = (novelData["noveltype"] as? Number)?.toInt()
-        val length = (novelData["length"] as? Number)?.toInt()
-        val updatedAt = parseUpdatedAt(novelData["updated_at"])
-
-        return NovelApiInfo(generalAllNo, updatedAt, userid, noveltype, length)
-    }
-
-    private fun parseUpdatedAt(updatedAtObj: Any?): String {
-        return when (updatedAtObj) {
-            is String -> updatedAtObj
-            is Date -> SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(updatedAtObj)
-            is Number -> {
-                val epoch = updatedAtObj.toLong()
-                val millis = if (epoch < 1_000_000_000_000L) epoch * 1000L else epoch
-                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(millis))
-            } catch (e: Exception) {
-                Log.e(TAG, "API取得エラー: ${e.message}", e)
-                null
-            } finally {
-                try {
-                    connection.disconnect()
-                } catch (ignored: Exception) {
-                }
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "general_all_no" -> generalAllNo = reader.nextIntOrNull()
+                "updated_at" -> updatedAt = reader.nextStringOrNull()
+                "userid" -> userid = reader.nextStringOrNull()
+                "noveltype" -> noveltype = reader.nextIntOrNull()
+                "length" -> length = reader.nextIntOrNull()
+                else -> reader.skipValue()
             }
         }
+
+        reader.endObject()
+
+        val totalEpisodes = generalAllNo ?: return null
+        val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
+            ?: DatabaseSyncUtils.getCurrentDateTimeString()
+
+        return NovelApiInfo(
+            generalAllNo = totalEpisodes,
+            updatedAt = normalizedUpdatedAt,
+            userid = userid,
+            noveltype = noveltype,
+            length = length
+        )
     }
 
     private fun JsonReader.nextStringOrNull(): String? {
@@ -296,7 +243,6 @@ object NovelApiUtils {
                 skipValue()
                 null
             }
-            else -> DatabaseSyncUtils.getCurrentDateTimeString()
         }
     }
 
