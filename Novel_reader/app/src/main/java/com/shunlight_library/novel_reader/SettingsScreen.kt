@@ -1198,10 +1198,16 @@ fun TimePickerDialog(
     onDismiss: () -> Unit,
     onTimeSelected: (String) -> Unit
 ) {
-    // 時間と分の初期値を取得
-    val timeParts = initialTime.split(":")
-    var hour by remember { mutableStateOf(timeParts[0].toIntOrNull() ?: 3) }
-    var minute by remember { mutableStateOf(timeParts[1].toIntOrNull() ?: 0) }
+    // 時間と分の初期値を取得（不正な値の場合は安全なデフォルトにフォールバック）
+    val initialValues = remember(initialTime) {
+        val parts = initialTime.split(":")
+            .map { it.trim() }
+        val hour = parts.getOrNull(0)?.toIntOrNull()?.takeIf { it in 0..23 } ?: 3
+        val minute = parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in 0..59 } ?: 0
+        hour to minute
+    }
+    var hour by remember(initialTime) { mutableStateOf(initialValues.first) }
+    var minute by remember(initialTime) { mutableStateOf(initialValues.second) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
