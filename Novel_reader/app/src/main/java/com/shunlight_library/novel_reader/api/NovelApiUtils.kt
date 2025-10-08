@@ -6,6 +6,8 @@
 // NovelApiUtils.kt
 package com.shunlight_library.novel_reader.api
 
+import android.util.JsonReader
+import android.util.JsonToken
 import android.util.Log
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -148,6 +150,70 @@ object NovelApiUtils {
                 val content = try {
                     GZIPInputStream(rawBytes.inputStream()).bufferedReader().use { reader ->
                         reader.readText()
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val shouldUseGzip = connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
+                    val inputStream = if (shouldUseGzip) {
+                        GZIPInputStream(connection.inputStream)
+                    } else {
+                        connection.inputStream
+                    }
+
+                    inputStream.buffered().use { bufferedStream ->
+                        JsonReader(InputStreamReader(bufferedStream, Charsets.UTF_8)).use { reader ->
+                            reader.beginArray()
+                            if (!reader.hasNext()) {
+                                reader.endArray()
+                                return@withContext null
+                            }
+
+                            // Skip metadata block
+                            reader.skipValue()
+
+                            if (!reader.hasNext()) {
+                                reader.endArray()
+                                return@withContext null
+                            }
+
+                            reader.beginObject()
+
+                            var generalAllNo: Int? = null
+                            var updatedAt: String? = null
+                            var userid: String? = null
+                            var noveltype: Int? = null
+                            var length: Int? = null
+
+                            while (reader.hasNext()) {
+                                when (reader.nextName()) {
+                                    "general_all_no" -> generalAllNo = reader.nextIntOrNull()
+                                    "updated_at" -> updatedAt = reader.nextStringOrNull()
+                                    "userid" -> userid = reader.nextStringOrNull()
+                                    "noveltype" -> noveltype = reader.nextIntOrNull()
+                                    "length" -> length = reader.nextIntOrNull()
+                                    else -> reader.skipValue()
+                                }
+                            }
+
+                            reader.endObject()
+
+                            // Drain remaining elements if present
+                            while (reader.hasNext()) {
+                                reader.skipValue()
+                            }
+                            reader.endArray()
+
+                            generalAllNo?.let { totalEpisodes ->
+                                val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
+                                    ?: DatabaseSyncUtils.getCurrentDateTimeString()
+
+                                NovelApiInfo(
+                                    generalAllNo = totalEpisodes,
+                                    updatedAt = normalizedUpdatedAt,
+                                    userid = userid,
+                                    noveltype = noveltype,
+                                    length = length
+                                )
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "GZIP展開に失敗しました。非圧縮として処理します: ${e.message}")
@@ -193,6 +259,42 @@ object NovelApiUtils {
                 val epoch = updatedAtObj.toLong()
                 val millis = if (epoch < 1_000_000_000_000L) epoch * 1000L else epoch
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(millis))
+            } catch (e: Exception) {
+                Log.e(TAG, "API取得エラー: ${e.message}", e)
+                null
+            } finally {
+                try {
+                    connection.disconnect()
+                } catch (ignored: Exception) {
+                }
+            }
+        }
+    }
+
+    private fun JsonReader.nextStringOrNull(): String? {
+        return when (peek()) {
+            JsonToken.NULL -> {
+                nextNull()
+                null
+            }
+            JsonToken.STRING, JsonToken.NUMBER -> nextString()
+            else -> {
+                skipValue()
+                null
+            }
+        }
+    }
+
+    private fun JsonReader.nextIntOrNull(): Int? {
+        return when (peek()) {
+            JsonToken.NULL -> {
+                nextNull()
+                null
+            }
+            JsonToken.STRING, JsonToken.NUMBER -> nextString().toIntOrNull()
+            else -> {
+                skipValue()
+                null
             }
             else -> DatabaseSyncUtils.getCurrentDateTimeString()
         }
