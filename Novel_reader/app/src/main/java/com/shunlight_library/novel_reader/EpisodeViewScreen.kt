@@ -624,6 +624,12 @@ fun EnhancedHtmlRubyWebView(
             line-height: 1;
             color: $fontColor;
         }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 16px auto;
+        }
     </style>
     """.trimIndent()
 
@@ -704,7 +710,9 @@ fun EnhancedHtmlRubyWebView(
                     displayZoomControls = false
                     cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                     defaultTextEncodingName = "UTF-8"
-
+                    // ローカルファイル（ダウンロードした画像）へのアクセスを許可
+                    allowFileAccess = true
+                    allowContentAccess = true
                 }
                 onWebViewCreated(this)
                 // JavaScriptインターフェースを追加
