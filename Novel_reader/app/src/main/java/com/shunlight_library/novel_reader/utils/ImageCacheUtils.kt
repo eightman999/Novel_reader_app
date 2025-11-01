@@ -41,10 +41,11 @@ object ImageCacheUtils {
         }
 
         return withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
             try {
-                val connection = URL(url).openConnection() as HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection = URL(url).openConnection() as HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
                 connection.connect()
 
                 val mimeType = connection.contentType ?: return@withContext null
@@ -126,6 +127,8 @@ object ImageCacheUtils {
             } catch (e: Exception) {
                 Log.e(TAG, "画像ダウンロード失敗: ${e.message}", e)
                 null
+            } finally {
+                connection?.disconnect()
             }
         }
     }

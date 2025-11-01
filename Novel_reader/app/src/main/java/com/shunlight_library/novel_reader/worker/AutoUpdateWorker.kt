@@ -103,31 +103,34 @@ class AutoUpdateWorker(
                 Log.d(TAG, "更新対象小説数: ${novels.size}")
 
                 novels.forEach { novel ->
+                    var connection: HttpURLConnection? = null
                     try {
                         // R18判定: rating=1ならR18, rating=2なら一般
                         val isR18 = novel.rating == 1
-                        
+
                         // URLEntityを取得または作成
                         val urlEntity = repository.getOrCreateURL(novel.ncode, isR18)
-                        
+
                         // APIから最新情報を取得
-                        val connection = URL(urlEntity.api_url).openConnection() as HttpURLConnection
+                        connection = URL(urlEntity.api_url).openConnection() as HttpURLConnection
                         connection.requestMethod = "GET"
+                        connection.connectTimeout = 15000
+                        connection.readTimeout = 30000
                         connection.setRequestProperty("Accept-Encoding", "gzip")
-                        
+
                         val inputStream = if (connection.contentEncoding == "gzip") {
                             GZIPInputStream(connection.inputStream)
                         } else {
                             connection.inputStream
                         }
-                        
+
                         val response = BufferedReader(InputStreamReader(inputStream)).use { it.readText() }
                         val jsonArray = JSONArray(response)
-                        
+
                         if (jsonArray.length() > 1) {
                             val novelJson = jsonArray.getJSONObject(1)
                             val latestEpisodeCount = novelJson.getInt("general_all_no")
-                            
+
                             // 更新があるかチェック
                             if (latestEpisodeCount > novel.total_ep) {
                                 // 更新キューに追加
@@ -138,21 +141,21 @@ class AutoUpdateWorker(
                                     update_time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
                                 )
                                 repository.insertUpdateQueue(updateQueue)
-                                
+
                                 if (novel.total_ep == 0) {
                                     newNovelsCount++
                                 } else {
                                     updatedNovelsCount++
                                 }
-                                
+
                                 Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)")
                             }
                         }
-                        
-                        connection.disconnect()
                     } catch (e: Exception) {
                         Log.e(TAG, "小説 ${novel.ncode} の更新確認エラー", e)
                         errors.add("${novel.title}: ${e.message}")
+                    } finally {
+                        connection?.disconnect()
                     }
                 }
             } catch (e: Exception) {

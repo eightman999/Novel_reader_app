@@ -539,10 +539,19 @@ class SettingsStore(private val context: Context) {
     }
 
     // カスタムフォントパスを保存するメソッド
-    suspend fun saveCustomFont(path: String) {
+    suspend fun saveCustomFontPath(path: String) {
         context.dataStore.edit { preferences ->
             preferences[CUSTOM_FONT_PATH] = path
         }
+    }
+
+    // 後方互換性のための非推奨メソッド
+    @Deprecated(
+        "Ambiguous method name. Use saveCustomFontPath instead",
+        ReplaceWith("saveCustomFontPath(path)")
+    )
+    suspend fun saveCustomFont(path: String) {
+        saveCustomFontPath(path)
     }
 
     // GitHubリリース通知バージョンを保存
