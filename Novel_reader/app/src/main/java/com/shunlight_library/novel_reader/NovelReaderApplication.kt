@@ -46,10 +46,16 @@ class NovelReaderApplication : Application() {
 
         // リポジトリへの簡単なアクセス用
         fun getRepository(): NovelRepository = instance.repository
+
+        // アプリケーションスコープへのアクセス用
+        fun getApplicationScope(): CoroutineScope = instance.applicationScope
     }
 
     /** 自動更新ワークを管理する WorkManager インスタンス */
     private lateinit var workManager: WorkManager
+
+    /** アプリケーション全体で使用する構造化されたCoroutineScope */
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
@@ -67,8 +73,8 @@ class NovelReaderApplication : Application() {
      * 自動更新スケジュールを設定する
      */
     private fun setupUpdateSchedule() {
-        // 非同期で設定値を読み込んでスケジュールする
-        CoroutineScope(Dispatchers.IO).launch {
+        // 構造化されたCoroutineScopeで設定値を読み込んでスケジュールする
+        applicationScope.launch(Dispatchers.IO) {
             val settingsStore = SettingsStore(this@NovelReaderApplication)
             val enabled = settingsStore.autoUpdateEnabled.first()
             val timeString = settingsStore.autoUpdateTime.first()
@@ -175,6 +181,15 @@ class NovelReaderApplication : Application() {
         }
 
         return hour to minute
+    }
+
+    /**
+     * アプリケーション終了時のクリーンアップ
+     * 注: onTerminate()は通常のアプリ終了では呼ばれないが、適切なリソース管理のため定義
+     */
+    override fun onTerminate() {
+        super.onTerminate()
+        applicationScope.cancel()
     }
 
 }

@@ -59,11 +59,12 @@ object ReleaseUtils {
      */
     suspend fun checkForNewRelease(context: Context) {
         withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
             try {
-                val connection = URL(RELEASE_API).openConnection() as HttpURLConnection
+                connection = URL(RELEASE_API).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
                     val json = JSONObject(response)
@@ -86,6 +87,8 @@ object ReleaseUtils {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "release check failed", e)
+            } finally {
+                connection?.disconnect()
             }
         }
     }

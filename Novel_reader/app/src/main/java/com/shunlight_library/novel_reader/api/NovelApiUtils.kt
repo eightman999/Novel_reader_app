@@ -262,6 +262,7 @@ object NovelApiUtils {
      */
     suspend fun fetchNovelDetails(ncode: String, isR18: Boolean = false): NovelDescEntity? {
         return withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
             try {
                 // API URLの構築
                 val apiUrl = if (isR18) {
@@ -270,10 +271,10 @@ object NovelApiUtils {
                     "https://api.syosetu.com/novelapi/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5&json"
                 }
 
-                val connection = URL(apiUrl).openConnection() as HttpURLConnection
+                connection = URL(apiUrl).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val inputStream = GZIPInputStream(connection.inputStream)
@@ -337,6 +338,8 @@ object NovelApiUtils {
             } catch (e: Exception) {
                 Log.e(TAG, "小説詳細取得エラー: ${e.message}", e)
                 null
+            } finally {
+                connection?.disconnect()
             }
         }
     }
