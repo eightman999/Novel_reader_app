@@ -52,8 +52,8 @@ class UpdateCheckWorker(
             // 通知チャンネルの作成
             createNotificationChannel()
 
-            var episodeCount = 0  // 更新された話数の合計
-            var newCount = 0  // 新着作品数
+            var workCount = 0  // 新着・更新された作品数
+            var episodeCount = 0  // 新着・更新された話数の合計
 
             // 各小説の更新をチェック
             for (novel in novels) {
@@ -105,10 +105,13 @@ class UpdateCheckWorker(
                             )
                             repository.insertUpdateQueue(updateQueue)
 
+                            workCount++
+
                             if (novel.general_all_no == 0) {
-                                newCount++
+                                // 新着作品：全話数を加算
+                                episodeCount += info.generalAllNo
                             } else {
-                                // 更新された話数を加算
+                                // 更新作品：新しく追加された話数を加算
                                 episodeCount += (info.generalAllNo - novel.general_all_no)
                             }
 
@@ -127,11 +130,11 @@ class UpdateCheckWorker(
             }
 
             // 更新があれば通知を送信
-            if (newCount > 0 || episodeCount > 0) {
-                sendUpdateNotification(newCount, episodeCount)
+            if (workCount > 0) {
+                sendUpdateNotification(workCount, episodeCount)
             }
 
-            Log.d(TAG, "自動更新チェック完了: 新着${newCount}件、${episodeCount}話")
+            Log.d(TAG, "自動更新チェック完了: ${workCount}作品、${episodeCount}話")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "自動更新チェック処理中にエラー: ${e.message}", e)
@@ -152,7 +155,7 @@ class UpdateCheckWorker(
     }
 
     @SuppressLint("MissingPermission")
-    private fun sendUpdateNotification(newCount: Int, episodeCount: Int) {
+    private fun sendUpdateNotification(workCount: Int, episodeCount: Int) {
         try {
             val notificationManager = NotificationManagerCompat.from(context)
 
@@ -160,7 +163,7 @@ class UpdateCheckWorker(
             val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle("小説の更新があります")
-                .setContentText("新着${newCount}件${episodeCount}話の更新が見つかりました")
+                .setContentText("${workCount}作品${episodeCount}話の更新が見つかりました")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setGroup(NOTIFICATION_GROUP_ID)
                 .setAutoCancel(true)

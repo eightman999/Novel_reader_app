@@ -160,19 +160,25 @@ class NovelRepository(
         return Pair(newCount, updateCount)
     }
 
-    // データベースからUpdate_queueの新着作品数と更新話数の合計を取得するメソッド
+    // データベースからUpdate_queueの作品数と話数の合計を取得するメソッド
     suspend fun getUpdateCountsWithEpisodes(): Pair<Int, Int> {
         val allQueue = updateQueueDao.getAllUpdateQueueList()
 
-        // 新規追加作品数
-        val newCount = allQueue.count { it.general_all_no == it.total_ep }
+        // 新着・更新を含む総作品数
+        val totalWorks = allQueue.size
 
-        // 更新された話数の合計（新規追加作品を除く）
-        val totalEpisodes = allQueue
-            .filter { it.general_all_no < it.total_ep }
-            .sumOf { it.total_ep - it.general_all_no }
+        // 新着作品の全話数 + 更新された話数の合計
+        val totalEpisodes = allQueue.sumOf { queue ->
+            if (queue.general_all_no == queue.total_ep) {
+                // 新着作品：全話数を加算
+                queue.total_ep
+            } else {
+                // 更新作品：新しく追加された話数のみを加算
+                queue.total_ep - queue.general_all_no
+            }
+        }
 
-        return Pair(newCount, totalEpisodes)
+        return Pair(totalWorks, totalEpisodes)
     }
     suspend fun getAllUpdateQueue(): List<UpdateQueueEntity> {
         return withContext(Dispatchers.IO) {
