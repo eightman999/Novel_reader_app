@@ -230,6 +230,56 @@ fun NovelListScreen() {
 - 更新履歴の永続化と管理
 - 設定変更時の即座反映
 
+## なろう小説API仕様
+
+**必須**: なろう小説APIはYAML形式でデータを返す
+
+### APIレスポンス形式
+- **フォーマット**: YAML（デフォルト）
+- **圧縮**: gzip圧縮（`gzip=5`パラメータ使用時）
+- **注意**: `&json` パラメータは使用しない（YAMLがデフォルト）
+
+### レスポンス構造
+```yaml
+---
+-
+  allcount: 1
+-
+  title: はぐるまどらいぶ。
+  userid: 939213
+  writer: かばやきだれ
+  story: |
+    あらすじ...
+  noveltype: 1
+  general_all_no: 1216
+  length: 4739978
+  updated_at: 2025-11-04 18:35:37
+```
+
+### 実装パターン
+```kotlin
+// API呼び出し（YAML形式、gzip圧縮）
+val apiUrl = if (isR18) {
+    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
+} else {
+    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
+}
+
+// YAMLパース
+val yaml = Yaml()
+val yamlData = yaml.load<List<Map<String, Any>>>(responseContent)
+val novelData = yamlData[1]  // 0番目はメタデータ、1番目が小説情報
+
+// GZIP解凍判定
+val useGzip = url.contains("gzip=", ignoreCase = true) ||
+              connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
+```
+
+**重要なルール**:
+- URLに `gzip=` パラメータがある場合は必ずGZIP解凍を行う
+- Content-Encodingヘッダーだけでなく、URLパラメータもチェックする
+- レスポンスの0番目の要素はメタデータ（allcount）、1番目が実際の小説情報
+
 ## R18作品判定ルール
 
 **必須**: 小説のR18判定は`rating`フィールドで行う
@@ -238,11 +288,11 @@ fun NovelListScreen() {
 // R18判定の実装パターン
 val isR18 = novel.rating == 1
 
-// APIエンドポイント選択
+// APIエンドポイント選択（YAML形式）
 val apiUrl = if (isR18) {
-    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
 } else {
-    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
 }
 
 // WebサイトURL選択

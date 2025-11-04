@@ -6,8 +6,6 @@
 // NovelApiUtils.kt
 package com.shunlight_library.novel_reader.api
 
-import android.util.JsonReader
-import android.util.JsonToken
 import android.util.Log
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -55,12 +53,28 @@ object NovelApiUtils {
     )
 
     /**
-     * APIから小説情報を取得する
+     * なろう小説APIから小説情報を取得する
+     *
+     * APIレスポンス形式: YAML（gzip圧縮）
+     * 形式例:
+     * ---
+     * -
+     *   allcount: 1
+     * -
+     *   title: タイトル
+     *   userid: 123456
+     *   general_all_no: 総エピソード数
+     *   updated_at: "2025-11-04 18:35:37"
+     *   noveltype: 1 (1=連載, 2=短編)
+     *   length: 文字数
+     *
      * @param ncode 小説のNコード
-     * @param isR18 R18小説かどうか
-     * @return Pair(総エピソード数, 更新日時) 取得に失敗した場合は (-1, "")
+     * @param isR18 R18小説かどうか（true=novel18.syosetu.com, false=ncode.syosetu.com）
+     * @param apiUrl カスタムAPI URL（nullの場合はデフォルトのAPIを使用）
+     * @param maxRetries 最大再試行回数
+     * @param retryDelayMillis 再試行時の待機時間（ミリ秒）
+     * @return NovelApiInfo（取得失敗時はnull）
      */
-    // NovelApiUtils.kt の fetchNovelInfo 関数を修正
     suspend fun fetchNovelInfo(
         ncode: String,
         isR18: Boolean = false,
@@ -73,11 +87,12 @@ object NovelApiUtils {
         val apiCandidates = if (apiUrl != null) {
             listOf(apiUrl)
         } else {
+            // なろう小説APIはデフォルトでYAML形式を返す（gzip圧縮付き）
             listOf(
                 if (isR18) {
-                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5"
                 } else {
-                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua-u-nt-l&ncode=$ncode&gzip=5"
                 }
             )
         }
@@ -175,111 +190,61 @@ object NovelApiUtils {
                         return@withContext null
                     }
 
-                    // レスポンスがJSONでない場合（HTMLなど）
-                    if (!responseContent.trimStart().startsWith("[") && !responseContent.trimStart().startsWith("{")) {
-                        Log.w(TAG, "APIレスポンスがJSON形式ではありません: ${responseContent.take(200)}")
-                        return@withContext null
-                    }
-
-                    // JSONパース
+                    // YAMLパース
+                    // なろう小説APIはYAML形式でデータを返す
+                    // 形式:
+                    // ---
+                    // -
+                    //   allcount: 1
+                    // -
+                    //   title: タイトル
+                    //   userid: 123456
+                    //   general_all_no: 100
+                    //   updated_at: "2025-11-04 18:35:37"
+                    //   noveltype: 1
+                    //   length: 123456
                     try {
-                        JsonReader(responseContent.reader()).use { reader ->
-                            reader.beginArray()
-                            if (!reader.hasNext()) {
-                                reader.endArray()
-                                Log.w(TAG, "APIレスポンスにデータが含まれていません")
-                                return@withContext null
-                            }
+                        val yaml = Yaml()
+                        val yamlData = yaml.load<List<Map<String, Any>>>(responseContent)
 
-                            // メタデータ要素をスキップ
-                            reader.skipValue()
-
-                            if (!reader.hasNext()) {
-                                reader.endArray()
-                                Log.w(TAG, "APIレスポンスに小説情報が含まれていません（メタデータのみ）")
-                                return@withContext null
-                            }
-
-                            val info = readNovelInfo(reader)
-
-                            // 配列内の残り要素を読み捨てる
-                            while (reader.hasNext()) {
-                                reader.skipValue()
-                            }
-                            reader.endArray()
-
-                            info
+                        // データが2要素未満の場合（メタデータと小説情報）
+                        if (yamlData == null || yamlData.size < 2) {
+                            Log.w(TAG, "APIレスポンスに小説情報が含まれていません")
+                            return@withContext null
                         }
+
+                        // 1番目はメタデータ（allcount）、2番目が小説情報
+                        val novelData = yamlData[1]
+
+                        // 必要なフィールドを取得
+                        val generalAllNo = (novelData["general_all_no"] as? Number)?.toInt()
+                        val updatedAt = novelData["updated_at"]?.toString()
+                        val userid = novelData["userid"]?.toString()
+                        val noveltype = (novelData["noveltype"] as? Number)?.toInt()
+                        val length = (novelData["length"] as? Number)?.toInt()
+
+                        if (generalAllNo == null) {
+                            Log.w(TAG, "general_all_no フィールドが見つかりません")
+                            return@withContext null
+                        }
+
+                        val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
+                            ?: DatabaseSyncUtils.getCurrentDateTimeString()
+
+                        NovelApiInfo(
+                            generalAllNo = generalAllNo,
+                            updatedAt = normalizedUpdatedAt,
+                            userid = userid,
+                            noveltype = noveltype,
+                            length = length
+                        )
                     } catch (e: Exception) {
-                        Log.e(TAG, "JSONパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
+                        Log.e(TAG, "YAMLパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
                         throw e
                     }
                 }
             } finally {
                 connection?.disconnect()
-            }
-        }
-    }
-
-    private fun readNovelInfo(reader: JsonReader): NovelApiInfo? {
-        reader.beginObject()
-
-        var generalAllNo: Int? = null
-        var updatedAt: String? = null
-        var userid: String? = null
-        var noveltype: Int? = null
-        var length: Int? = null
-
-        while (reader.hasNext()) {
-            when (reader.nextName()) {
-                "general_all_no" -> generalAllNo = reader.nextIntOrNull()
-                "updated_at" -> updatedAt = reader.nextStringOrNull()
-                "userid" -> userid = reader.nextStringOrNull()
-                "noveltype" -> noveltype = reader.nextIntOrNull()
-                "length" -> length = reader.nextIntOrNull()
-                else -> reader.skipValue()
-            }
-        }
-
-        reader.endObject()
-
-        val totalEpisodes = generalAllNo ?: return null
-        val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
-            ?: DatabaseSyncUtils.getCurrentDateTimeString()
-
-        return NovelApiInfo(
-            generalAllNo = totalEpisodes,
-            updatedAt = normalizedUpdatedAt,
-            userid = userid,
-            noveltype = noveltype,
-            length = length
-        )
-    }
-
-    private fun JsonReader.nextStringOrNull(): String? {
-        return when (peek()) {
-            JsonToken.NULL -> {
-                nextNull()
-                null
-            }
-            JsonToken.STRING, JsonToken.NUMBER -> nextString()
-            else -> {
-                skipValue()
-                null
-            }
-        }
-    }
-
-    private fun JsonReader.nextIntOrNull(): Int? {
-        return when (peek()) {
-            JsonToken.NULL -> {
-                nextNull()
-                null
-            }
-            JsonToken.STRING, JsonToken.NUMBER -> nextString().toIntOrNull()
-            else -> {
-                skipValue()
-                null
             }
         }
     }
@@ -302,11 +267,11 @@ object NovelApiUtils {
         return withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
-                // API URLの構築
+                // API URLの構築（YAML形式、gzip圧縮）
                 val apiUrl = if (isR18) {
-                    "https://api.syosetu.com/novel18api/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novel18api/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5"
                 } else {
-                    "https://api.syosetu.com/novelapi/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5&json"
+                    "https://api.syosetu.com/novelapi/api/?of=t-n-u-w-s-k-g-ga-e-l-ua-nt&ncode=$ncode&gzip=5"
                 }
 
                 connection = URL(apiUrl).openConnection() as HttpURLConnection
