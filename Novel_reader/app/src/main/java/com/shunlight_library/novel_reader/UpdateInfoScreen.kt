@@ -242,8 +242,8 @@ fun UpdateInfoScreen(
                                 val novelBatches = novels.chunked(batchSize)
 
                                 var processedNovels = 0
-                                var newCount = 0
-                                var updatedCount = 0
+                                var workCount = 0  // 新着・更新された作品数
+                                var episodeCount = 0  // 新着・更新された話数の合計
 
                                 // 各バッチを処理
                                 for (batch in novelBatches) {
@@ -281,10 +281,14 @@ fun UpdateInfoScreen(
                                                         )
                                                         repository.insertUpdateQueue(updateQueue)
 
+                                                        workCount++
+
                                                         if (novel.general_all_no == 0) {
-                                                            newCount++
+                                                            // 新着作品：全話数を加算
+                                                            episodeCount += info.generalAllNo
                                                         } else {
-                                                            updatedCount++
+                                                            // 更新作品：新しく追加された話数を加算
+                                                            episodeCount += (info.generalAllNo - novel.general_all_no)
                                                         }
 
                                                         return@async true
@@ -315,8 +319,8 @@ fun UpdateInfoScreen(
                                     updateProgress(totalCount, "更新チェック完了")
 
                                     // 結果を表示
-                                    val resultMessage = if (newCount > 0 || updatedCount > 0) {
-                                        "新着${newCount}件・更新あり${updatedCount}件の小説が見つかりました"
+                                    val resultMessage = if (workCount > 0) {
+                                        "${workCount}作品${episodeCount}話の更新が見つかりました"
                                     } else {
                                         "更新された小説はありませんでした"
                                     }
