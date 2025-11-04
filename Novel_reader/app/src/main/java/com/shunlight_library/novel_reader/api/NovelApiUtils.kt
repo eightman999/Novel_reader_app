@@ -143,11 +143,21 @@ object NovelApiUtils {
                     return@withContext null
                 }
 
-                val useGzip = connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
-                val inputStream = if (useGzip) {
-                    GZIPInputStream(connection.inputStream)
-                } else {
-                    connection.inputStream
+                // URLにgzipパラメータが含まれている、またはContent-Encodingヘッダーにgzipが含まれている場合はGZIP解凍
+                val useGzip = url.contains("gzip=", ignoreCase = true) ||
+                              connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
+
+                Log.d(TAG, "GZIP使用: $useGzip (URL: $url, Content-Encoding: ${connection.contentEncoding})")
+
+                val inputStream = try {
+                    if (useGzip) {
+                        GZIPInputStream(connection.inputStream)
+                    } else {
+                        connection.inputStream
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "GZIP解凍エラー: ${e.message}", e)
+                    throw e
                 }
 
                 inputStream.buffered().use { bufferedStream ->
