@@ -243,7 +243,7 @@ fun UpdateInfoScreen(
 
                                 var processedNovels = 0
                                 var newCount = 0
-                                var updatedCount = 0
+                                var episodeCount = 0  // 更新された話数の合計
 
                                 // 各バッチを処理
                                 for (batch in novelBatches) {
@@ -284,7 +284,8 @@ fun UpdateInfoScreen(
                                                         if (novel.general_all_no == 0) {
                                                             newCount++
                                                         } else {
-                                                            updatedCount++
+                                                            // 更新された話数を加算
+                                                            episodeCount += (info.generalAllNo - novel.general_all_no)
                                                         }
 
                                                         return@async true
@@ -315,8 +316,8 @@ fun UpdateInfoScreen(
                                     updateProgress(totalCount, "更新チェック完了")
 
                                     // 結果を表示
-                                    val resultMessage = if (newCount > 0 || updatedCount > 0) {
-                                        "新着${newCount}件・更新あり${updatedCount}件の小説が見つかりました"
+                                    val resultMessage = if (newCount > 0 || episodeCount > 0) {
+                                        "新着${newCount}件${episodeCount}話の更新が見つかりました"
                                     } else {
                                         "更新された小説はありませんでした"
                                     }
