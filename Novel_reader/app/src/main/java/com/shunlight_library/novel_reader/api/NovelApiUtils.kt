@@ -199,13 +199,23 @@ object NovelApiUtils {
                     // -
                     //   title: タイトル
                     //   userid: 123456
+                    //   story: |        # | = リテラルスカラー（改行保持）
+                    //     複数行の
+                    //     あらすじ...
+                    //   story: >        # > = 折り畳みスカラー（改行を空白に）
+                    //     複数行のテキストが
+                    //     1行にまとめられる
                     //   general_all_no: 100
                     //   updated_at: "2025-11-04 18:35:37"
                     //   noveltype: 1
                     //   length: 123456
+                    //
+                    // SnakeYAMLは「|」と「>」の両方を自動処理
                     try {
                         val yaml = Yaml()
                         val yamlData = yaml.load<List<Map<String, Any>>>(responseContent)
+
+                        Log.d(TAG, "YAML解析成功: ${yamlData?.size ?: 0} 要素")
 
                         // データが2要素未満の場合（メタデータと小説情報）
                         if (yamlData == null || yamlData.size < 2) {
