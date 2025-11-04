@@ -151,30 +151,58 @@ object NovelApiUtils {
                 }
 
                 inputStream.buffered().use { bufferedStream ->
-                    JsonReader(InputStreamReader(bufferedStream, Charsets.UTF_8)).use { reader ->
-                        reader.beginArray()
-                        if (!reader.hasNext()) {
-                            reader.endArray()
-                            return@withContext null
-                        }
+                    // レスポンス内容を文字列として読み込む
+                    val responseContent = InputStreamReader(bufferedStream, Charsets.UTF_8).use { reader ->
+                        reader.readText()
+                    }
 
-                        // メタデータ要素をスキップ
-                        reader.skipValue()
+                    // レスポンス内容をログ出力（デバッグ用）
+                    Log.d(TAG, "API Response (first 500 chars): ${responseContent.take(500)}")
 
-                        if (!reader.hasNext()) {
-                            reader.endArray()
-                            return@withContext null
-                        }
+                    // レスポンスが空の場合
+                    if (responseContent.isBlank()) {
+                        Log.w(TAG, "APIレスポンスが空です: $url")
+                        return@withContext null
+                    }
 
-                        val info = readNovelInfo(reader)
+                    // レスポンスがJSONでない場合（HTMLなど）
+                    if (!responseContent.trimStart().startsWith("[") && !responseContent.trimStart().startsWith("{")) {
+                        Log.w(TAG, "APIレスポンスがJSON形式ではありません: ${responseContent.take(200)}")
+                        return@withContext null
+                    }
 
-                        // 配列内の残り要素を読み捨てる
-                        while (reader.hasNext()) {
+                    // JSONパース
+                    try {
+                        JsonReader(responseContent.reader()).use { reader ->
+                            reader.beginArray()
+                            if (!reader.hasNext()) {
+                                reader.endArray()
+                                Log.w(TAG, "APIレスポンスにデータが含まれていません")
+                                return@withContext null
+                            }
+
+                            // メタデータ要素をスキップ
                             reader.skipValue()
-                        }
-                        reader.endArray()
 
-                        info
+                            if (!reader.hasNext()) {
+                                reader.endArray()
+                                Log.w(TAG, "APIレスポンスに小説情報が含まれていません（メタデータのみ）")
+                                return@withContext null
+                            }
+
+                            val info = readNovelInfo(reader)
+
+                            // 配列内の残り要素を読み捨てる
+                            while (reader.hasNext()) {
+                                reader.skipValue()
+                            }
+                            reader.endArray()
+
+                            info
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "JSONパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
+                        throw e
                     }
                 }
             } finally {
