@@ -283,7 +283,10 @@ fun EpisodeViewScreen(
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
+                            if (textOrientation == "Vertical")
+                                Icons.Default.ArrowForward  // 縦書き時は右矢印
+                            else
+                                Icons.AutoMirrored.Filled.ArrowBack,  // 横書き時は左矢印
                             contentDescription = "前のエピソード",
                             tint = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
                                 MaterialTheme.colorScheme.primary
@@ -333,7 +336,10 @@ fun EpisodeViewScreen(
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(
-                            Icons.Default.ArrowForward,
+                            if (textOrientation == "Vertical")
+                                Icons.AutoMirrored.Filled.ArrowBack  // 縦書き時は左矢印
+                            else
+                                Icons.Default.ArrowForward,  // 横書き時は右矢印
                             contentDescription = "次のエピソード",
                             tint = if (novel?.let {
                                     episodeNo.toIntOrNull()?.let { epNo ->
@@ -388,10 +394,21 @@ fun EpisodeViewScreen(
                                     val canPrev = currentEp > 1
                                     val canNext = novel?.let { currentEp < it.total_ep } ?: true
                                     saveReadingRate()
-                                    if (dragAmountX > 0 && canPrev) {
-                                        onPrevious()
-                                    } else if (dragAmountX < 0 && canNext) {
-                                        onNext()
+
+                                    if (textOrientation == "Vertical") {
+                                        // 縦書き時: 右スワイプ=次、左スワイプ=前
+                                        if (dragAmountX > 0 && canNext) {
+                                            onNext()
+                                        } else if (dragAmountX < 0 && canPrev) {
+                                            onPrevious()
+                                        }
+                                    } else {
+                                        // 横書き時: 右スワイプ=前、左スワイプ=次
+                                        if (dragAmountX > 0 && canPrev) {
+                                            onPrevious()
+                                        } else if (dragAmountX < 0 && canNext) {
+                                            onNext()
+                                        }
                                     }
                                 }
                                 dragAmountX = 0f
@@ -403,7 +420,7 @@ fun EpisodeViewScreen(
                             }
                         )
                     }
-                    .pointerInput(episodeNo, tapEnabled) {
+                    .pointerInput(episodeNo, tapEnabled, textOrientation) {
                         if (tapEnabled) {
                             detectTapGestures { offset ->
                                 val width = size.width
@@ -411,10 +428,21 @@ fun EpisodeViewScreen(
                                 val canPrev = currentEp > 1
                                 val canNext = novel?.let { currentEp < it.total_ep } ?: true
                                 saveReadingRate()
-                                if (offset.x < width / 2f && canPrev) {
-                                    onPrevious()
-                                } else if (offset.x >= width / 2f && canNext) {
-                                    onNext()
+
+                                if (textOrientation == "Vertical") {
+                                    // 縦書き時: 左タップ=次、右タップ=前
+                                    if (offset.x < width / 2f && canNext) {
+                                        onNext()
+                                    } else if (offset.x >= width / 2f && canPrev) {
+                                        onPrevious()
+                                    }
+                                } else {
+                                    // 横書き時: 左タップ=前、右タップ=次
+                                    if (offset.x < width / 2f && canPrev) {
+                                        onPrevious()
+                                    } else if (offset.x >= width / 2f && canNext) {
+                                        onNext()
+                                    }
                                 }
                             }
                         }
@@ -605,15 +633,25 @@ fun EnhancedHtmlRubyWebView(
     val cssStyle = """
     <style>
         $customFontCss
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
         body {
             font-family: $actualFontFamily;
             font-size: ${fontSize}px;
             line-height: 1.8;
             padding: 16px;
-            margin: 0;
             background-color: $bgColor;
             color: $fontColor;
             writing-mode: $writingMode;
+            ${if (textOrientation == "Vertical") "overflow-x: auto;" else "overflow-y: auto;"}
+            box-sizing: border-box;
+        }
+        p {
+            margin: 0.5em 0;
         }
         ruby {
             ruby-align: center;
