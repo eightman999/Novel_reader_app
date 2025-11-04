@@ -268,96 +268,181 @@ fun EpisodeViewScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    // 前のエピソード
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable(
-                                enabled = episodeNo.toIntOrNull()?.let { it > 1 } ?: false,
-                                onClick = {
-                                    saveReadingRate()
-                                    onPrevious()
-                                }
+                    // 縦書き時と横書き時でボタンの配置を変更
+                    if (textOrientation == "Vertical") {
+                        // 縦書き時: 次 - 目次 - 前（右から左へ読み進む）
+
+                        // 次のエピソード（左側）
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(
+                                    enabled = novel?.let {
+                                        episodeNo.toIntOrNull()?.let { epNo ->
+                                            epNo < it.total_ep
+                                        } ?: false
+                                    } ?: false,
+                                    onClick = {
+                                        saveReadingRate()
+                                        onNext()
+                                    }
+                                )
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,  // 左矢印
+                                contentDescription = "次のエピソード",
+                                tint = if (novel?.let {
+                                        episodeNo.toIntOrNull()?.let { epNo ->
+                                            epNo < it.total_ep
+                                        } ?: false
+                                    } ?: false) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             )
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Icon(
-                            if (textOrientation == "Vertical")
-                                Icons.Default.ArrowForward  // 縦書き時は右矢印
-                            else
-                                Icons.AutoMirrored.Filled.ArrowBack,  // 横書き時は左矢印
-                            contentDescription = "前のエピソード",
-                            tint = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
-                                MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        )
-                        Text(
-                            "前のエピソード",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
-                                MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        )
-                    }
-
-                    // 目次に戻る
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable(onClick = {
-                                saveReadingRate()
-                                onBackToToc()
-                            })
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Icon(Icons.Default.List, contentDescription = "目次に戻る")
-                        Text("目次に戻る", style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    // 次のエピソード
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable(
-                                enabled = novel?.let {
-                                    episodeNo.toIntOrNull()?.let { epNo ->
-                                        epNo < it.total_ep
-                                    } ?: false
-                                } ?: false,
-                                onClick = {
-                                    saveReadingRate()
-                                    onNext()
-                                }
-
+                            Text(
+                                "次のエピソード",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (novel?.let {
+                                        episodeNo.toIntOrNull()?.let { epNo ->
+                                            epNo < it.total_ep
+                                        } ?: false
+                                    } ?: false) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             )
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Icon(
-                            if (textOrientation == "Vertical")
-                                Icons.AutoMirrored.Filled.ArrowBack  // 縦書き時は左矢印
-                            else
-                                Icons.Default.ArrowForward,  // 横書き時は右矢印
-                            contentDescription = "次のエピソード",
-                            tint = if (novel?.let {
-                                    episodeNo.toIntOrNull()?.let { epNo ->
-                                        epNo < it.total_ep
-                                    } ?: false
-                                } ?: false) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        )
-                        Text(
-                            "次のエピソード",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (novel?.let {
-                                    episodeNo.toIntOrNull()?.let { epNo ->
-                                        epNo < it.total_ep
-                                    } ?: false
-                                } ?: false) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        )
+                        }
+
+                        // 目次に戻る（中央）
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(onClick = {
+                                    saveReadingRate()
+                                    onBackToToc()
+                                })
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.List, contentDescription = "目次に戻る")
+                            Text("目次に戻る", style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        // 前のエピソード（右側）
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(
+                                    enabled = episodeNo.toIntOrNull()?.let { it > 1 } ?: false,
+                                    onClick = {
+                                        saveReadingRate()
+                                        onPrevious()
+                                    }
+                                )
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowForward,  // 右矢印
+                                contentDescription = "前のエピソード",
+                                tint = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                            Text(
+                                "前のエピソード",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
+                    } else {
+                        // 横書き時: 前 - 目次 - 次（従来通り）
+
+                        // 前のエピソード（左側）
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(
+                                    enabled = episodeNo.toIntOrNull()?.let { it > 1 } ?: false,
+                                    onClick = {
+                                        saveReadingRate()
+                                        onPrevious()
+                                    }
+                                )
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,  // 左矢印
+                                contentDescription = "前のエピソード",
+                                tint = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                            Text(
+                                "前のエピソード",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (episodeNo.toIntOrNull()?.let { it > 1 } ?: false)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
+
+                        // 目次に戻る（中央）
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(onClick = {
+                                    saveReadingRate()
+                                    onBackToToc()
+                                })
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.List, contentDescription = "目次に戻る")
+                            Text("目次に戻る", style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        // 次のエピソード（右側）
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(
+                                    enabled = novel?.let {
+                                        episodeNo.toIntOrNull()?.let { epNo ->
+                                            epNo < it.total_ep
+                                        } ?: false
+                                    } ?: false,
+                                    onClick = {
+                                        saveReadingRate()
+                                        onNext()
+                                    }
+                                )
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowForward,  // 右矢印
+                                contentDescription = "次のエピソード",
+                                tint = if (novel?.let {
+                                        episodeNo.toIntOrNull()?.let { epNo ->
+                                            epNo < it.total_ep
+                                        } ?: false
+                                    } ?: false) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                            Text(
+                                "次のエピソード",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (novel?.let {
+                                        episodeNo.toIntOrNull()?.let { epNo ->
+                                            epNo < it.total_ep
+                                        } ?: false
+                                    } ?: false) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
                     }
                 }
             }
@@ -448,11 +533,20 @@ fun EpisodeViewScreen(
                         }
                     }
             ) {
-                Column(
-                    modifier = Modifier
+                // 縦書き時はWebViewが横スクロールするため、verticalScrollは不要
+                val columnModifier = if (textOrientation == "Vertical") {
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                } else {
+                    Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)
                         .verticalScroll(scrollState)
+                }
+
+                Column(
+                    modifier = columnModifier
                 ) {
                     // 本文表示
                     if (devModeEnabled) {
@@ -497,7 +591,11 @@ fun EpisodeViewScreen(
                             ncode = ncode,
                             episodeNo = episodeNo,
                             savedReadingRate = episode!!.reading_rate,
-                            modifier = Modifier.padding(bottom = 32.dp),
+                            modifier = if (textOrientation == "Vertical") {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.padding(bottom = 32.dp)
+                            },
                             onWebViewCreated = { webView = it }
                         )
                     }
@@ -633,25 +731,29 @@ fun EnhancedHtmlRubyWebView(
     val cssStyle = """
     <style>
         $customFontCss
-        html, body {
+        html {
             height: 100%;
             width: 100%;
-            margin: 0;
-            padding: 0;
         }
         body {
             font-family: $actualFontFamily;
             font-size: ${fontSize}px;
             line-height: 1.8;
             padding: 16px;
+            margin: 0;
             background-color: $bgColor;
             color: $fontColor;
             writing-mode: $writingMode;
-            ${if (textOrientation == "Vertical") "overflow-x: auto;" else "overflow-y: auto;"}
+            ${if (textOrientation == "Vertical") {
+                "min-height: 100vh; width: auto; overflow-x: auto; overflow-y: hidden;"
+            } else {
+                "min-height: 100vh; overflow-y: auto;"
+            }}
             box-sizing: border-box;
         }
         p {
             margin: 0.5em 0;
+            ${if (textOrientation == "Vertical") "height: auto;" else ""}
         }
         ruby {
             ruby-align: center;
@@ -727,7 +829,7 @@ fun EnhancedHtmlRubyWebView(
         <html>
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0">
             $cssStyle
             $scrollMonitorScript
         </head>
@@ -751,6 +853,10 @@ fun EnhancedHtmlRubyWebView(
                     // ローカルファイル（ダウンロードした画像）へのアクセスを許可
                     allowFileAccess = true
                     allowContentAccess = true
+                    // レイアウト設定を追加
+                    useWideViewPort = true
+                    loadWithOverviewMode = false
+                    layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
                 }
                 onWebViewCreated(this)
                 // JavaScriptインターフェースを追加
