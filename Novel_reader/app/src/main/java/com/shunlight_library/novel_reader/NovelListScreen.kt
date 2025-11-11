@@ -298,23 +298,6 @@ fun NovelListScreen(
     LaunchedEffect(settingsLoaded) {
         if (!settingsLoaded) return@LaunchedEffect
         repository.allNovels.collect { novelsList ->
-            novelsList.forEach { novel ->
-                if (novel.userid == null || novel.noveltype == null || novel.length == null) {
-                    scope.launch {
-                        val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
-                        if (info != null) {
-                            repository.updateNovel(
-                                novel.copy(
-                                    userid = info.userid,
-                                    noveltype = info.noveltype,
-                                    length = info.length
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
             novelList = novelsList
         }
     }
