@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
+import org.jsoup.HttpStatusException
 import org.yaml.snakeyaml.Yaml
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -408,7 +409,30 @@ object NovelApiUtils {
                     connection.cookie("over18", "yes")
                 }
 
-                var doc = connection.get()
+                var doc = try {
+                    connection.get()
+                } catch (e: org.jsoup.HttpStatusException) {
+                    // 404エラーかつepisodeNo == 1の場合、短編小説の可能性があるため話数なしURLを試す
+                    if (e.statusCode == 404 && episodeNo == 1 && noveltype != 2) {
+                        Log.d(TAG, "404エラーを検出。短編小説として話数なしURLを試します: $baseUrl/$ncode/")
+                        val fallbackConnection = Jsoup.connect("$baseUrl/$ncode/")
+                            .userAgent(randomUserAgent)
+                            .timeout(30000)
+                            .followRedirects(true)
+
+                        if (isR18 ||
+                            url.contains("novel18.syosetu.com") ||
+                            url.contains("noc.syosetu.com") ||
+                            url.contains("mid.syosetu.com") ||
+                            url.contains("mnlt.syosetu.com")) {
+                            fallbackConnection.cookie("over18", "yes")
+                        }
+
+                        fallbackConnection.get()
+                    } else {
+                        throw e
+                    }
+                }
 
                 // レスポンスが年齢確認ページかチェック
                 val htmlContent = doc.html()
