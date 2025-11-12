@@ -322,3 +322,28 @@ val webUrl = if (isR18) {
 - 一般作品の更新確認・閲覧は通常APIとサイトを使用
 
 このルールは全てのAPI呼び出し、URL生成、WebView表示で統一して適用すること。
+
+## 短編小説のタイトル取得ルール
+
+**必須**: 短編小説（noveltype=2）と連載小説（noveltype=1）の両方でタイトルを正しく取得する
+
+### HTML構造の違い
+
+- **連載小説**: `<h1 class="p-novel__title p-novel__title--rensai">タイトル</h1>`
+- **短編小説**: `<h1 class="p-novel__title">タイトル</h1>` （`--rensai`クラスなし）
+
+### 実装パターン
+
+```kotlin
+// タイトル取得時のフォールバック処理（NovelApiUtils.kt等）
+val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
+    .ifEmpty { doc.select("h1.p-novel__title").text() }
+```
+
+**重要なルール**:
+- 連載小説専用のCSSセレクタ（`p-novel__title--rensai`）だけでは短編小説のタイトルが取得できない
+- 必ずフォールバック処理を実装し、汎用セレクタ（`p-novel__title`）も試す
+- タイトルが空の場合の処理を適切に行う
+- 短編小説の場合、取得したタイトルを`e_title`フィールドに格納する
+
+このルールはエピソード取得、WebViewでの表示、データベース保存などで統一して適用すること。
