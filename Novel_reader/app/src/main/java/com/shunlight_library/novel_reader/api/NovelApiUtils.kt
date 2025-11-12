@@ -458,8 +458,9 @@ object NovelApiUtils {
                     }
                 }
 
-                // タイトルと本文を取得
+                // タイトルを取得（連載小説と短編小説の両方に対応）
                 val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
+                    .ifEmpty { doc.select("h1.p-novel__title").text() }
 
                 val miteminLinkMap = mutableMapOf<String, String>()
 
