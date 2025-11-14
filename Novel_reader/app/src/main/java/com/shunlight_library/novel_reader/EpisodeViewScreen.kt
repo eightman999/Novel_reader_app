@@ -747,16 +747,17 @@ fun EnhancedHtmlRubyWebView(
             ${if (textOrientation == "Vertical") {
                 "min-height: 100vh; width: auto; overflow-x: auto; overflow-y: hidden;"
             } else {
-                "min-height: 100vh; overflow-y: auto;"
+                "min-height: 100vh; overflow-y: auto; word-wrap: break-word; overflow-wrap: break-word;"
             }}
             box-sizing: border-box;
         }
         p {
             margin: 0.5em 0;
-            ${if (textOrientation == "Vertical") "height: auto;" else ""}
+            ${if (textOrientation == "Vertical") "height: auto;" else "word-wrap: break-word; overflow-wrap: break-word;"}
         }
         ruby {
             ruby-align: center;
+            ${if (textOrientation == "Horizontal") "display: inline-block; max-width: 100%;" else ""}
         }
         rt {
             font-size: ${rubyFontSize}px;
