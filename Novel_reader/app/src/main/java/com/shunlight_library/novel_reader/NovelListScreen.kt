@@ -77,7 +77,8 @@ data class NovelWithReadInfo(
 @Composable
 fun NovelListScreen(
     onBack: () -> Unit,
-    onNovelClick: (String) -> Unit
+    onNovelClick: (String) -> Unit,
+    navigationManager: com.shunlight_library.novel_reader.navigation.NavigationManager? = null
 ) {
     val repository = NovelReaderApplication.getRepository()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -114,6 +115,24 @@ fun NovelListScreen(
     var lastReadMap by remember { mutableStateOf<Map<String, LastReadNovelEntity>>(emptyMap()) }
 
     val listState = rememberLazyListState()
+
+    // スクロール位置を復元
+    LaunchedEffect(Unit) {
+        navigationManager?.getScrollPosition("NovelList")?.let { (index, offset) ->
+            listState.scrollToItem(index, offset)
+        }
+    }
+
+    // 画面が破棄される時にスクロール位置を保存
+    DisposableEffect(Unit) {
+        onDispose {
+            navigationManager?.saveScrollPosition(
+                "NovelList",
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }
+    }
 
     // 設定読み込み完了フラグ
     var settingsLoaded by remember { mutableStateOf(false) }
