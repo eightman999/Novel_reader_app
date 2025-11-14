@@ -59,8 +59,9 @@ fun WebViewScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var loadingMessage by remember { mutableStateOf("") }
-    var detectedNcode by remember { mutableStateOf("") }
-    var isR18 by remember { mutableStateOf(false) }
+    var detectedNovelId by remember { mutableStateOf("") }
+    var detectedSiteName by remember { mutableStateOf("") }
+    var detectedNovelUrl by remember { mutableStateOf("") }
 
     // WebView内の履歴を戻るか、メイン画面に戻るかを判断
     BackHandler {
@@ -288,71 +289,37 @@ fun WebViewScreen(
         }
     }
 
-    // ncode抽出用の正規表現パターン
-    val ncodePattern = Pattern.compile("https://(ncode|novel18)\\.syosetu\\.com/([^/]+)/?.*")
+    // URLから小説IDを抽出する関数（マルチサイト対応）
+    fun extractNovelInfo(url: String): Triple<String?, Boolean, String?> {
+        // 新しいアダプターファクトリーでサイト判定
+        val adapterResult = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByUrl(url)
+        if (adapterResult != null) {
+            val (adapter, novelId) = adapterResult
+            val siteName = adapter.getSiteName()
 
-    // URLからncodeを抽出する関数
-    fun extractNcode(url: String): Pair<String?, Boolean> {
-        val matcher = ncodePattern.matcher(url)
-        if (matcher.matches()) {
-            val domain = matcher.group(1)
-            val ncode = matcher.group(2)
-            val isR18 = domain == "novel18"
-            return Pair(ncode, isR18)
+            // 小説家になろうの場合、R18判定も行う
+            if (adapter.getSiteType() == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU) {
+                val (_, isR18) = NovelApiUtils.extractNcodeFromUrl(url)
+                return Triple(novelId, isR18, siteName)
+            } else {
+                // カクヨムの場合
+                return Triple(novelId, false, siteName)
+            }
         }
-        return Pair(null, false)
+        return Triple(null, false, null)
     }
 
-    // 小説登録関数
-    fun registerNovel(ncode: String, isR18: Boolean, callback: (Boolean, String) -> Unit) {
+    // 小説登録関数（マルチサイト対応）
+    fun registerNovel(novelUrl: String, callback: (Boolean, String) -> Unit) {
         isLoading = true
         loadingMessage = "小説情報を取得中..."
 
         scope.launch {
             try {
-                // まず小説が既に登録されているか確認
-                if (NovelApiUtils.isNovelAlreadyRegistered(repository, ncode)) {
-                    withContext(Dispatchers.Main) {
-                        isLoading = false
-                        callback(false, "この小説は既に登録されています")
-                        showAddDialog = false
-                    }
-                    return@launch
-                }
-
-                // 小説詳細を取得
-                val novelEntity = NovelApiUtils.fetchNovelDetails(ncode, isR18)
+                // 新しいRepository APIを使用してURLから小説を登録
+                val novelEntity = repository.addNovelByUrl(novelUrl)
 
                 if (novelEntity != null) {
-                    // URLEntityも作成
-                    val urlEntity = com.shunlight_library.novel_reader.data.entity.URLEntity(
-                        ncode = ncode,
-                        api_url = if (isR18) {
-                            "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
-                        } else {
-                            "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
-                        },
-                        url = if (isR18) {
-                            "https://novel18.syosetu.com/$ncode/"
-                        } else {
-                            "https://ncode.syosetu.com/$ncode/"
-                        },
-                        is_r18 = isR18
-                    )
-
-                    // データベースに保存
-                    repository.insertNovel(novelEntity)
-                    repository.insertURL(urlEntity)
-
-                    // 更新キューエントリを作成
-                    val updateQueue = com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity(
-                        ncode = ncode,
-                        total_ep = 0, // 初期値は0
-                        general_all_no = novelEntity.general_all_no,
-                        update_time = novelEntity.updated_at
-                    )
-                    repository.insertUpdateQueue(updateQueue)
-
                     // 登録と同時にダウンロード処理を開始
                     withContext(Dispatchers.Main) {
                         isLoading = false
@@ -364,7 +331,7 @@ fun WebViewScreen(
                         // ダウンロードサービスを開始
                         val intent = Intent(context, com.shunlight_library.novel_reader.service.UpdateService::class.java).apply {
                             action = com.shunlight_library.novel_reader.service.UpdateService.ACTION_START_UPDATE
-                            putExtra(com.shunlight_library.novel_reader.service.UpdateService.EXTRA_NCODE, ncode)
+                            putExtra(com.shunlight_library.novel_reader.service.UpdateService.EXTRA_NCODE, novelEntity.ncode)
                             putExtra(com.shunlight_library.novel_reader.service.UpdateService.EXTRA_UPDATE_TYPE, com.shunlight_library.novel_reader.service.UpdateService.UPDATE_TYPE_DOWNLOAD)
                         }
 
@@ -384,7 +351,7 @@ fun WebViewScreen(
                 } else {
                     withContext(Dispatchers.Main) {
                         isLoading = false
-                        callback(false, "小説情報が取得できませんでした")
+                        callback(false, "小説情報が取得できませんでした。既に登録されている可能性があります。")
                     }
                 }
             } catch (e: Exception) {
@@ -417,13 +384,13 @@ fun WebViewScreen(
                         Text(loadingMessage)
                     }
                 } else {
-                    Text("「$detectedNcode」を小説一覧に登録しますか？")
+                    Text("$detectedSiteName の小説「$detectedNovelId」を小説一覧に登録しますか？")
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        registerNovel(detectedNcode, isR18) { success, message ->
+                        registerNovel(detectedNovelUrl) { success, message ->
                             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
                     },
@@ -455,15 +422,16 @@ fun WebViewScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            val (ncode, r18) = extractNcode(currentUrl)
-                            if (ncode != null) {
-                                detectedNcode = ncode
-                                isR18 = r18
+                            val (novelId, _, siteName) = extractNovelInfo(currentUrl)
+                            if (novelId != null && siteName != null) {
+                                detectedNovelId = novelId
+                                detectedSiteName = siteName
+                                detectedNovelUrl = currentUrl
                                 showAddDialog = true
                             } else {
                                 Toast.makeText(
                                     context,
-                                    "このページから小説を登録できません",
+                                    "このページから小説を登録できません（対応サイト: 小説家になろう、カクヨム）",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }

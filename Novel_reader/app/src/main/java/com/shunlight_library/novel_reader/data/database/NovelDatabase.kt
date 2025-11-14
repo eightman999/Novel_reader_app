@@ -121,6 +121,20 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
 }
 
 /**
+ * v8→v9のマイグレーション: サイト種別を追加（マルチサイト対応）
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // サイト種別カラムを追加 (1=小説家になろう, 2=カクヨム)
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN site_type INTEGER NOT NULL DEFAULT 1")
+        // サイト種別用のインデックスを作成
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_site ON novels_descs (site_type)")
+        // 既存データは全て小説家になろう (site_type=1) に設定
+        database.execSQL("UPDATE novels_descs SET site_type = 1")
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -132,7 +146,7 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         URLEntity::class,
         ImageCacheEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -164,7 +178,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_4_5,
                         MIGRATION_5_6,
                         MIGRATION_6_7,
-                        MIGRATION_7_8
+                        MIGRATION_7_8,
+                        MIGRATION_8_9
                     )
                     .build()
                 INSTANCE = instance
