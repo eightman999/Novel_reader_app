@@ -349,9 +349,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 EpisodeEntity(
                     ncode = pseudoNcode,
                     episode_no = (index + 1).toString(),
+                    body = "",  // 目次ページには本文がないため空
                     e_title = episodeTitle,
-                    e_contents = "",  // 目次ページには本文がないため空
-                    updated_at = publishedDate,
+                    update_time = publishedDate,
                     is_read = false,
                     is_bookmark = false,
                     reading_rate = 0.0f
