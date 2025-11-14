@@ -103,35 +103,34 @@ class AutoUpdateWorker(
                 Log.d(TAG, "更新対象小説数: ${novels.size}")
 
                 novels.forEach { novel ->
-                    var connection: HttpURLConnection? = null
                     try {
-                        // R18判定: rating=1ならR18, rating=2なら一般
-                        val isR18 = novel.rating == 1
+                        // 新しいRepository APIを使用して更新チェック（マルチサイト対応）
+                        val hasUpdate = repository.checkNovelForUpdates(novel.ncode)
 
-                        // URLEntityを取得または作成
-                        val urlEntity = repository.getOrCreateURL(novel.ncode, isR18)
+                        if (hasUpdate) {
+                            // 更新がある場合、最新情報を取得するためにアダプター経由で詳細取得
+                            val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapter(novel.site_type)
 
-                        // APIから最新情報を取得
-                        connection = URL(urlEntity.api_url).openConnection() as HttpURLConnection
-                        connection.requestMethod = "GET"
-                        connection.connectTimeout = 15000
-                        connection.readTimeout = 30000
-                        connection.setRequestProperty("Accept-Encoding", "gzip")
+                            // サイト種別に応じて処理
+                            val latestEpisodeCount = when (adapter.getSiteType()) {
+                                com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                                    // 小説家になろうの場合、APIから最新情報を取得
+                                    val isR18 = novel.rating == 1
+                                    val apiInfo = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelInfo(
+                                        ncode = novel.ncode,
+                                        isR18 = isR18
+                                    )
+                                    apiInfo?.generalAllNo ?: novel.total_ep
+                                }
+                                com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                                    // カクヨムの場合、HTMLスクレイピングで取得
+                                    val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
+                                    val (updatedNovel, _) = adapter.fetchNovelWithEpisodes(workId)
+                                    updatedNovel.total_ep
+                                }
+                                else -> novel.total_ep
+                            }
 
-                        val inputStream = if (connection.contentEncoding == "gzip") {
-                            GZIPInputStream(connection.inputStream)
-                        } else {
-                            connection.inputStream
-                        }
-
-                        val response = BufferedReader(InputStreamReader(inputStream)).use { it.readText() }
-                        val jsonArray = JSONArray(response)
-
-                        if (jsonArray.length() > 1) {
-                            val novelJson = jsonArray.getJSONObject(1)
-                            val latestEpisodeCount = novelJson.getInt("general_all_no")
-
-                            // 更新があるかチェック
                             if (latestEpisodeCount > novel.total_ep) {
                                 // 更新キューに追加
                                 val updateQueue = UpdateQueueEntity(
@@ -154,8 +153,6 @@ class AutoUpdateWorker(
                     } catch (e: Exception) {
                         Log.e(TAG, "小説 ${novel.ncode} の更新確認エラー", e)
                         errors.add("${novel.title}: ${e.message}")
-                    } finally {
-                        connection?.disconnect()
                     }
                 }
             } catch (e: Exception) {

@@ -47,7 +47,8 @@ data class NovelListFilterSettings(
     val showOngoing: Boolean = true,
     val showFavoritesOnly: Boolean = false,
     val showLongNovels: Boolean = true,
-    val showShortNovels: Boolean = true
+    val showShortNovels: Boolean = true,
+    val siteFilter: String = "ALL"
 )
 
 // DataStoreのインスタンスをトップレベルで定義
@@ -109,6 +110,7 @@ class SettingsStore(private val context: Context) {
         val NOVEL_LIST_SHOW_FAVORITES_ONLY = booleanPreferencesKey("novel_list_show_favorites_only")
         val NOVEL_LIST_SHOW_LONG = booleanPreferencesKey("novel_list_show_long")
         val NOVEL_LIST_SHOW_SHORT = booleanPreferencesKey("novel_list_show_short")
+        val NOVEL_LIST_SITE_FILTER = stringPreferencesKey("novel_list_site_filter")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -151,6 +153,7 @@ class SettingsStore(private val context: Context) {
     val defaultNovelListShowFavoritesOnly = false
     val defaultNovelListShowLong = true
     val defaultNovelListShowShort = true
+    val defaultNovelListSiteFilter = "ALL"
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -580,7 +583,8 @@ class SettingsStore(private val context: Context) {
             showOngoing = preferences[NOVEL_LIST_SHOW_ONGOING] ?: defaultNovelListShowOngoing,
             showFavoritesOnly = preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] ?: defaultNovelListShowFavoritesOnly,
             showLongNovels = preferences[NOVEL_LIST_SHOW_LONG] ?: defaultNovelListShowLong,
-            showShortNovels = preferences[NOVEL_LIST_SHOW_SHORT] ?: defaultNovelListShowShort
+            showShortNovels = preferences[NOVEL_LIST_SHOW_SHORT] ?: defaultNovelListShowShort,
+            siteFilter = preferences[NOVEL_LIST_SITE_FILTER] ?: defaultNovelListSiteFilter
         )
     }
 
@@ -597,6 +601,7 @@ class SettingsStore(private val context: Context) {
             preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] = settings.showFavoritesOnly
             preferences[NOVEL_LIST_SHOW_LONG] = settings.showLongNovels
             preferences[NOVEL_LIST_SHOW_SHORT] = settings.showShortNovels
+            preferences[NOVEL_LIST_SITE_FILTER] = settings.siteFilter
         }
     }
 }

@@ -706,13 +706,19 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     MenuButton(
+                        icon = "📖",
+                        text = "カクヨム",
+                        onClick = {
+                            onNavigate(Screen.WebView("https://kakuyomu.jp/"))
+                        }
+                    )
+                    MenuButton(
                         icon = "<",
                         text = "R18",
                         onClick = {
                             showR18Dialog = true
                         }
                     )
-                    Spacer(modifier = Modifier.width(160.dp)) // 右側は空欄
                 }
             }
 

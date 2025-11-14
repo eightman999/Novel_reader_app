@@ -53,7 +53,13 @@ enum class SearchField(val displayName: String) {
     AUTHOR("作者")
 }
 
-// フィルター設定のデータクラス
+// サイトフィルター設定
+enum class SiteFilter(val displayName: String) {
+    ALL("全サイト"),
+    SYOSETU_ONLY("小説家になろう"),
+    KAKUYOMU_ONLY("カクヨム")
+}
+
 // フィルター設定のデータクラス
 data class FilterSettings(
     val minRating: Int = 0,
@@ -63,7 +69,8 @@ data class FilterSettings(
     val showOngoing: Boolean = true,
     val showFavoritesOnly: Boolean = false,
     val showLongNovels: Boolean = true,
-    val showShortNovels: Boolean = true
+    val showShortNovels: Boolean = true,
+    val siteFilter: SiteFilter = SiteFilter.ALL  // サイトフィルター
 )
 
 // 小説と既読情報を組み合わせたデータクラス
@@ -130,7 +137,8 @@ fun NovelListScreen(
             showOngoing = filterSettings.showOngoing,
             showFavoritesOnly = filterSettings.showFavoritesOnly,
             showLongNovels = filterSettings.showLongNovels,
-            showShortNovels = filterSettings.showShortNovels
+            showShortNovels = filterSettings.showShortNovels,
+            siteFilter = filterSettings.siteFilter.name
         )
         settingsStore.saveNovelListFilterSettings(settings)
     }
@@ -181,6 +189,23 @@ fun NovelListScreen(
                 }
                 if (!filterSettings.showShortNovels && novel.noveltype == 2) {
                     return@filter false
+                }
+
+                // サイトフィルター
+                when (filterSettings.siteFilter) {
+                    SiteFilter.SYOSETU_ONLY -> {
+                        if (novel.site_type != com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU) {
+                            return@filter false
+                        }
+                    }
+                    SiteFilter.KAKUYOMU_ONLY -> {
+                        if (novel.site_type != com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                            return@filter false
+                        }
+                    }
+                    SiteFilter.ALL -> {
+                        // 全サイト表示
+                    }
                 }
 
                 if (searchText.isNotEmpty()) {
@@ -280,7 +305,12 @@ fun NovelListScreen(
             showOngoing = savedFilterSettings.showOngoing,
             showFavoritesOnly = savedFilterSettings.showFavoritesOnly,
             showLongNovels = savedFilterSettings.showLongNovels,
-            showShortNovels = savedFilterSettings.showShortNovels
+            showShortNovels = savedFilterSettings.showShortNovels,
+            siteFilter = try {
+                SiteFilter.valueOf(savedFilterSettings.siteFilter)
+            } catch (e: IllegalArgumentException) {
+                SiteFilter.ALL
+            }
         )
 
         settingsLoaded = true
@@ -575,6 +605,37 @@ fun NovelListScreen(
                             text = "短編を表示",
                             modifier = Modifier.padding(start = 8.dp)
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // サイトフィルター
+                    Text("サイトフィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SiteFilter.values().forEach { filter ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    tempFilterSettings = tempFilterSettings.copy(siteFilter = filter)
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = tempFilterSettings.siteFilter == filter,
+                                onClick = {
+                                    tempFilterSettings = tempFilterSettings.copy(siteFilter = filter)
+                                }
+                            )
+                            Text(
+                                text = filter.displayName,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
                     }
                 }
             },
