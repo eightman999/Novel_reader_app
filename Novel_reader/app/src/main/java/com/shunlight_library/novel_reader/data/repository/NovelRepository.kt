@@ -301,4 +301,188 @@ class NovelRepository(
         }
     }
 
+    // ==================== マルチサイト対応メソッド ====================
+
+    /**
+     * URLから小説を追加（マルチサイト対応）
+     *
+     * URLを解析してサイトを自動判定し、適切なアダプターで小説情報を取得してDBに保存する。
+     *
+     * @param url 小説のURL（小説家になろう または カクヨム）
+     * @return 追加された小説情報（追加失敗時はnull）
+     */
+    suspend fun addNovelByUrl(url: String): NovelDescEntity? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // URLからアダプターと小説IDを取得
+                val (adapter, novelId) = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByUrl(url)
+                    ?: return@withContext null
+
+                // 小説情報とエピソード一覧を取得
+                val (novel, episodes) = adapter.fetchNovelWithEpisodes(novelId)
+
+                // DBに保存
+                insertNovel(novel)
+                insertEpisodes(episodes)
+
+                // URL情報を保存（小説家になろうの場合）
+                if (adapter.getSiteType() == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU) {
+                    val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+                    val (ncode, isR18) = syosetuAdapter.extractNcodeWithR18FromUrl(url)
+                    if (ncode != null) {
+                        getOrCreateURL(ncode, isR18)
+                    }
+                }
+
+                novel
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to add novel from URL: $url", e)
+                null
+            }
+        }
+    }
+
+    /**
+     * Ncodeから小説を追加（マルチサイト対応）
+     *
+     * NcodeまたはPseudo-Ncodeから自動的にサイトを判定し、適切なアダプターで取得・保存する。
+     *
+     * @param ncode 小説のNcode（小説家になろう）またはPseudo-Ncode（カクヨム: K+Base62）
+     * @param isR18 R18作品かどうか（小説家になろうの場合のみ有効）
+     * @return 追加された小説情報（追加失敗時はnull）
+     */
+    suspend fun addNovelByNcode(ncode: String, isR18: Boolean = false): NovelDescEntity? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Ncodeからアダプターを取得
+                val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByNcode(ncode)
+
+                // 小説情報とエピソード一覧を取得
+                val (novel, episodes) = when (adapter.getSiteType()) {
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                        // 小説家になろうの場合、R18判定を渡す
+                        val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+                        syosetuAdapter.fetchNovelWithEpisodesR18(ncode, isR18)
+                    }
+                    else -> {
+                        // カクヨムの場合、Pseudo-NcodeからworkIdを抽出
+                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                        adapter.fetchNovelWithEpisodes(workId)
+                    }
+                }
+
+                // DBに保存
+                insertNovel(novel)
+                insertEpisodes(episodes)
+
+                // URL情報を保存（小説家になろうの場合）
+                if (adapter.getSiteType() == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU) {
+                    getOrCreateURL(ncode, isR18)
+                }
+
+                novel
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to add novel by ncode: $ncode", e)
+                null
+            }
+        }
+    }
+
+    /**
+     * 小説の更新チェック（マルチサイト対応）
+     *
+     * @param ncode 小説のNcode（またはPseudo-Ncode）
+     * @return 更新がある場合 true
+     */
+    suspend fun checkNovelForUpdates(ncode: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                // DBから小説情報を取得
+                val novel = getNovelByNcode(ncode) ?: return@withContext false
+
+                // アダプターを取得
+                val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapter(novel.site_type)
+
+                // 更新チェック
+                when (adapter.getSiteType()) {
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                        val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+                        val isR18 = novel.rating == 1
+                        syosetuAdapter.checkForUpdatesR18(ncode, novel.total_ep, isR18)
+                    }
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                        adapter.checkForUpdates(workId, novel.total_ep)
+                    }
+                    else -> false
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to check updates for ncode: $ncode", e)
+                false
+            }
+        }
+    }
+
+    /**
+     * 小説のWebページURLを取得（マルチサイト対応）
+     *
+     * @param ncode 小説のNcode（またはPseudo-Ncode）
+     * @return WebページのURL
+     */
+    suspend fun getNovelWebUrl(ncode: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val novel = getNovelByNcode(ncode) ?: return@withContext null
+                val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapter(novel.site_type)
+
+                when (adapter.getSiteType()) {
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                        // 小説家になろうの場合、URLEntityから取得
+                        val urlEntity = getURLByNcode(ncode)
+                        urlEntity?.url ?: adapter.generateWebUrl(ncode)
+                    }
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                        // カクヨムの場合、Pseudo-NcodeからworkIdを抽出してURL生成
+                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                        adapter.generateWebUrl(workId)
+                    }
+                    else -> null
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to get web URL for ncode: $ncode", e)
+                null
+            }
+        }
+    }
+
+    /**
+     * エピソードのWebページURLを取得（マルチサイト対応）
+     *
+     * @param ncode 小説のNcode（またはPseudo-Ncode）
+     * @param episodeNo エピソード番号
+     * @return WebページのURL
+     */
+    suspend fun getEpisodeWebUrl(ncode: String, episodeNo: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val novel = getNovelByNcode(ncode) ?: return@withContext null
+                val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapter(novel.site_type)
+
+                when (adapter.getSiteType()) {
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                        adapter.generateEpisodeUrl(ncode, episodeNo)
+                    }
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                        adapter.generateEpisodeUrl(workId, episodeNo)
+                    }
+                    else -> null
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NovelRepository", "Failed to get episode URL for ncode: $ncode, episode: $episodeNo", e)
+                null
+            }
+        }
+    }
+
 }
