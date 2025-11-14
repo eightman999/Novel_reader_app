@@ -5,6 +5,8 @@
  */
 package com.shunlight_library.novel_reader.utils
 
+import java.math.BigInteger
+
 /**
  * Pseudo-Ncode生成・検証ユーティリティ
  *
@@ -29,14 +31,17 @@ object PseudoNcodeGenerator {
      * @throws IllegalArgumentException workIdが数値でない場合
      */
     fun generateKakuyomuNcode(workId: String): String {
-        val numericId = workId.toLongOrNull()
-            ?: throw IllegalArgumentException("Invalid Kakuyomu work ID (not a number): $workId")
+        val numericId = try {
+            BigInteger(workId)
+        } catch (e: NumberFormatException) {
+            throw IllegalArgumentException("Invalid Kakuyomu work ID (not a number): $workId", e)
+        }
 
-        if (numericId < 0) {
+        if (numericId < BigInteger.ZERO) {
             throw IllegalArgumentException("Invalid Kakuyomu work ID (negative): $workId")
         }
 
-        return KAKUYOMU_PREFIX + Base62Converter.encode(numericId)
+        return KAKUYOMU_PREFIX + Base62Converter.encodeBigInteger(numericId)
     }
 
     /**
@@ -58,7 +63,7 @@ object PseudoNcodeGenerator {
             throw IllegalArgumentException("Invalid Kakuyomu pseudo-ncode (empty Base62 part): $pseudoNcode")
         }
 
-        return Base62Converter.decode(base62Part).toString()
+        return Base62Converter.decodeBigInteger(base62Part).toString()
     }
 
     /**
