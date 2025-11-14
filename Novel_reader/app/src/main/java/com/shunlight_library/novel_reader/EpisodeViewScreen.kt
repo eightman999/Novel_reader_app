@@ -757,7 +757,11 @@ fun EnhancedHtmlRubyWebView(
         }
         ruby {
             ruby-align: center;
-            ${if (textOrientation == "Horizontal") "display: inline-block; max-width: 100%;" else ""}
+            ${if (textOrientation == "Horizontal") {
+                "ruby-position: over; display: inline-block; max-width: 100%;"
+            } else {
+                "ruby-position: right;"
+            }}
         }
         rt {
             font-size: ${rubyFontSize}px;
