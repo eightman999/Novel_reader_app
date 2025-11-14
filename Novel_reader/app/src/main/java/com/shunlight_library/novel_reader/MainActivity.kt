@@ -276,7 +276,8 @@ when (val currentScreen = navigationManager.currentScreen) {
                 onBack = { navigationManager.navigateTo(Screen.Main) },
                 onNovelClick = { ncode ->
                     navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
-                }
+                },
+                navigationManager = navigationManager
             )
         }
 

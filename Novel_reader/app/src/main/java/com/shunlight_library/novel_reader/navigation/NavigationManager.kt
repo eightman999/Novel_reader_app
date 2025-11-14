@@ -21,6 +21,9 @@ class NavigationManager {
     val currentScreen: Screen
         get() = _currentScreen.value
 
+    /** スクロール位置を保存するMap (画面のキー → (firstVisibleItemIndex, firstVisibleItemScrollOffset)) */
+    private val scrollPositions = mutableMapOf<String, Pair<Int, Int>>()
+
     /** 新しい [screen] を表示し、現在の画面をスタックに積む */
     fun navigateTo(screen: Screen) {
         screenStack.add(_currentScreen.value)
@@ -63,6 +66,33 @@ class NavigationManager {
     fun navigateClearingBackStack(screen: Screen) {
         screenStack.clear()
         _currentScreen.value = screen
+    }
+
+    /**
+     * 指定した画面のスクロール位置を保存する
+     * @param screenKey 画面を識別するキー
+     * @param firstVisibleItemIndex 最初に表示されているアイテムのインデックス
+     * @param firstVisibleItemScrollOffset 最初に表示されているアイテムのスクロールオフセット
+     */
+    fun saveScrollPosition(screenKey: String, firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
+        scrollPositions[screenKey] = Pair(firstVisibleItemIndex, firstVisibleItemScrollOffset)
+    }
+
+    /**
+     * 指定した画面のスクロール位置を取得する
+     * @param screenKey 画面を識別するキー
+     * @return 保存されたスクロール位置（firstVisibleItemIndex, firstVisibleItemScrollOffset）、保存されていない場合はnull
+     */
+    fun getScrollPosition(screenKey: String): Pair<Int, Int>? {
+        return scrollPositions[screenKey]
+    }
+
+    /**
+     * 指定した画面のスクロール位置をクリアする
+     * @param screenKey 画面を識別するキー
+     */
+    fun clearScrollPosition(screenKey: String) {
+        scrollPositions.remove(screenKey)
     }
 }
 
