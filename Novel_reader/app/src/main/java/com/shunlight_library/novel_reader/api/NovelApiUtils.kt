@@ -369,7 +369,7 @@ object NovelApiUtils {
     // NovelApiUtils.kt の fetchEpisode 関数を修正
     suspend fun fetchEpisode(
         ncode: String,
-        episodeNo: Int,
+        episodeNo: String,
         isR18: Boolean = false,
         noveltype: Int? = null
     ): EpisodeEntity? {
@@ -379,7 +379,7 @@ object NovelApiUtils {
                 if (com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)) {
                     val adapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
                     val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
-                    val episodeId = episodeNo.toString()
+                    val episodeId = episodeNo
 
                     // エピソード本文を取得
                     val body = adapter.fetchEpisodeContent(workId, episodeId)
@@ -416,10 +416,12 @@ object NovelApiUtils {
                 } else {
                     "https://ncode.syosetu.com"
                 }
+                // episodeNoをIntに変換（小説家になろうは数値のみ）
+                val episodeNoInt = episodeNo.toIntOrNull() ?: 1
                 val url = if (noveltype == 2) {
                     "$baseUrl/$ncode/"
                 } else {
-                    "$baseUrl/$ncode/$episodeNo/"
+                    "$baseUrl/$ncode/$episodeNoInt/"
                 }
 
                 // ユーザーエージェントをランダムに設定（検出回避用）
@@ -650,7 +652,7 @@ object NovelApiUtils {
      */
     suspend fun fetchEpisodeWithRetry(
         ncode: String,
-        episodeNo: Int,
+        episodeNo: String,
         isR18: Boolean = false,
         noveltype: Int? = null,
         maxRetries: Int = 3

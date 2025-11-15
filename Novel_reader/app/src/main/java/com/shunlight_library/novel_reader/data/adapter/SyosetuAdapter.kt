@@ -53,7 +53,7 @@ class SyosetuAdapter : NovelSiteAdapter {
         for (episodeNo in 1..novelDesc.general_all_no) {
             val episode = NovelApiUtils.fetchEpisodeWithRetry(
                 ncode = novelId,
-                episodeNo = episodeNo,
+                episodeNo = episodeNo.toString(),
                 isR18 = isR18,
                 noveltype = novelDesc.noveltype
             )
@@ -106,7 +106,7 @@ class SyosetuAdapter : NovelSiteAdapter {
         for (episodeNo in 1..novelDesc.general_all_no) {
             val episode = NovelApiUtils.fetchEpisodeWithRetry(
                 ncode = novelId,
-                episodeNo = episodeNo,
+                episodeNo = episodeNo.toString(),
                 isR18 = isR18,
                 noveltype = novelDesc.noveltype
             )
