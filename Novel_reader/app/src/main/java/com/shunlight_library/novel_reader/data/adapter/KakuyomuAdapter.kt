@@ -713,6 +713,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
             if (episodeBody.isEmpty()) {
                 android.util.Log.w("KakuyomuAdapter", "エピソード本文が空です: $episodeId")
             } else {
+                // エラーチェック: HTMLページ読み込みエラーの検出（Pascalコード参考）
+                if (checkForLoadingError(episodeBody)) {
+                    android.util.Log.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
+                    return@withContext "★HTMLページ読み込みエラー\n本文を正しく取得できませんでした。\n後ほど再度お試しください。"
+                }
+
                 // 本文のクリーンアップ処理を適用
                 episodeBody = cleanupEpisodeBody(episodeBody)
             }
@@ -722,6 +728,133 @@ class KakuyomuAdapter : NovelSiteAdapter {
             android.util.Log.e("KakuyomuAdapter", "エピソード本文取得エラー: $episodeId", e)
             ""
         }
+    }
+
+    /**
+     * 個別エピソードページからエピソード情報（タイトル、章タイトル、本文）を取得
+     * 目次ページから取得できない場合のフォールバック用
+     * Pascalコードの ParsePage 関数を参考
+     *
+     * @param workId 作品ID
+     * @param episodeId エピソードID
+     * @param episodeNo エピソード番号（フォールバック用）
+     * @return Triple<章タイトル, エピソードタイトル, 本文>
+     */
+    suspend fun fetchEpisodeDetails(
+        workId: String,
+        episodeId: String,
+        episodeNo: Int
+    ): Triple<String, String, String> = withContext(Dispatchers.IO) {
+        try {
+            applyRateLimit()
+
+            val url = generateEpisodeUrl(workId, episodeId)
+            val html = performHttpRequest(url)
+            val doc = Jsoup.parse(html)
+
+            // 章タイトルを取得（複数のパターン）
+            var chapterTitle = ""
+
+            // パターン1: chapterTitle level1（Pascalコード参考）
+            val chapterElement1 = doc.select("p.chapterTitle.level1 span")
+            if (chapterElement1.isNotEmpty()) {
+                chapterTitle = chapterElement1.text()
+            }
+
+            // パターン2: chapterTitle level2（Pascalコード参考）
+            if (chapterTitle.isEmpty()) {
+                val chapterElement2 = doc.select("p.chapterTitle.level2 span")
+                if (chapterElement2.isNotEmpty()) {
+                    chapterTitle = chapterElement2.text()
+                }
+            }
+
+            // エピソードタイトルを取得（複数のパターン、Pascalコード参考）
+            var episodeTitle = ""
+
+            // パターン1: header#contentMain-header（最優先、Pascalコード参考）
+            val titleElement1 = doc.select("header#contentMain-header")
+            if (titleElement1.isNotEmpty()) {
+                episodeTitle = titleElement1.text()
+            }
+
+            // パターン2: widget-episodeTitle
+            if (episodeTitle.isEmpty()) {
+                val titleElement2 = doc.select("p.widget-episodeTitle")
+                if (titleElement2.isNotEmpty()) {
+                    episodeTitle = titleElement2.text()
+                }
+            }
+
+            // パターン3: h1タグ（第2フォールバック、Pascalコード参考）
+            if (episodeTitle.isEmpty()) {
+                val titleElement3 = doc.select("h1").firstOrNull()
+                if (titleElement3 != null) {
+                    episodeTitle = titleElement3.text()
+                }
+            }
+
+            // パターン4: 最後のフォールバック（Pascalコード参考）
+            if (episodeTitle.isEmpty()) {
+                episodeTitle = "第${episodeNo}話"
+            }
+
+            // エピソード本文を取得（既存のロジックを使用）
+            var episodeBody = ""
+
+            val bodyElement1 = doc.select("div.widget-episodeBody.js-episode-body")
+            if (bodyElement1.isNotEmpty()) {
+                episodeBody = bodyElement1.html()
+            }
+
+            if (episodeBody.isEmpty()) {
+                val bodyElement2 = doc.select("div.widget-episodeBody")
+                if (bodyElement2.isNotEmpty()) {
+                    episodeBody = bodyElement2.html()
+                }
+            }
+
+            if (episodeBody.isEmpty()) {
+                val bodyElement3 = doc.select("div.js-episode-body")
+                if (bodyElement3.isNotEmpty()) {
+                    episodeBody = bodyElement3.html()
+                }
+            }
+
+            // エラーチェック
+            if (checkForLoadingError(episodeBody)) {
+                android.util.Log.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
+                episodeBody = "★HTMLページ読み込みエラー"
+            } else {
+                // 本文のクリーンアップ処理を適用
+                episodeBody = cleanupEpisodeBody(episodeBody)
+            }
+
+            // テキストのクリーンアップ
+            chapterTitle = cleanupText(chapterTitle)
+            episodeTitle = cleanupText(episodeTitle)
+
+            Triple(chapterTitle, episodeTitle, episodeBody)
+        } catch (e: Exception) {
+            android.util.Log.e("KakuyomuAdapter", "エピソード詳細取得エラー: $episodeId", e)
+            Triple("", "第${episodeNo}話", "")
+        }
+    }
+
+    /**
+     * HTMLページ読み込みエラーをチェック
+     * Pascalコードの SERRSTR チェックを参考
+     *
+     * @param html HTML文字列
+     * @return true: エラーを検出、false: 正常
+     */
+    private fun checkForLoadingError(html: String): Boolean {
+        // Pascalコードの SERRSTR = '<div class="dots-indicator" id="LoadingEpisode">'
+        // 本文の先頭（最初の10文字以内）にこの文字列があればエラーと判定
+        val errorIndicator = "<div class=\"dots-indicator\" id=\"LoadingEpisode\">"
+        val checkLength = minOf(html.length, 200)  // 最初の200文字をチェック
+        val prefix = html.take(checkLength)
+        return prefix.contains(errorIndicator)
     }
 
     /**
