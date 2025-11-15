@@ -285,3 +285,140 @@ val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
 - 短編小説の場合、取得したタイトルを`e_title`フィールドに格納する
 
 このルールはエピソード取得、WebViewでの表示、データベース保存などで統一して適用すること。
+
+## カクヨムダウンロードプロトコル
+
+**必須**: カクヨムには公式APIが存在しないため、HTMLスクレイピングで情報を取得する
+
+### レート制限とアクセス制御
+
+```kotlin
+// KakuyomuAdapter.kt での実装パターン
+companion object {
+    private const val RATE_LIMIT_DELAY_MS = 1000L  // 1秒（スクレイピング時の推奨間隔）
+    private var lastAccessTime = 0L
+}
+
+private suspend fun applyRateLimit() {
+    val elapsed = System.currentTimeMillis() - lastAccessTime
+    if (elapsed < RATE_LIMIT_DELAY_MS) {
+        delay(RATE_LIMIT_DELAY_MS - elapsed)
+    }
+    lastAccessTime = System.currentTimeMillis()
+}
+```
+
+**重要なルール**:
+- レート制限は**1秒間隔**（0.5秒や他の値は使用しない）
+- 全てのHTTPリクエスト前に`applyRateLimit()`を呼び出す
+- サーバー負荷軽減のため、この間隔を必ず守る
+
+### エピソード本文取得の優先順位
+
+```kotlin
+// エピソード本文取得パターン（KakuyomuAdapter.kt）
+// パターン1: 両方のクラスを持つdiv（最優先）
+val bodyElement1 = doc.select("div.widget-episodeBody.js-episode-body")
+if (bodyElement1.isNotEmpty()) {
+    episodeBody = bodyElement1.html()
+}
+
+// パターン2: widget-episodeBody のみ（フォールバック）
+if (episodeBody.isEmpty()) {
+    val bodyElement2 = doc.select("div.widget-episodeBody")
+    if (bodyElement2.isNotEmpty()) {
+        episodeBody = bodyElement2.html()
+    }
+}
+
+// パターン3: js-episode-body のみ（さらにフォールバック）
+if (episodeBody.isEmpty()) {
+    val bodyElement3 = doc.select("div.js-episode-body")
+    // ...
+}
+```
+
+**重要なルール**:
+- `div.widget-episodeBody.js-episode-body`（両方のクラス）を**最優先**で使用
+- 複数のフォールバックパターンを用意し、確実な取得を保証
+- パターンの優先順位を守る
+
+### エピソードタイトル取得の優先順位
+
+```kotlin
+// エピソードタイトル取得パターン（NovelApiUtils.kt等）
+val title = doc.select("header#contentMain-header").text()
+    .ifEmpty { doc.select("h1").first()?.text() ?: "" }
+    .ifEmpty { "第${episodeNo}話" }
+```
+
+**重要なルール**:
+- `header#contentMain-header`を**最優先**で使用
+- `h1`タグは第2フォールバック
+- 最後のフォールバックとして「第X話」形式を生成
+
+### HTTP取得の再試行ロジック
+
+```kotlin
+// HTTP取得の再試行実装パターン（KakuyomuAdapter.kt）
+private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): String {
+    var lastException: Exception? = null
+
+    for (attempt in 1..maxRetries) {
+        try {
+            // HTTP接続処理
+            when (responseCode) {
+                HttpURLConnection.HTTP_OK -> return html
+                HttpURLConnection.HTTP_NOT_FOUND -> throw Exception("HTTP 404")
+                HttpURLConnection.HTTP_FORBIDDEN -> throw Exception("HTTP 403")
+                else -> throw Exception("HTTP error: $responseCode")
+            }
+        } catch (e: SocketTimeoutException) {
+            if (attempt < maxRetries) {
+                delay(1000L * attempt)  // 指数バックオフ: 1秒、2秒、3秒
+            }
+        } catch (e: UnknownHostException) {
+            if (attempt < maxRetries) {
+                delay(1000L * attempt)
+            }
+        } catch (e: ConnectException) {
+            if (attempt < maxRetries) {
+                delay(1000L * attempt)
+            }
+        }
+    }
+
+    throw lastException ?: Exception("HTTP取得失敗")
+}
+```
+
+**重要なルール**:
+- 最大**3回**の再試行を実装
+- 再試行時は**指数バックオフ**（1秒、2秒、3秒）を使用
+- `SocketTimeoutException`、`UnknownHostException`、`ConnectException`は再試行対象
+- HTTPエラー（404、403等）は即座にスロー（再試行しない）
+- 詳細なログ出力で問題の特定を容易にする
+
+### URL構造
+
+```kotlin
+// カクヨムのURL構造
+val workUrl = "https://kakuyomu.jp/works/{workId}"
+val episodeUrl = "https://kakuyomu.jp/works/{workId}/episodes/{episodeId}"
+```
+
+**重要なルール**:
+- 作品IDとエピソードIDは独立した19桁の数値
+- 連番ではないため、目次から全エピソードIDを取得する必要がある
+- Pseudo-Ncode形式（`KK-{workId}`）でデータベースに格納
+
+### エラーハンドリング
+
+**必須**: 全てのカクヨム関連処理でエラーハンドリングを実装
+
+- ネットワークエラー時は再試行ロジックを適用
+- HTMLパースエラー時は複数のフォールバックパターンを試行
+- 取得失敗時は詳細なログを出力し、空データまたはnullを返す
+- ユーザーには適切なエラーメッセージを表示
+
+このルールは全てのカクヨム関連処理（小説情報取得、エピソード一覧取得、エピソード本文取得、更新確認）で統一して適用すること。

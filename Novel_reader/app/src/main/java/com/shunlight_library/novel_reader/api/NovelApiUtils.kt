@@ -391,7 +391,11 @@ object NovelApiUtils {
                         .timeout(30000)
                         .get()
 
-                    val title = doc.select("h1").first()?.text() ?: "第${episodeNo}話"
+                    // タイトル取得: 複数のパターンに対応（文献準拠）
+                    val title = doc.select("header#contentMain-header").text()
+                        .ifEmpty { doc.select("h1").first()?.text() ?: "" }
+                        .ifEmpty { "第${episodeNo}話" }
+
                     val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
                     return@withContext if (body.isNotEmpty()) {

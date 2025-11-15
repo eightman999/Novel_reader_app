@@ -33,7 +33,7 @@ import java.util.Locale
 class KakuyomuAdapter : NovelSiteAdapter {
     companion object {
         private const val BASE_URL = "https://kakuyomu.jp"
-        private const val RATE_LIMIT_DELAY_MS = 500L  // 0.5秒
+        private const val RATE_LIMIT_DELAY_MS = 1000L  // 1秒（スクレイピング時の推奨間隔）
         private var lastAccessTime = 0L
 
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
@@ -157,26 +157,77 @@ class KakuyomuAdapter : NovelSiteAdapter {
     }
 
     /**
-     * HTTP GETリクエストを実行してHTMLを取得
+     * HTTP GETリクエストを実行してHTMLを取得（再試行対応）
+     *
+     * @param urlString リクエストURL
+     * @param maxRetries 最大再試行回数（デフォルト: 3回）
+     * @return HTML文字列
+     * @throws Exception ネットワークエラーまたはHTTPエラー
      */
-    private fun performHttpRequest(urlString: String): String {
-        val url = URL(urlString)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.setRequestProperty("User-Agent", USER_AGENT)
-        connection.connectTimeout = 15000
-        connection.readTimeout = 15000
+    private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): String {
+        var lastException: Exception? = null
 
-        return try {
-            connection.connect()
-            val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw Exception("HTTP error: $responseCode")
+        for (attempt in 1..maxRetries) {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL(urlString)
+                connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", USER_AGENT)
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
+
+                connection.connect()
+                val responseCode = connection.responseCode
+
+                when (responseCode) {
+                    HttpURLConnection.HTTP_OK -> {
+                        val html = connection.inputStream.bufferedReader().use { it.readText() }
+                        android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString")
+                        return html
+                    }
+                    HttpURLConnection.HTTP_NOT_FOUND -> {
+                        android.util.Log.e("KakuyomuAdapter", "404 Not Found: $urlString")
+                        throw Exception("HTTP 404: ページが見つかりません")
+                    }
+                    HttpURLConnection.HTTP_FORBIDDEN -> {
+                        android.util.Log.e("KakuyomuAdapter", "403 Forbidden: $urlString")
+                        throw Exception("HTTP 403: アクセスが拒否されました")
+                    }
+                    else -> {
+                        throw Exception("HTTP error: $responseCode")
+                    }
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                lastException = e
+                android.util.Log.w("KakuyomuAdapter", "タイムアウト (試行 $attempt/$maxRetries): $urlString")
+                if (attempt < maxRetries) {
+                    delay(1000L * attempt)  // 指数バックオフ: 1秒、2秒、3秒
+                }
+            } catch (e: java.net.UnknownHostException) {
+                lastException = e
+                android.util.Log.w("KakuyomuAdapter", "ネットワークエラー (試行 $attempt/$maxRetries): $urlString")
+                if (attempt < maxRetries) {
+                    delay(1000L * attempt)
+                }
+            } catch (e: java.net.ConnectException) {
+                lastException = e
+                android.util.Log.w("KakuyomuAdapter", "接続エラー (試行 $attempt/$maxRetries): $urlString")
+                if (attempt < maxRetries) {
+                    delay(1000L * attempt)
+                }
+            } catch (e: Exception) {
+                // HTTPエラーやその他のエラーは即座にスロー（再試行しない）
+                android.util.Log.e("KakuyomuAdapter", "HTTP取得エラー: $urlString", e)
+                throw e
+            } finally {
+                connection?.disconnect()
             }
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            connection.disconnect()
         }
+
+        // 最大試行回数を超えた場合
+        android.util.Log.e("KakuyomuAdapter", "最大再試行回数を超えました: $urlString", lastException)
+        throw lastException ?: Exception("HTTP取得失敗: $urlString")
     }
 
     /**
@@ -593,36 +644,45 @@ class KakuyomuAdapter : NovelSiteAdapter {
             // エピソード本文を抽出: 複数のパターンに対応
             var episodeBody = ""
 
-            // パターン1: widget-episodeBody (古い構造)
-            val bodyElement1 = doc.select("div.widget-episodeBody")
+            // パターン1: widget-episodeBody と js-episode-body の両方のクラスを持つdiv（最優先、文献準拠）
+            val bodyElement1 = doc.select("div.widget-episodeBody.js-episode-body")
             if (bodyElement1.isNotEmpty()) {
                 episodeBody = bodyElement1.html()
-                android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody): $episodeId")
+                android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody.js-episode-body): $episodeId")
             }
 
-            // パターン2: js-episode-body (古い構造の別パターン)
+            // パターン2: widget-episodeBody のみ（古い構造）
             if (episodeBody.isEmpty()) {
-                val bodyElement2 = doc.select("div.js-episode-body")
+                val bodyElement2 = doc.select("div.widget-episodeBody")
                 if (bodyElement2.isNotEmpty()) {
                     episodeBody = bodyElement2.html()
+                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody): $episodeId")
+                }
+            }
+
+            // パターン3: js-episode-body のみ（古い構造の別パターン）
+            if (episodeBody.isEmpty()) {
+                val bodyElement3 = doc.select("div.js-episode-body")
+                if (bodyElement3.isNotEmpty()) {
+                    episodeBody = bodyElement3.html()
                     android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (js-episode-body): $episodeId")
                 }
             }
 
-            // パターン3: 新しいHTML構造のパターン（将来的な変更に備えて）
+            // パターン4: 新しいHTML構造のパターン（将来的な変更に備えて）
             if (episodeBody.isEmpty()) {
-                val bodyElement3 = doc.select("div[class*='EpisodeBody']")
-                if (bodyElement3.isNotEmpty()) {
-                    episodeBody = bodyElement3.html()
+                val bodyElement4 = doc.select("div[class*='EpisodeBody']")
+                if (bodyElement4.isNotEmpty()) {
+                    episodeBody = bodyElement4.html()
                     android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (EpisodeBody): $episodeId")
                 }
             }
 
-            // パターン4: p要素を含むdiv（最後のフォールバック）
+            // パターン5: p要素を含むdiv（最後のフォールバック）
             if (episodeBody.isEmpty()) {
-                val bodyElement4 = doc.select("div#contentMain p")
-                if (bodyElement4.isNotEmpty()) {
-                    episodeBody = bodyElement4.joinToString("\n") { it.outerHtml() }
+                val bodyElement5 = doc.select("div#contentMain p")
+                if (bodyElement5.isNotEmpty()) {
+                    episodeBody = bodyElement5.joinToString("\n") { it.outerHtml() }
                     android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (contentMain p): $episodeId")
                 }
             }
