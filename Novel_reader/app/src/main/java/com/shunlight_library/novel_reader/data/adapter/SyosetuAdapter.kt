@@ -139,4 +139,33 @@ class SyosetuAdapter : NovelSiteAdapter {
     fun extractNcodeWithR18FromUrl(url: String): Pair<String?, Boolean> {
         return NovelApiUtils.extractNcodeFromUrl(url)
     }
+
+    /**
+     * R18判定付きでWebサイトURLを生成
+     * @param novelId 小説のNcode
+     * @param isR18 R18作品かどうか
+     * @return WebサイトURL
+     */
+    fun generateWebUrlR18(novelId: String, isR18: Boolean): String {
+        return if (isR18) {
+            "https://novel18.syosetu.com/$novelId/"
+        } else {
+            "https://ncode.syosetu.com/$novelId/"
+        }
+    }
+
+    /**
+     * R18判定付きでエピソードURLを生成
+     * @param novelId 小説のNcode
+     * @param episodeId エピソード番号
+     * @param isR18 R18作品かどうか
+     * @return エピソードURL
+     */
+    fun generateEpisodeUrlR18(novelId: String, episodeId: String, isR18: Boolean): String {
+        return if (isR18) {
+            "https://novel18.syosetu.com/$novelId/$episodeId/"
+        } else {
+            "https://ncode.syosetu.com/$novelId/$episodeId/"
+        }
+    }
 }
