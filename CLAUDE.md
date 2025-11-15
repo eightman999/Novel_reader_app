@@ -707,49 +707,50 @@ private fun cleanupSynopsis(text: String): String {
 
 ```kotlin
 // エピソード一覧取得の優先順位（KakuyomuAdapter.kt）
-private fun extractEpisodesFromJson(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
-    // 方法1: tableOfContents から章構造とエピソード順序を取得（最優先）
-    val tableOfContents = workData.optJSONObject("tableOfContents")
-    if (tableOfContents != null) {
-        val chaptersArray = tableOfContents.optJSONArray("chapters")
-        if (chaptersArray != null && chaptersArray.length() > 0) {
-            // 各章からエピソードを取得
-            // ...
-            if (episodes.isNotEmpty()) {
-                return episodes
-            }
-        }
+private suspend fun parseEpisodeList(workId: String, pseudoNcode: String): List<EpisodeEntity> {
+    // 方法1: エピソードページの目次から取得（最優先、最も確実）
+    val episodesFromToc = extractEpisodesFromToc(workId, pseudoNcode)
+    if (episodesFromToc.isNotEmpty()) {
+        return episodesFromToc
     }
 
-    // 方法2: apolloStateから直接エピソードを検索（Pascalコード参考のフォールバック）
-    apolloState.keys().forEach { key ->
-        if (key.startsWith("Episode:")) {
-            val episodeData = apolloState.getJSONObject(key)
-            // このエピソードが現在の作品に属するかチェック
-            val workRef = episodeData.optJSONObject("work")
-            val workRefKey = workRef?.optString("__ref")
-            if (workRefKey == "Work:$workId") {
-                // エピソード情報を抽出
-                episodes.add(...)
-            }
-        }
-    }
+    // 方法2: 作品ページのHTMLから取得（フォールバック）
+    // ...
+}
 
-    // エピソード番号でソート（公開日時順）
-    episodes.sortBy { it.update_time }
+// エピソードページの目次から全エピソードを抽出
+private suspend fun extractEpisodesFromToc(workId: String, pseudoNcode: String): List<EpisodeEntity> {
+    // 1. 作品ページから最初のエピソードリンクを取得
+    val workUrl = "https://kakuyomu.jp/works/$workId"
+    val firstEpisodeLink = doc.select("a.widget-toc-episode-episodeTitle, a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
+
+    // 2. エピソードページを取得（完全な目次が含まれる）
+    val episodeUrl = "https://kakuyomu.jp$firstEpisodeLink"
+    val episodeHtml = performHttpRequest(episodeUrl)
+    val episodeDoc = Jsoup.parse(episodeHtml)
+
+    // 3. 目次から全エピソードを抽出
+    val tocItems = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode")
+    tocItems.forEach { item ->
+        val link = item.select("a.widget-toc-episode-episodeTitle").attr("href")
+        val episodeId = link.substringAfterLast("/")
+        val title = item.select("span.widget-toc-episode-titleLabel").text()
+        val publishedAt = item.select("time.widget-toc-episode-datePublished").attr("datetime")
+        // エピソードを追加
+    }
 
     return episodes
 }
 ```
 
 **重要なルール**:
-- **方法1（tableOfContents）**: 章構造を保持した正確な順序でエピソードを取得（最優先）
-- **方法2（apolloState直接検索）**: tableOfContentsが見つからない場合のフォールバック
-- Pascalコードの `"__typename":"Episode","id":"` パターン検索と同等の処理
-- apolloStateから直接検索する場合は、`Episode:`で始まるキーを探す
-- 各エピソードが現在の作品に属するか`work.__ref`でチェック
-- 取得後は必ず公開日時順にソート
-- この方法で992話のような大量のエピソードも確実に取得できる
+- **方法1（エピソードページの目次）**: 任意のエピソードページには完全な目次が表示されている（最優先、最も確実）
+  - 作品ページから最初のエピソードリンクを取得
+  - そのエピソードページを取得し、目次セクション（`ol.widget-toc-items`）から全エピソードを抽出
+  - セレクタ：`li.widget-toc-episode` → `a.widget-toc-episode-episodeTitle`（リンク）、`span.widget-toc-episode-titleLabel`（タイトル）、`time.widget-toc-episode-datePublished`（公開日時）
+- **方法2（HTMLフォールバック）**: 目次が取得できない場合のフォールバック
+- 992話のような大量のエピソードも確実に取得できる
+- レート制限を守るため、各HTTPリクエスト前に`applyRateLimit()`を呼び出す
 
 ### URL構造
 
