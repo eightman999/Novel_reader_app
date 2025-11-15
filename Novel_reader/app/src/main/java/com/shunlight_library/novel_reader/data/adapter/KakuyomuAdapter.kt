@@ -77,10 +77,18 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 小説情報を抽出
         val novelDesc = parseNovelInfo(doc, workId)
 
-        // エピソード一覧を抽出
-        val episodes = parseEpisodeList(doc, workId, novelDesc.ncode)
+        // エピソード一覧を抽出（本文なし）
+        val episodesWithoutBody = parseEpisodeList(doc, workId, novelDesc.ncode)
 
-        Pair(novelDesc, episodes)
+        // 各エピソードの本文を取得
+        android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
+        val episodesWithBody = episodesWithoutBody.map { episode ->
+            val episodeBody = fetchEpisodeContent(workId, episode.episode_no)
+            episode.copy(body = episodeBody)
+        }
+
+        android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+        Pair(novelDesc, episodesWithBody)
     }
 
     override suspend fun checkForUpdates(novelId: String, currentEpisodeCount: Int): Boolean = withContext(Dispatchers.IO) {
@@ -395,7 +403,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
     }
 
     /**
-     * HTMLからエピソード一覧を抽出
+     * HTMLからエピソード一覧を抽出（TOC情報のみ、本文は含まない）
      */
     private fun parseEpisodeList(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
         val episodes = mutableListOf<EpisodeEntity>()
@@ -452,11 +460,13 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 getCurrentDate()
             }
 
+            // episode_noには実際のカクヨムエピソードIDを格納
+            // これによりURLの生成が正確になる
             episodes.add(
                 EpisodeEntity(
                     ncode = pseudoNcode,
-                    episode_no = (index + 1).toString(),
-                    body = "",  // 目次ページには本文がないため空
+                    episode_no = episodeId,  // カクヨムの実際のエピソードIDを使用
+                    body = "",  // TOCページには本文がないため空（後でfetchEpisodeContentで取得）
                     e_title = episodeTitle,
                     update_time = publishedDate,
                     is_read = false,
@@ -468,6 +478,69 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
         android.util.Log.d("KakuyomuAdapter", "エピソード一覧パース完了: ${episodes.size}話")
         return episodes
+    }
+
+    /**
+     * 個別エピソードの本文を取得
+     *
+     * @param workId 作品ID
+     * @param episodeId エピソードID
+     * @return エピソード本文HTML（取得失敗時は空文字列）
+     */
+    suspend fun fetchEpisodeContent(workId: String, episodeId: String): String = withContext(Dispatchers.IO) {
+        try {
+            applyRateLimit()
+
+            val url = generateEpisodeUrl(workId, episodeId)
+            val html = performHttpRequest(url)
+            val doc = Jsoup.parse(html)
+
+            // エピソード本文を抽出: 複数のパターンに対応
+            var episodeBody = ""
+
+            // パターン1: widget-episodeBody (古い構造)
+            val bodyElement1 = doc.select("div.widget-episodeBody")
+            if (bodyElement1.isNotEmpty()) {
+                episodeBody = bodyElement1.html()
+                android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody): $episodeId")
+            }
+
+            // パターン2: js-episode-body (古い構造の別パターン)
+            if (episodeBody.isEmpty()) {
+                val bodyElement2 = doc.select("div.js-episode-body")
+                if (bodyElement2.isNotEmpty()) {
+                    episodeBody = bodyElement2.html()
+                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (js-episode-body): $episodeId")
+                }
+            }
+
+            // パターン3: 新しいHTML構造のパターン（将来的な変更に備えて）
+            if (episodeBody.isEmpty()) {
+                val bodyElement3 = doc.select("div[class*='EpisodeBody']")
+                if (bodyElement3.isNotEmpty()) {
+                    episodeBody = bodyElement3.html()
+                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (EpisodeBody): $episodeId")
+                }
+            }
+
+            // パターン4: p要素を含むdiv（最後のフォールバック）
+            if (episodeBody.isEmpty()) {
+                val bodyElement4 = doc.select("div#contentMain p")
+                if (bodyElement4.isNotEmpty()) {
+                    episodeBody = bodyElement4.joinToString("\n") { it.outerHtml() }
+                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (contentMain p): $episodeId")
+                }
+            }
+
+            if (episodeBody.isEmpty()) {
+                android.util.Log.w("KakuyomuAdapter", "エピソード本文が空です: $episodeId")
+            }
+
+            episodeBody
+        } catch (e: Exception) {
+            android.util.Log.e("KakuyomuAdapter", "エピソード本文取得エラー: $episodeId", e)
+            ""
+        }
     }
 
     /**
