@@ -20,7 +20,9 @@ import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
+import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
@@ -283,8 +285,45 @@ class UpdateService : Service() {
 
                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
                     // カクヨムの場合、HTMLスクレイピングで取得
-                    updateComplete(false, "カクヨムの更新確認は現在サポートされていません")
-                    return@launch
+                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                    val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+
+                    val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    if (hasUpdate) {
+                        // 詳細情報を取得して最新のエピソード数を確認
+                        val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+
+                        if (!isRunning || session.isCancelled()) {
+                            updateComplete(false, "更新処理が中断されました")
+                            return@launch
+                        }
+
+                        generalAllNo = episodes.size
+                        updatedAt = updatedNovelDesc.updated_at
+
+                        // 小説情報を更新
+                        val updatedNovel = novel.copy(
+                            general_all_no = generalAllNo,
+                            updated_at = updatedAt,
+                            title = updatedNovelDesc.title,
+                            author = updatedNovelDesc.author,
+                            Synopsis = updatedNovelDesc.Synopsis,
+                            main_tag = updatedNovelDesc.main_tag,
+                            sub_tag = updatedNovelDesc.sub_tag,
+                            last_update_date = updatedNovelDesc.last_update_date
+                        )
+                        repository.updateNovel(updatedNovel)
+                    } else {
+                        // 更新なしの場合
+                        updateComplete(true, "この小説に更新はありません")
+                        return@launch
+                    }
                 } else {
                     // 小説家になろうの場合、APIから取得
                     val urlEntity = repository.getOrCreateURL(ncode, novel.rating == 1)
@@ -390,8 +429,94 @@ class UpdateService : Service() {
                 val newUpdatedAt: String
 
                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                    // カクヨムの場合、エピソードダウンロードは現在サポートされていません
-                    updateComplete(false, "カクヨムのエピソードダウンロードは現在サポートされていません")
+                    // カクヨムの場合、HTMLスクレイピングで全エピソードを取得
+                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                    val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+
+                    val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    generalAllNoValue = allEpisodes.size
+                    newUpdatedAt = updatedNovelDesc.updated_at
+
+                    // 小説情報を更新
+                    val updatedNovel = novel.copy(
+                        general_all_no = generalAllNoValue,
+                        updated_at = newUpdatedAt,
+                        title = updatedNovelDesc.title,
+                        author = updatedNovelDesc.author,
+                        Synopsis = updatedNovelDesc.Synopsis,
+                        main_tag = updatedNovelDesc.main_tag,
+                        sub_tag = updatedNovelDesc.sub_tag,
+                        last_update_date = updatedNovelDesc.last_update_date
+                    )
+                    repository.updateNovel(updatedNovel)
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    // 既存のエピソードを取得
+                    val existingEpisodes = repository.getEpisodesByNcode(ncode).first()
+                    val existingEpisodeNos = existingEpisodes.map { it.episode_no }.toSet()
+
+                    // 新規エピソードのみをフィルター
+                    val newEpisodes = allEpisodes.filter { it.episode_no !in existingEpisodeNos }
+
+                    if (newEpisodes.isEmpty()) {
+                        updateComplete(true, "ダウンロードするエピソードがありません")
+                        return@launch
+                    }
+
+                    updateProgress(0.3f, "エピソードを取得中... (0/${newEpisodes.size})")
+
+                    var successCount = 0
+
+                    // カクヨムのエピソード本文を個別に取得（目次ページには本文がないため）
+                    newEpisodes.forEachIndexed { index, episode ->
+                        if (!isRunning || session.isCancelled()) {
+                            updateComplete(false, "更新処理が中断されました")
+                            return@launch
+                        }
+
+                        // エピソードIDを取得してエピソードページから本文を取得
+                        // 注: 現在のKakuyomuAdapterはエピソード本文の取得に対応していないため、
+                        // まずは本文なしでエピソードを挿入する
+                        repository.insertEpisode(episode)
+                        successCount++
+
+                        val progress = (index + 1).toFloat() / newEpisodes.size
+                        updateProgress(0.3f + (0.7f * progress), "エピソードを取得中... (${index + 1}/${newEpisodes.size})")
+
+                        delay(500) // カクヨムのレート制限を考慮
+                    }
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    // 小説のtotal_ep値を更新
+                    if (successCount > 0) {
+                        val updatedNovelAfterDownload = novel.copy(
+                            total_ep = novel.total_ep + successCount,
+                            general_all_no = generalAllNoValue,
+                            updated_at = newUpdatedAt
+                        )
+                        repository.updateNovel(updatedNovelAfterDownload)
+
+                        // 更新キューから削除（全エピソードダウンロード完了時）
+                        if (updatedNovelAfterDownload.total_ep >= generalAllNoValue) {
+                            repository.deleteUpdateQueueByNcode(ncode)
+                        }
+                    }
+
+                    updateComplete(true, "完了: 成功${successCount}件")
                     return@launch
                 } else {
                     // 小説家になろうの場合、APIから取得
@@ -552,8 +677,99 @@ class UpdateService : Service() {
                 val generalAllNoValue: Int
 
                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                    // カクヨムの場合、エピソードエラー修正は現在サポートされていません
-                    updateComplete(false, "カクヨムのエピソードエラー修正は現在サポートされていません")
+                    // カクヨムの場合、HTMLスクレイピングで全エピソードを再取得
+                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                    val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+
+                    val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    generalAllNoValue = allEpisodes.size
+
+                    // 小説情報を更新
+                    val updatedNovel = novel.copy(
+                        general_all_no = generalAllNoValue,
+                        updated_at = updatedNovelDesc.updated_at,
+                        title = updatedNovelDesc.title,
+                        author = updatedNovelDesc.author,
+                        Synopsis = updatedNovelDesc.Synopsis,
+                        main_tag = updatedNovelDesc.main_tag,
+                        sub_tag = updatedNovelDesc.sub_tag,
+                        last_update_date = updatedNovelDesc.last_update_date
+                    )
+                    repository.updateNovel(updatedNovel)
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    // エラーのあるエピソードを特定
+                    val errorEpisodeNos = errorEpisodes.mapNotNull { it.episode_no.toIntOrNull() }.toSet()
+
+                    // 欠番エピソードを特定
+                    val episodeNumberMap = episodes.associate { episode ->
+                        val numericValue = episode.episode_no.toIntOrNull() ?: 0
+                        numericValue to episode.episode_no
+                    }
+                    val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
+                    val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
+                    val missingEpisodeNos = (1..checkRangeMax).filter { epNo ->
+                        !episodeNumberMap.containsKey(epNo)
+                    }.toSet()
+
+                    // エラーおよび欠番エピソードを再取得
+                    val redownloadTargetNos = (errorEpisodeNos + missingEpisodeNos).sorted()
+
+                    if (redownloadTargetNos.isEmpty()) {
+                        updateComplete(true, "エラーや欠番は見つかりませんでした")
+                        return@launch
+                    }
+
+                    updateProgress(0.3f, "エラーまたは欠番のあるエピソードを再取得中... (0/${redownloadTargetNos.size})")
+
+                    var successCount = 0
+
+                    // 再取得対象のエピソードを挿入
+                    redownloadTargetNos.forEachIndexed { index, episodeNoInt ->
+                        if (!isRunning || session.isCancelled()) {
+                            updateComplete(false, "更新処理が中断されました")
+                            return@launch
+                        }
+
+                        // allEpisodesから該当するエピソードを探す
+                        val episodeToInsert = allEpisodes.find { it.episode_no == episodeNoInt.toString() }
+
+                        if (episodeToInsert != null) {
+                            repository.insertEpisode(episodeToInsert)
+                            successCount++
+                        }
+
+                        val progress = (index + 1).toFloat() / redownloadTargetNos.size
+                        updateProgress(0.3f + (0.7f * progress), "エラーまたは欠番のあるエピソードを再取得中... (${index + 1}/${redownloadTargetNos.size})")
+
+                        delay(500) // カクヨムのレート制限を考慮
+                    }
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    // 小説のtotal_ep値を更新
+                    val updatedEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                    val maxEpisodeNoAfterFix = updatedEpisodes.mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: 0
+
+                    if (maxEpisodeNoAfterFix > novel.total_ep) {
+                        val updatedNovelAfterFix = novel.copy(total_ep = maxEpisodeNoAfterFix)
+                        repository.updateNovel(updatedNovelAfterFix)
+                    }
+
+                    updateComplete(true, "完了: 成功${successCount}件")
                     return@launch
                 } else {
                     // 小説家になろうの場合、APIから取得

@@ -25,7 +25,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
+import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
@@ -252,56 +254,97 @@ fun UpdateInfoScreen(
                                     val deferreds = batch.map { novel ->
                                         async(Dispatchers.IO) {
                                             try {
-                                                // カクヨムの作品はスキップ
                                                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                                                    return@async null
-                                                }
+                                                    // カクヨムの場合、HTMLスクレイピングで更新確認
+                                                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                                                    val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
-                                                val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                                    val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
 
-                                                if (info != null) {
-                                                    // 追加情報が取得できた場合は欠けているメタデータを補完
-                                                    if (novel.userid == null || novel.noveltype == null || novel.length == null) {
-                                                        val enriched = novel.copy(
-                                                            userid = novel.userid ?: info.userid,
-                                                            noveltype = novel.noveltype ?: info.noveltype,
-                                                            length = novel.length ?: info.length
-                                                        )
-                                                        if (enriched != novel) {
-                                                            repository.updateNovel(enriched)
-                                                        }
-                                                    }
+                                                    if (hasUpdate) {
+                                                        val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+                                                        val generalAllNo = episodes.size
 
-                                                    if (info.generalAllNo > novel.general_all_no) {
                                                         val updatedNovel = novel.copy(
-                                                            general_all_no = info.generalAllNo,
-                                                            updated_at = info.updatedAt
+                                                            general_all_no = generalAllNo,
+                                                            updated_at = updatedNovelDesc.updated_at,
+                                                            title = updatedNovelDesc.title,
+                                                            author = updatedNovelDesc.author,
+                                                            Synopsis = updatedNovelDesc.Synopsis,
+                                                            main_tag = updatedNovelDesc.main_tag,
+                                                            sub_tag = updatedNovelDesc.sub_tag,
+                                                            last_update_date = updatedNovelDesc.last_update_date
                                                         )
                                                         repository.updateNovel(updatedNovel)
 
                                                         val updateQueue = UpdateQueueEntity(
                                                             ncode = novel.ncode,
                                                             total_ep = novel.total_ep,
-                                                            general_all_no = info.generalAllNo,
-                                                            update_time = info.updatedAt
+                                                            general_all_no = generalAllNo,
+                                                            update_time = updatedNovelDesc.updated_at
                                                         )
                                                         repository.insertUpdateQueue(updateQueue)
 
                                                         workCount++
 
                                                         if (novel.general_all_no == 0) {
-                                                            // 新着作品：全話数を加算
-                                                            episodeCount += info.generalAllNo
+                                                            episodeCount += generalAllNo
                                                         } else {
-                                                            // 更新作品：新しく追加された話数を加算
-                                                            episodeCount += (info.generalAllNo - novel.general_all_no)
+                                                            episodeCount += (generalAllNo - novel.general_all_no)
                                                         }
 
                                                         return@async true
                                                     }
-                                                }
 
-                                                false
+                                                    false
+                                                } else {
+                                                    // 小説家になろうの場合、APIから取得
+                                                    val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+
+                                                    if (info != null) {
+                                                        // 追加情報が取得できた場合は欠けているメタデータを補完
+                                                        if (novel.userid == null || novel.noveltype == null || novel.length == null) {
+                                                            val enriched = novel.copy(
+                                                                userid = novel.userid ?: info.userid,
+                                                                noveltype = novel.noveltype ?: info.noveltype,
+                                                                length = novel.length ?: info.length
+                                                            )
+                                                            if (enriched != novel) {
+                                                                repository.updateNovel(enriched)
+                                                            }
+                                                        }
+
+                                                        if (info.generalAllNo > novel.general_all_no) {
+                                                            val updatedNovel = novel.copy(
+                                                                general_all_no = info.generalAllNo,
+                                                                updated_at = info.updatedAt
+                                                            )
+                                                            repository.updateNovel(updatedNovel)
+
+                                                            val updateQueue = UpdateQueueEntity(
+                                                                ncode = novel.ncode,
+                                                                total_ep = novel.total_ep,
+                                                                general_all_no = info.generalAllNo,
+                                                                update_time = info.updatedAt
+                                                            )
+                                                            repository.insertUpdateQueue(updateQueue)
+
+                                                            workCount++
+
+                                                            if (novel.general_all_no == 0) {
+                                                                // 新着作品：全話数を加算
+                                                                episodeCount += info.generalAllNo
+                                                            } else {
+                                                                // 更新作品：新しく追加された話数を加算
+                                                                episodeCount += (info.generalAllNo - novel.general_all_no)
+                                                            }
+
+                                                            return@async true
+                                                        }
+                                                    }
+
+                                                    false
+                                                }
                                             } catch (e: Exception) {
                                                 Log.e("UpdateCheck", "小説処理エラー: ${novel.ncode} - ${e.message}")
                                                 false
@@ -663,11 +706,6 @@ fun UpdateInfoScreen(
                                             syncMessage = "「${novel.title}」のエラーをチェック中... (${index + 1}/${novels.size})"
 
                                             try {
-                                                // カクヨムの作品はスキップ
-                                                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                                                    return@forEachIndexed
-                                                }
-
                                                 // エピソードを取得
                                                 val episodes = repository.getEpisodesByNcode(novel.ncode).first()
 
@@ -676,11 +714,33 @@ fun UpdateInfoScreen(
                                                     it.body.isEmpty() || it.e_title.isEmpty()
                                                 }
 
-                                                // APIから最新情報を取得
-                                                val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                                val generalAllNoValue: Int
 
-                                                // 使用するgeneral_all_no値
-                                                val generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                                                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                                                    // カクヨムの場合、HTMLスクレイピングで取得
+                                                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                                                    val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
+
+                                                    val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
+                                                    generalAllNoValue = allEpisodes.size
+
+                                                    // 小説情報を更新
+                                                    val updatedNovel = novel.copy(
+                                                        general_all_no = generalAllNoValue,
+                                                        updated_at = updatedNovelDesc.updated_at,
+                                                        title = updatedNovelDesc.title,
+                                                        author = updatedNovelDesc.author,
+                                                        Synopsis = updatedNovelDesc.Synopsis,
+                                                        main_tag = updatedNovelDesc.main_tag,
+                                                        sub_tag = updatedNovelDesc.sub_tag,
+                                                        last_update_date = updatedNovelDesc.last_update_date
+                                                    )
+                                                    repository.updateNovel(updatedNovel)
+                                                } else {
+                                                    // 小説家になろうの場合、APIから取得
+                                                    val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                                    generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                                                }
 
                                                 // エピソードのマップを作成
                                                 val episodeNumberMap = episodes.associate { episode ->
