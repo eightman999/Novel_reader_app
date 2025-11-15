@@ -408,16 +408,95 @@ if (episodeBody.isEmpty()) {
 ### エピソードタイトル取得の優先順位
 
 ```kotlin
-// エピソードタイトル取得パターン（NovelApiUtils.kt等）
-val title = doc.select("header#contentMain-header").text()
-    .ifEmpty { doc.select("h1").first()?.text() ?: "" }
-    .ifEmpty { "第${episodeNo}話" }
+// 個別エピソードページからのタイトル取得（KakuyomuAdapter.kt）
+// パターン1: header#contentMain-header（最優先、Pascalコード参考）
+val titleElement1 = doc.select("header#contentMain-header")
+if (titleElement1.isNotEmpty()) {
+    episodeTitle = titleElement1.text()
+}
+
+// パターン2: widget-episodeTitle
+if (episodeTitle.isEmpty()) {
+    val titleElement2 = doc.select("p.widget-episodeTitle")
+    if (titleElement2.isNotEmpty()) {
+        episodeTitle = titleElement2.text()
+    }
+}
+
+// パターン3: h1タグ（第2フォールバック、Pascalコード参考）
+if (episodeTitle.isEmpty()) {
+    val titleElement3 = doc.select("h1").firstOrNull()
+    if (titleElement3 != null) {
+        episodeTitle = titleElement3.text()
+    }
+}
+
+// パターン4: 最後のフォールバック（Pascalコード参考）
+if (episodeTitle.isEmpty()) {
+    episodeTitle = "第${episodeNo}話"
+}
+
+// タイトルのクリーンアップ処理
+episodeTitle = cleanupText(episodeTitle)
 ```
 
 **重要なルール**:
 - `header#contentMain-header`を**最優先**で使用
-- `h1`タグは第2フォールバック
+- `p.widget-episodeTitle`は第2優先
+- `h1`タグは第3フォールバック
 - 最後のフォールバックとして「第X話」形式を生成
+- 取得したタイトルは必ず`cleanupText()`でクリーンアップ
+
+### 章タイトル取得の優先順位
+
+```kotlin
+// 個別エピソードページからの章タイトル取得（Pascalコード参考）
+// パターン1: chapterTitle level1
+val chapterElement1 = doc.select("p.chapterTitle.level1 span")
+if (chapterElement1.isNotEmpty()) {
+    chapterTitle = chapterElement1.text()
+}
+
+// パターン2: chapterTitle level2
+if (chapterTitle.isEmpty()) {
+    val chapterElement2 = doc.select("p.chapterTitle.level2 span")
+    if (chapterElement2.isNotEmpty()) {
+        chapterTitle = chapterElement2.text()
+    }
+}
+
+// チャプタータイトルのクリーンアップ処理
+chapterTitle = cleanupText(chapterTitle)
+```
+
+**重要なルール**:
+- `p.chapterTitle.level1 span`を**最優先**で使用
+- `p.chapterTitle.level2 span`はフォールバック
+- 章タイトルが存在しない場合もある（空文字列）
+- 取得した章タイトルは必ず`cleanupText()`でクリーンアップ
+
+### エピソード本文のエラーチェック
+
+```kotlin
+// HTMLページ読み込みエラーのチェック（Pascalコード参考）
+private fun checkForLoadingError(html: String): Boolean {
+    val errorIndicator = "<div class=\"dots-indicator\" id=\"LoadingEpisode\">"
+    val checkLength = minOf(html.length, 200)  // 最初の200文字をチェック
+    val prefix = html.take(checkLength)
+    return prefix.contains(errorIndicator)
+}
+
+// エラーチェックの使用例
+if (checkForLoadingError(episodeBody)) {
+    android.util.Log.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
+    return@withContext "★HTMLページ読み込みエラー\n本文を正しく取得できませんでした。\n後ほど再度お試しください。"
+}
+```
+
+**重要なルール**:
+- 本文の先頭200文字以内に`<div class="dots-indicator" id="LoadingEpisode">`が含まれていればエラー
+- エラーを検出した場合は、分かりやすいエラーメッセージを返す
+- エラーログを出力して問題の追跡を容易にする
 
 ### HTTP取得の再試行ロジック
 
@@ -460,6 +539,145 @@ private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): 
 - `SocketTimeoutException`、`UnknownHostException`、`ConnectException`は再試行対象
 - HTTPエラー（404、403等）は即座にスロー（再試行しない）
 - 詳細なログ出力で問題の特定を容易にする
+
+### テキストクリーンアップ処理
+
+**必須**: HTMLから取得したテキストは必ずクリーンアップ処理を行う
+
+#### HTMLエスケープ文字のデコード
+
+```kotlin
+// HTMLエスケープ文字のデコード（KakuyomuAdapter.kt）
+private fun decodeHtmlEntities(text: String): String {
+    var decoded = text
+    decoded = decoded.replace("&lt;", "<")
+    decoded = decoded.replace("&gt;", ">")
+    decoded = decoded.replace("&quot;", "\"")
+    decoded = decoded.replace("&nbsp;", " ")
+    decoded = decoded.replace("&yen;", "\\")
+    decoded = decoded.replace("&brvbar;", "|")
+    decoded = decoded.replace("&copy;", "©")
+    // &amp; は最後に処理（他のエスケープ文字に影響しないように）
+    decoded = decoded.replace("&amp;", "&")
+    return decoded
+}
+```
+
+#### Unicodeエスケープ文字のデコード
+
+```kotlin
+// 数値エスケープ文字のデコード（&#xxxx; 形式）
+private fun decodeNumericEntities(text: String): String {
+    var decoded = text
+
+    // 16進数形式: &#x????;
+    val hexPattern = Regex("&#x([0-9A-Fa-f]+);")
+    decoded = hexPattern.replace(decoded) { matchResult ->
+        try {
+            val codePoint = matchResult.groupValues[1].toInt(16)
+            String(Character.toChars(codePoint))
+        } catch (e: Exception) {
+            "？"  // デコード失敗時は？に置換
+        }
+    }
+
+    // 10進数形式: &#????;
+    val decPattern = Regex("&#([0-9]+);")
+    decoded = decPattern.replace(decoded) { matchResult ->
+        try {
+            val codePoint = matchResult.groupValues[1].toInt(10)
+            String(Character.toChars(codePoint))
+        } catch (e: Exception) {
+            "？"  // デコード失敗時は？に置換
+        }
+    }
+
+    return decoded
+}
+
+// Unicodeエスケープ文字のデコード（\uxxxx 形式）
+private fun decodeUnicodeEscapes(text: String): String {
+    val pattern = Regex("\\\\u([0-9A-Fa-f]{4})")
+    return pattern.replace(text) { matchResult ->
+        try {
+            val codePoint = matchResult.groupValues[1].toInt(16)
+            String(Character.toChars(codePoint))
+        } catch (e: Exception) {
+            "？"  // デコード失敗時は？に置換
+        }
+    }
+}
+```
+
+#### 本文のクリーンアップ処理
+
+```kotlin
+// エピソード本文のクリーンアップ（KakuyomuAdapter.kt）
+private fun cleanupEpisodeBody(html: String): String {
+    var cleaned = html
+
+    // 1. 改行タグを実際の改行に変換（<br />、<br>、<br/>）
+    cleaned = cleaned.replace(Regex("<br\\s*/?>"), "\n")
+
+    // 2. HTMLエスケープ文字のデコード
+    cleaned = decodeHtmlEntities(cleaned)
+
+    // 3. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+    cleaned = decodeNumericEntities(cleaned)
+
+    // 4. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+    cleaned = decodeUnicodeEscapes(cleaned)
+
+    // 5. 余計なタグの除去（空の <p> タグなど）
+    cleaned = cleaned.replace(Regex("<p[^>]*>\\s*</p>"), "")
+
+    // 6. 各行の先頭にある半角空白を除去
+    cleaned = cleaned.lines().joinToString("\n") { line ->
+        line.trimStart(' ')
+    }
+
+    return cleaned
+}
+```
+
+#### あらすじのクリーンアップ処理
+
+```kotlin
+// あらすじのクリーンアップ（KakuyomuAdapter.kt）
+private fun cleanupSynopsis(text: String): String {
+    var cleaned = text
+
+    // 1. あらすじ部分の"が\"とエスケープされているため"に戻す
+    cleaned = cleaned.replace("\\\"", "\"")
+
+    // 2. 改行が\n表記となっている場合は実際の改行に変換
+    cleaned = cleaned.replace("\\n", "\n")
+
+    // 3. HTMLエスケープ文字のデコード
+    cleaned = decodeHtmlEntities(cleaned)
+
+    // 4. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+    cleaned = decodeNumericEntities(cleaned)
+
+    // 5. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+    cleaned = decodeUnicodeEscapes(cleaned)
+
+    // 6. 前書きの最後にある"…続きを読む"を削除する
+    cleaned = cleaned.replace("…続きを読む", "")
+
+    // 7. 前後の空白を除去
+    cleaned = cleaned.trim()
+
+    return cleaned
+}
+```
+
+**重要なルール**:
+- **タイトル、作者名、エピソードタイトル**: `cleanupText()` を使用
+- **あらすじ**: `cleanupSynopsis()` を使用（エスケープされた引用符や改行の処理を含む）
+- **エピソード本文**: `cleanupEpisodeBody()` を使用（改行タグの変換や余計なタグの除去を含む）
+- HTMLから取得したすべてのテキストに適用すること
+- デコード処理の順序を守る：HTMLエスケープ → 数値エスケープ → Unicodeエスケープ
 
 ### URL構造
 
