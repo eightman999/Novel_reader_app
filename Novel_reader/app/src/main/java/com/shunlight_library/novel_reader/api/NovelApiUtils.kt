@@ -409,7 +409,7 @@ object NovelApiUtils {
                     return@withContext if (body.isNotEmpty()) {
                         EpisodeEntity(
                             ncode = ncode,
-                            episode_no = episodeId,
+                            episode_no = episodeNoInt ?: 1,
                             body = body,
                             e_title = title,
                             update_time = currentDate,
@@ -417,7 +417,7 @@ object NovelApiUtils {
                             is_bookmark = false
                         )
                     } else {
-                        Log.e(TAG, "カクヨムエピソード本文が空です: workId=$workId, episodeId=$episodeId")
+                        Log.e(TAG, "カクヨムエピソード本文が空です: workId=$workId, episodeId=$kakuyomuEpisodeId")
                         null
                     }
                 }
