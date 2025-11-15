@@ -409,7 +409,7 @@ object NovelApiUtils {
                     return@withContext if (body.isNotEmpty()) {
                         EpisodeEntity(
                             ncode = ncode,
-                            episode_no = episodeNoInt ?: 1,
+                            episode_no = episodeNo,
                             body = body,
                             e_title = title,
                             update_time = currentDate,
