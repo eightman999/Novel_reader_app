@@ -509,7 +509,26 @@ private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): 
         try {
             // HTTP接続処理
             when (responseCode) {
-                HttpURLConnection.HTTP_OK -> return html
+                HttpURLConnection.HTTP_OK -> {
+                    // 完全なHTMLをバッファリングして取得（Pascalコード参考）
+                    val contentLength = connection.contentLength
+                    val html = StringBuilder()
+
+                    connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                        val buffer = CharArray(8192)  // 8KBバッファ
+                        var charsRead: Int
+
+                        // 全データを読み込むまでループ（Pascalコードと同様）
+                        while (reader.read(buffer).also { charsRead = it } != -1) {
+                            html.append(buffer, 0, charsRead)
+                        }
+                    }
+
+                    val htmlString = html.toString()
+                    android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString (Content-Length: $contentLength, Actual: ${htmlString.length})")
+
+                    return htmlString
+                }
                 HttpURLConnection.HTTP_NOT_FOUND -> throw Exception("HTTP 404")
                 HttpURLConnection.HTTP_FORBIDDEN -> throw Exception("HTTP 403")
                 else -> throw Exception("HTTP error: $responseCode")
@@ -534,6 +553,9 @@ private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): 
 ```
 
 **重要なルール**:
+- **完全なHTMLをバッファリングして取得**（Pascalコードと同様、全データを読み込むまでループ）
+- 8KBバッファを使用して効率的に読み込み
+- Content-Lengthと実際のデータサイズをログで確認
 - 最大**3回**の再試行を実装
 - 再試行時は**指数バックオフ**（1秒、2秒、3秒）を使用
 - `SocketTimeoutException`、`UnknownHostException`、`ConnectException`は再試行対象
@@ -678,6 +700,56 @@ private fun cleanupSynopsis(text: String): String {
 - **エピソード本文**: `cleanupEpisodeBody()` を使用（改行タグの変換や余計なタグの除去を含む）
 - HTMLから取得したすべてのテキストに適用すること
 - デコード処理の順序を守る：HTMLエスケープ → 数値エスケープ → Unicodeエスケープ
+
+### エピソード一覧取得の複数フォールバック
+
+**必須**: エピソード一覧の取得には複数の方法を試行し、確実に全エピソードを取得する
+
+```kotlin
+// エピソード一覧取得の優先順位（KakuyomuAdapter.kt）
+private fun extractEpisodesFromJson(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
+    // 方法1: tableOfContents から章構造とエピソード順序を取得（最優先）
+    val tableOfContents = workData.optJSONObject("tableOfContents")
+    if (tableOfContents != null) {
+        val chaptersArray = tableOfContents.optJSONArray("chapters")
+        if (chaptersArray != null && chaptersArray.length() > 0) {
+            // 各章からエピソードを取得
+            // ...
+            if (episodes.isNotEmpty()) {
+                return episodes
+            }
+        }
+    }
+
+    // 方法2: apolloStateから直接エピソードを検索（Pascalコード参考のフォールバック）
+    apolloState.keys().forEach { key ->
+        if (key.startsWith("Episode:")) {
+            val episodeData = apolloState.getJSONObject(key)
+            // このエピソードが現在の作品に属するかチェック
+            val workRef = episodeData.optJSONObject("work")
+            val workRefKey = workRef?.optString("__ref")
+            if (workRefKey == "Work:$workId") {
+                // エピソード情報を抽出
+                episodes.add(...)
+            }
+        }
+    }
+
+    // エピソード番号でソート（公開日時順）
+    episodes.sortBy { it.update_time }
+
+    return episodes
+}
+```
+
+**重要なルール**:
+- **方法1（tableOfContents）**: 章構造を保持した正確な順序でエピソードを取得（最優先）
+- **方法2（apolloState直接検索）**: tableOfContentsが見つからない場合のフォールバック
+- Pascalコードの `"__typename":"Episode","id":"` パターン検索と同等の処理
+- apolloStateから直接検索する場合は、`Episode:`で始まるキーを探す
+- 各エピソードが現在の作品に属するか`work.__ref`でチェック
+- 取得後は必ず公開日時順にソート
+- この方法で992話のような大量のエピソードも確実に取得できる
 
 ### URL構造
 
