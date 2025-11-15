@@ -24,6 +24,7 @@ import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 
 class UpdateCheckWorker(
     private val context: Context,
@@ -162,8 +163,13 @@ class UpdateCheckWorker(
                                 continue
                             }
 
+                            var hasNewEpisodes = false
+                            var hasRevisedEpisodes = false
+                            var revisedCount = 0
+
                             // 更新がある場合
                             if (info.generalAllNo > novel.general_all_no) {
+                                hasNewEpisodes = true
                                 val updateQueue = UpdateQueueEntity(
                                     ncode = novel.ncode,
                                     total_ep = novel.total_ep,
@@ -172,8 +178,6 @@ class UpdateCheckWorker(
                                 )
                                 repository.insertUpdateQueue(updateQueue)
 
-                                workCount++
-
                                 if (novel.general_all_no == 0) {
                                     // 新着作品：全話数を加算
                                     episodeCount += info.generalAllNo
@@ -181,8 +185,58 @@ class UpdateCheckWorker(
                                     // 更新作品：新しく追加された話数を加算
                                     episodeCount += (info.generalAllNo - novel.general_all_no)
                                 }
+                            }
 
-                                Log.d(TAG, "小説「${novel.title}」の更新を検出: ${info.generalAllNo} > ${novel.general_all_no}")
+                            // 改稿チェック（短編を除く）
+                            if (novel.noveltype != 2) {
+                                try {
+                                    val revisionInfos = NovelApiUtils.fetchEpisodeRevisionsFromToc(
+                                        ncode = novel.ncode,
+                                        isR18 = novel.rating == 1,
+                                        noveltype = novel.noveltype
+                                    )
+
+                                    if (revisionInfos.isNotEmpty()) {
+                                        val existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                                        val episodeMap = existingEpisodes.associateBy { it.episode_no.toIntOrNull() ?: 0 }
+
+                                        for (revisionInfo in revisionInfos) {
+                                            if (session.isCancelled()) {
+                                                Log.d(TAG, "小説\"${novel.ncode}\"の改稿確認はキャンセルされました")
+                                                break
+                                            }
+
+                                            val existingEpisode = episodeMap[revisionInfo.episodeNo]
+                                            if (existingEpisode != null && revisionInfo.updateTime > existingEpisode.update_time) {
+                                                val updatedEpisode = NovelApiUtils.fetchEpisodeWithRetry(
+                                                    ncode = novel.ncode,
+                                                    episodeNo = revisionInfo.episodeNo.toString(),
+                                                    isR18 = novel.rating == 1,
+                                                    noveltype = novel.noveltype
+                                                )
+
+                                                if (updatedEpisode != null) {
+                                                    val episodeWithRevisionTime = updatedEpisode.copy(
+                                                        update_time = revisionInfo.updateTime
+                                                    )
+                                                    repository.insertEpisode(episodeWithRevisionTime)
+                                                    hasRevisedEpisodes = true
+                                                    revisedCount++
+                                                }
+
+                                                delay(200)
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "改稿チェックエラー: ${novel.ncode}", e)
+                                }
+                            }
+
+                            if (hasNewEpisodes || hasRevisedEpisodes) {
+                                workCount++
+                                val revisionMsg = if (hasRevisedEpisodes) " (改稿${revisedCount}話)" else ""
+                                Log.d(TAG, "小説「${novel.title}」の更新を検出: ${info.generalAllNo} > ${novel.general_all_no}$revisionMsg")
                             }
                         }
                     }

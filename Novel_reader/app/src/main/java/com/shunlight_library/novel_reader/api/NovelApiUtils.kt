@@ -708,4 +708,167 @@ object NovelApiUtils {
     ): Boolean {
         return repository.getNovelByNcode(ncode) != null
     }
+
+    /**
+     * エピソード情報（改稿日時を含む）
+     */
+    data class EpisodeRevisionInfo(
+        val episodeNo: Int,
+        val title: String,
+        val updateTime: String  // yyyy-MM-dd HH:mm:ss形式
+    )
+
+    /**
+     * なろう小説の目次ページから全エピソードの改稿情報を取得する
+     * 
+     * @param ncode 小説のNコード
+     * @param isR18 R18小説かどうか
+     * @param noveltype 小説種別（1=連載、2=短編）
+     * @return エピソード改稿情報のリスト（取得失敗時は空リスト）
+     */
+    suspend fun fetchEpisodeRevisionsFromToc(
+        ncode: String,
+        isR18: Boolean = false,
+        noveltype: Int? = null
+    ): List<EpisodeRevisionInfo> = withContext(Dispatchers.IO) {
+        // 短編小説は除外
+        if (noveltype == 2) {
+            Log.d(TAG, "短編小説のため改稿チェックをスキップ: $ncode")
+            return@withContext emptyList()
+        }
+
+        val baseUrl = if (isR18) {
+            "https://novel18.syosetu.com"
+        } else {
+            "https://ncode.syosetu.com"
+        }
+
+        val allEpisodes = mutableListOf<EpisodeRevisionInfo>()
+        var currentPage = 1
+        var hasMorePages = true
+
+        val userAgent = API_USER_AGENTS.random()
+
+        try {
+            while (hasMorePages) {
+                val tocUrl = if (currentPage == 1) {
+                    "$baseUrl/$ncode/"
+                } else {
+                    "$baseUrl/$ncode/?p=$currentPage"
+                }
+
+                Log.d(TAG, "目次ページを取得中: $tocUrl")
+
+                val doc = try {
+                    val connection = Jsoup.connect(tocUrl)
+                        .userAgent(userAgent)
+                        .timeout(30000)
+                        .followRedirects(true)
+
+                    if (isR18) {
+                        connection.cookie("over18", "yes")
+                    }
+
+                    connection.get()
+                } catch (e: HttpStatusException) {
+                    if (e.statusCode == 404) {
+                        Log.d(TAG, "ページが見つかりません（最終ページに到達）: $tocUrl")
+                        hasMorePages = false
+                        break
+                    } else {
+                        throw e
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "目次ページ取得エラー: $tocUrl", e)
+                    hasMorePages = false
+                    break
+                }
+
+                // エピソードリストを解析
+                // なろう小説の目次構造:
+                // <div class="index_box">
+                //   <dl class="novel_sublist2">
+                //     <dd class="subtitle">
+                //       <a href="/ncode/1/">第1話 タイトル</a>
+                //     </dd>
+                //     <dt class="long_update">2024/01/01 12:00<span class="long_update">（改稿）</span></dt>
+                //   </dl>
+                // </div>
+                val episodeElements = doc.select("div.index_box dl.novel_sublist2")
+
+                if (episodeElements.isEmpty()) {
+                    Log.d(TAG, "エピソードが見つかりません。最終ページに到達: page=$currentPage")
+                    hasMorePages = false
+                    break
+                }
+
+                for (element in episodeElements) {
+                    try {
+                        // エピソード番号を取得（URLから抽出）
+                        val episodeLink = element.select("dd.subtitle a").attr("href")
+                        val episodeNoMatch = Regex("/(\\d+)/?$").find(episodeLink)
+                        val episodeNo = episodeNoMatch?.groupValues?.get(1)?.toIntOrNull()
+
+                        if (episodeNo == null) {
+                            Log.w(TAG, "エピソード番号が取得できません: $episodeLink")
+                            continue
+                        }
+
+                        // エピソードタイトルを取得
+                        val title = element.select("dd.subtitle a").text()
+
+                        // 更新日時を取得
+                        val updateElement = element.select("dt.long_update")
+                        var updateTimeStr = updateElement.text()
+                            .replace("（改）", "")
+                            .replace("（改稿）", "")
+                            .trim()
+
+                        // 日時フォーマットを変換: "2024/01/01 12:00" -> "2024-01-01 12:00:00"
+                        val updateTime = try {
+                            val inputFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+                            val outputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                            val date = inputFormat.parse(updateTimeStr)
+                            if (date != null) {
+                                outputFormat.format(date)
+                            } else {
+                                DatabaseSyncUtils.getCurrentDateTimeString()
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "日時パースエラー: $updateTimeStr", e)
+                            DatabaseSyncUtils.getCurrentDateTimeString()
+                        }
+
+                        allEpisodes.add(
+                            EpisodeRevisionInfo(
+                                episodeNo = episodeNo,
+                                title = title,
+                                updateTime = updateTime
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "エピソード情報解析エラー", e)
+                        continue
+                    }
+                }
+
+                Log.d(TAG, "目次ページ page=$currentPage: ${episodeElements.size}エピソード取得")
+
+                // 100エピソード未満の場合は最終ページ
+                if (episodeElements.size < 100) {
+                    hasMorePages = false
+                } else {
+                    currentPage++
+                    // サーバー負荷軽減のため待機
+                    delay(500)
+                }
+            }
+
+            Log.d(TAG, "目次から取得完了: ${allEpisodes.size}エピソード")
+            allEpisodes
+        } catch (e: Exception) {
+            Log.e(TAG, "目次取得エラー: $ncode", e)
+            emptyList()
+        }
+    }
 }
