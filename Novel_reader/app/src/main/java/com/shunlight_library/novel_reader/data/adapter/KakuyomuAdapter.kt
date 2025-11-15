@@ -9,15 +9,6 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
-
-/**
- * カクヨムのエピソード取得結果（内部使用）
- * エピソードとマッピング情報を一緒に保持する
- */
-internal data class KakuyomuEpisodeWithMapping(
-    val episode: EpisodeEntity,
-    val kakuyomuEpisodeId: String  // カクヨムの実際のエピソードID
-)
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -29,6 +20,15 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/**
+ * カクヨムのエピソード取得結果（内部使用）
+ * エピソードとマッピング情報を一緒に保持する
+ */
+internal data class KakuyomuEpisodeWithMapping(
+    val episode: EpisodeEntity,
+    val kakuyomuEpisodeId: String  // カクヨムの実際のエピソードID
+)
 
 /**
  * カクヨム用のアダプター実装
