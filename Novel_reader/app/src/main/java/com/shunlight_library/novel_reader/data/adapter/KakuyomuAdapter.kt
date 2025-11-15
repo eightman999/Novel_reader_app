@@ -110,7 +110,16 @@ class KakuyomuAdapter : NovelSiteAdapter {
     }
 
     override fun isValidNovelId(novelId: String): Boolean {
-        return novelId.isNotEmpty() && (novelId.toLongOrNull() != null || PseudoNcodeGenerator.isKakuyomuNcode(novelId))
+        if (novelId.isEmpty()) return false
+        if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) return true
+
+        // BigIntegerで数値かどうかを判定（Long型の範囲外も対応）
+        return try {
+            java.math.BigInteger(novelId)
+            true
+        } catch (e: NumberFormatException) {
+            false
+        }
     }
 
     /**
