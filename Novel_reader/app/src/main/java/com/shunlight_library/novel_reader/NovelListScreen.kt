@@ -38,7 +38,8 @@ enum class SortField(val displayName: String) {
     TOTAL_EP("総話数"),
     UNREAD_COUNT("未読数"),
     LENGTH("文字数"),
-    LAST_UPDATE_DATE("更新日")
+    LAST_UPDATE_DATE("ダウンロード日"),
+    UPDATED_AT("最終更新日")
 }
 
 // 並び替え方向を定義する列挙型
@@ -103,7 +104,7 @@ fun NovelListScreen(
     var showEpisodeCount by remember { mutableStateOf(true) }
 
     // 並び替えとフィルタリングの状態変数
-    var sortField by remember { mutableStateOf(SortField.LAST_UPDATE_DATE) }
+    var sortField by remember { mutableStateOf(SortField.UPDATED_AT) }
     var sortDirection by remember { mutableStateOf(SortDirection.DESCENDING) }
     var filterSettings by remember { mutableStateOf(FilterSettings()) }
 
@@ -288,6 +289,12 @@ fun NovelListScreen(
                 } else {
                     filtered.sortedByDescending { it.novel.last_update_date }
                 }
+
+                SortField.UPDATED_AT -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.updated_at }
+                } else {
+                    filtered.sortedByDescending { it.novel.updated_at }
+                }
             }
         }
     }
@@ -309,7 +316,7 @@ fun NovelListScreen(
         sortField = try {
             SortField.valueOf(savedFilterSettings.sortField)
         } catch (e: IllegalArgumentException) {
-            SortField.LAST_UPDATE_DATE
+            SortField.UPDATED_AT
         }
         sortDirection = try {
             SortDirection.valueOf(savedFilterSettings.sortDirection)

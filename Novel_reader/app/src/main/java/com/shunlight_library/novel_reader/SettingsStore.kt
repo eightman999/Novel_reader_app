@@ -143,7 +143,7 @@ class SettingsStore(private val context: Context) {
     val defaultLastNotifiedRelease = ""
     
     // 小説リストフィルター設定のデフォルト値
-    val defaultNovelListSortField = "LAST_UPDATE_DATE"
+    val defaultNovelListSortField = "UPDATED_AT"
     val defaultNovelListSortDirection = "DESCENDING"
     val defaultNovelListMinRating = 0
     val defaultNovelListMaxRating = 5
