@@ -158,6 +158,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
     /**
      * HTTP GETリクエストを実行してHTMLを取得（再試行対応）
+     * Pascalコードを参考に、完全なHTMLをバッファリングして取得
      *
      * @param urlString リクエストURL
      * @param maxRetries 最大再試行回数（デフォルト: 3回）
@@ -182,9 +183,26 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
                 when (responseCode) {
                     HttpURLConnection.HTTP_OK -> {
-                        val html = connection.inputStream.bufferedReader().use { it.readText() }
-                        android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString")
-                        return html
+                        // 完全なHTMLをバッファリングして取得（Pascalコード参考）
+                        val contentLength = connection.contentLength
+                        val html = StringBuilder()
+
+                        connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                            val buffer = CharArray(8192)  // 8KBバッファ
+                            var charsRead: Int
+
+                            // 全データを読み込むまでループ（Pascalコードと同様）
+                            while (reader.read(buffer).also { charsRead = it } != -1) {
+                                html.append(buffer, 0, charsRead)
+                            }
+                        }
+
+                        val htmlString = html.toString()
+                        val actualLength = htmlString.length
+
+                        android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString (Content-Length: $contentLength, Actual: $actualLength)")
+
+                        return htmlString
                     }
                     HttpURLConnection.HTTP_NOT_FOUND -> {
                         android.util.Log.e("KakuyomuAdapter", "404 Not Found: $urlString")

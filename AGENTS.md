@@ -447,7 +447,26 @@ private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): 
         try {
             // HTTP接続処理
             when (responseCode) {
-                HttpURLConnection.HTTP_OK -> return html
+                HttpURLConnection.HTTP_OK -> {
+                    // 完全なHTMLをバッファリングして取得（Pascalコード参考）
+                    val contentLength = connection.contentLength
+                    val html = StringBuilder()
+
+                    connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                        val buffer = CharArray(8192)  // 8KBバッファ
+                        var charsRead: Int
+
+                        // 全データを読み込むまでループ（Pascalコードと同様）
+                        while (reader.read(buffer).also { charsRead = it } != -1) {
+                            html.append(buffer, 0, charsRead)
+                        }
+                    }
+
+                    val htmlString = html.toString()
+                    android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString (Content-Length: $contentLength, Actual: ${htmlString.length})")
+
+                    return htmlString
+                }
                 HttpURLConnection.HTTP_NOT_FOUND -> throw Exception("HTTP 404")
                 HttpURLConnection.HTTP_FORBIDDEN -> throw Exception("HTTP 403")
                 else -> throw Exception("HTTP error: $responseCode")
@@ -472,6 +491,9 @@ private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): 
 ```
 
 **重要なルール**:
+- **完全なHTMLをバッファリングして取得**（Pascalコードと同様、全データを読み込むまでループ）
+- 8KBバッファを使用して効率的に読み込み
+- Content-Lengthと実際のデータサイズをログで確認
 - 最大**3回**の再試行を実装
 - 再試行時は**指数バックオフ**（1秒、2秒、3秒）を使用
 - `SocketTimeoutException`、`UnknownHostException`、`ConnectException`は再試行対象
