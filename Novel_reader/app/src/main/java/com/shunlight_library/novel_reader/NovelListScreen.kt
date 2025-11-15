@@ -55,7 +55,6 @@ enum class SearchField(val displayName: String) {
 
 // サイトフィルター設定
 enum class SiteFilter(val displayName: String) {
-    ALL("全サイト"),
     SYOSETU_ONLY("小説家になろう"),
     KAKUYOMU_ONLY("カクヨム")
 }
@@ -70,7 +69,7 @@ data class FilterSettings(
     val showFavoritesOnly: Boolean = false,
     val showLongNovels: Boolean = true,
     val showShortNovels: Boolean = true,
-    val siteFilter: SiteFilter = SiteFilter.ALL  // サイトフィルター
+    val siteFilter: SiteFilter = SiteFilter.SYOSETU_ONLY  // サイトフィルター
 )
 
 // 小説と既読情報を組み合わせたデータクラス
@@ -222,9 +221,6 @@ fun NovelListScreen(
                             return@filter false
                         }
                     }
-                    SiteFilter.ALL -> {
-                        // 全サイト表示
-                    }
                 }
 
                 if (searchText.isNotEmpty()) {
@@ -328,7 +324,7 @@ fun NovelListScreen(
             siteFilter = try {
                 SiteFilter.valueOf(savedFilterSettings.siteFilter)
             } catch (e: IllegalArgumentException) {
-                SiteFilter.ALL
+                SiteFilter.SYOSETU_ONLY
             }
         )
 
