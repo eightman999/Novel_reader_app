@@ -78,7 +78,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val novelDesc = parseNovelInfo(doc, workId)
 
         // エピソード一覧を抽出（本文なし）
-        val episodesWithoutBody = parseEpisodeList(doc, workId, novelDesc.ncode)
+        // 目次から取得するため、docは不要
+        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
 
         // 各エピソードの本文を取得
         android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
@@ -488,18 +489,22 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
     /**
      * HTMLからエピソード一覧を抽出（TOC情報のみ、本文は含まない）
-     * JSONデータから優先的に取得し、失敗した場合のみHTMLフォールバック
+     * エピソードページの目次から優先的に取得し、失敗した場合のみJSONやHTMLフォールバック
      */
-    private fun parseEpisodeList(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
-        // まずJSONデータからエピソード一覧を取得
-        val episodesFromJson = extractEpisodesFromJson(doc, workId, pseudoNcode)
-        if (episodesFromJson.isNotEmpty()) {
-            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (JSON): ${episodesFromJson.size}話")
-            return episodesFromJson
+    private suspend fun parseEpisodeList(workId: String, pseudoNcode: String): List<EpisodeEntity> {
+        // 方法1: エピソードページの目次から取得（最優先、確実）
+        val episodesFromToc = extractEpisodesFromToc(workId, pseudoNcode)
+        if (episodesFromToc.isNotEmpty()) {
+            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesFromToc.size}話")
+            return episodesFromToc
         }
 
-        // JSONから取得できない場合はHTMLフォールバック
-        android.util.Log.d("KakuyomuAdapter", "JSONからエピソード取得失敗、HTMLフォールバックを試行")
+        android.util.Log.d("KakuyomuAdapter", "目次からエピソード取得失敗、他の方法を試行")
+
+        // 方法2: 作品ページのHTMLから取得（フォールバック）
+        val workUrl = "https://kakuyomu.jp/works/$workId"
+        val workHtml = performHttpRequest(workUrl)
+        val doc = Jsoup.parse(workHtml)
 
         val episodes = mutableListOf<EpisodeEntity>()
 
@@ -576,6 +581,88 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
         android.util.Log.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML): ${episodes.size}話")
         return episodes
+    }
+
+    /**
+     * エピソードページの目次からエピソード一覧を抽出
+     * 任意のエピソードページには完全な目次が表示されているため、そこから全エピソードを取得
+     *
+     * @param workId 作品ID
+     * @param pseudoNcode 疑似Ncode
+     * @return エピソードリスト（取得失敗時は空リスト）
+     */
+    private suspend fun extractEpisodesFromToc(workId: String, pseudoNcode: String): List<EpisodeEntity> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            applyRateLimit()
+
+            // 作品ページから最初のエピソードIDを取得
+            val workUrl = "https://kakuyomu.jp/works/$workId"
+            val workHtml = performHttpRequest(workUrl)
+            val workDoc = Jsoup.parse(workHtml)
+
+            // 最初のエピソードのリンクを取得
+            val firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle, a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
+            if (firstEpisodeLink.isNullOrEmpty()) {
+                android.util.Log.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
+                return@withContext emptyList()
+            }
+
+            applyRateLimit()
+
+            // エピソードページを取得（目次が含まれる）
+            val episodeUrl = "https://kakuyomu.jp$firstEpisodeLink"
+            val episodeHtml = performHttpRequest(episodeUrl)
+            val episodeDoc = Jsoup.parse(episodeHtml)
+
+            // 目次から全エピソードを抽出
+            val episodes = mutableListOf<EpisodeEntity>()
+            val tocItems = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode")
+
+            android.util.Log.d("KakuyomuAdapter", "目次から検出したエピソード数: ${tocItems.size}")
+
+            tocItems.forEach { item ->
+                try {
+                    // エピソードリンク: /works/{workId}/episodes/{episodeId}
+                    val link = item.select("a.widget-toc-episode-episodeTitle").attr("href")
+                    val episodeId = link.substringAfterLast("/")
+
+                    // エピソードタイトル
+                    var title = item.select("span.widget-toc-episode-titleLabel").text()
+                    if (title.isNotEmpty()) {
+                        title = cleanupText(title)
+                    }
+
+                    // 公開日時
+                    val publishedAt = item.select("time.widget-toc-episode-datePublished").attr("datetime")
+                    val publishedDate = if (publishedAt.isNotEmpty()) {
+                        publishedAt.take(10)  // YYYY-MM-DD部分を取得
+                    } else {
+                        getCurrentDate()
+                    }
+
+                    episodes.add(
+                        EpisodeEntity(
+                            ncode = pseudoNcode,
+                            episode_no = episodeId,
+                            body = "",  // 本文は後で個別に取得
+                            e_title = title,
+                            update_time = publishedDate,
+                            is_read = false,
+                            is_bookmark = false,
+                            reading_rate = 0.0f
+                        )
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("KakuyomuAdapter", "エピソード解析エラー", e)
+                }
+            }
+
+            android.util.Log.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodes.size}話")
+            episodes
+        } catch (e: Exception) {
+            android.util.Log.e("KakuyomuAdapter", "目次からのエピソード抽出エラー", e)
+            emptyList()
+        }
     }
 
     /**
