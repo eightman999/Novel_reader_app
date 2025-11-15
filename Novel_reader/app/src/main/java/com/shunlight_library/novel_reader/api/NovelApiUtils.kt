@@ -379,13 +379,21 @@ object NovelApiUtils {
                 if (com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)) {
                     val adapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
                     val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
-                    val episodeId = episodeNo
+                    
+                    // episodeNoは連番（1, 2, 3...）なので、マッピングテーブルから実際のIDを取得
+                    val repository = com.shunlight_library.novel_reader.NovelReaderApplication.getRepository()
+                    val episodeNoInt = episodeNo.toIntOrNull()
+                    val kakuyomuEpisodeId = if (episodeNoInt != null) {
+                        repository.getKakuyomuEpisodeId(ncode, episodeNoInt) ?: episodeNo
+                    } else {
+                        episodeNo
+                    }
 
                     // エピソード本文を取得
-                    val body = adapter.fetchEpisodeContent(workId, episodeId)
+                    val body = adapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
 
                     // タイトル取得のためエピソードページをパース（簡易版）
-                    val url = adapter.generateEpisodeUrl(workId, episodeId)
+                    val url = adapter.generateEpisodeUrl(workId, kakuyomuEpisodeId)
                     val doc = Jsoup.connect(url)
                         .userAgent("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36")
                         .timeout(30000)

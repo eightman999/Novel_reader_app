@@ -24,6 +24,8 @@ import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
+import com.shunlight_library.novel_reader.data.dao.EpisodeMappingDao
 
 /**
  * v1→v2のマイグレーション: 更新キュー用テーブルを作成
@@ -135,6 +137,29 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
 }
 
 /**
+ * v9→v10のマイグレーション: カクヨム用エピソードマッピングテーブルを追加
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // エピソードマッピングテーブルを作成
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS episode_mapping (" +
+                    "ncode TEXT NOT NULL, " +
+                    "episode_no INTEGER NOT NULL, " +
+                    "kakuyomu_episode_id TEXT NOT NULL, " +
+                    "PRIMARY KEY (ncode, episode_no))"
+        )
+        // インデックスを作成
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_episode_mapping_ncode_no ON episode_mapping (ncode, episode_no)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_episode_mapping_ncode_id ON episode_mapping (ncode, kakuyomu_episode_id)"
+        )
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -144,9 +169,10 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         LastReadNovelEntity::class,
         UpdateQueueEntity::class,
         URLEntity::class,
-        ImageCacheEntity::class
+        ImageCacheEntity::class,
+        EpisodeMappingEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -156,6 +182,7 @@ abstract class NovelDatabase : RoomDatabase() {
     abstract fun updateQueueDao(): UpdateQueueDao
     abstract fun urlEntityDao(): URLEntityDao
     abstract fun imageCacheDao(): ImageCacheDao
+    abstract fun episodeMappingDao(): EpisodeMappingDao
 
     companion object {
         @Volatile
@@ -179,7 +206,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_5_6,
                         MIGRATION_6_7,
                         MIGRATION_7_8,
-                        MIGRATION_8_9
+                        MIGRATION_8_9,
+                        MIGRATION_9_10
                     )
                     .build()
                 INSTANCE = instance
