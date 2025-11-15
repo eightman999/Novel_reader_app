@@ -24,7 +24,7 @@ import java.util.Locale
  * カクヨム用のアダプター実装
  *
  * カクヨムには公式APIが存在しないため、HTMLスクレイピングで情報を取得する。
- * レート制限として0.5秒間隔でのアクセスを実施。
+ * レート制限として0.1秒間隔でのアクセスを実施。
  *
  * URL構造:
  * - 作品ページ: https://kakuyomu.jp/works/{workId}
@@ -33,7 +33,7 @@ import java.util.Locale
 class KakuyomuAdapter : NovelSiteAdapter {
     companion object {
         private const val BASE_URL = "https://kakuyomu.jp"
-        private const val RATE_LIMIT_DELAY_MS = 1000L  // 1秒（スクレイピング時の推奨間隔）
+        private const val RATE_LIMIT_DELAY_MS = 100L  // 1秒（スクレイピング時の推奨間隔）
         private var lastAccessTime = 0L
 
         // PC版User-Agentを使用（モバイル版では目次が省略される可能性があるため）
