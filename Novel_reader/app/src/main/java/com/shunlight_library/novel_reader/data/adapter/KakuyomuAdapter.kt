@@ -98,8 +98,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
         // エピソード数を取得して比較
         // JSONから取得を試みる
-        val nextDataJson = extractNextDataJson(doc)
-        var episodeCount = nextDataJson?.optInt("publicEpisodeCount") ?: 0
+        val (_, workData) = extractNextDataJson(doc)
+        var episodeCount = workData?.optInt("publicEpisodeCount") ?: 0
 
         // JSONから取得できない場合はHTML
         if (episodeCount == 0) {
@@ -176,10 +176,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
      */
     private fun parseNovelInfo(doc: Document, workId: String): NovelDescEntity {
         // Next.jsのJSONデータを取得（最優先）
-        val nextDataJson = extractNextDataJson(doc)
+        val (apolloState, workData) = extractNextDataJson(doc)
 
         // タイトル: 複数のパターンに対応
-        var title = nextDataJson?.optString("title") ?: ""
+        var title = workData?.optString("title") ?: ""
         if (title.isEmpty()) {
             // 新しいHTML構造: h1 with Heading classes
             title = doc.select("h1.Heading_heading__lQ85n a").text()
@@ -190,8 +190,22 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 .ifEmpty { doc.select("h1.WorkTitle").text() }
         }
 
-        // 作者名: 複数のパターンに対応
-        var author = nextDataJson?.optString("author") ?: ""
+        // 作者名: 複数のパターンに対応（JSON参照を解決）
+        var author = ""
+        if (workData != null && apolloState != null) {
+            val authorRef = workData.optJSONObject("author")
+            if (authorRef != null) {
+                val refKey = authorRef.optString("__ref")
+                if (refKey.isNotEmpty()) {
+                    val authorData = apolloState.optJSONObject(refKey)
+                    author = authorData?.optString("activityName") ?: ""
+                    if (author.isEmpty()) {
+                        author = authorData?.optString("name") ?: ""
+                    }
+                }
+            }
+        }
+
         if (author.isEmpty()) {
             // 新しいHTML構造: partialGiftWidgetActivityName
             author = doc.select("div.partialGiftWidgetActivityName a").text()
@@ -205,7 +219,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         }
 
         // あらすじ: 複数のパターンに対応（改行も保持）
-        var synopsis = nextDataJson?.optString("introduction") ?: ""
+        var synopsis = workData?.optString("introduction") ?: ""
         var synopsisSource = if (synopsis.isNotEmpty()) "JSON" else ""
 
         // 新しいHTML構造: CollapseTextWithKakuyomuLinks
@@ -269,7 +283,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         var tagSource = ""
 
         // JSONからタグを取得（最優先）
-        nextDataJson?.optJSONArray("tagLabels")?.let { tagArray ->
+        workData?.optJSONArray("tagLabels")?.let { tagArray ->
             for (i in 0 until tagArray.length()) {
                 tags.add(tagArray.getString(i))
             }
@@ -331,7 +345,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val lastUpdateDate = lastUpdateElement?.attr("datetime")?.take(10) ?: getCurrentDate()
 
         // エピソード総数: JSONまたはHTML
-        var totalEp = nextDataJson?.optInt("publicEpisodeCount") ?: 0
+        var totalEp = workData?.optInt("publicEpisodeCount") ?: 0
         if (totalEp == 0) {
             // 新しいHTML構造: WorkTocSection_link
             val newEpisodes = doc.select("a.WorkTocSection_link__ocg9K")
@@ -472,8 +486,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
     /**
      * Next.jsのJSONデータを抽出
+     *
+     * @return Pair<apolloState, workData> - apolloStateは参照解決用、workDataは作品情報
      */
-    private fun extractNextDataJson(doc: Document): JSONObject? {
+    private fun extractNextDataJson(doc: Document): Pair<JSONObject?, JSONObject?> {
         return try {
             // <script id="__NEXT_DATA__" type="application/json">...</script> を取得
             val scriptElement = doc.select("script#__NEXT_DATA__").firstOrNull()
@@ -490,7 +506,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     if (key.startsWith("Work:")) {
                         val workData = apolloState.getJSONObject(key)
                         android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功: $key")
-                        return workData
+                        return Pair(apolloState, workData)
                     }
                 }
 
@@ -498,10 +514,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
             } else {
                 android.util.Log.d("KakuyomuAdapter", "__NEXT_DATA__スクリプトが見つかりませんでした")
             }
-            null
+            Pair(null, null)
         } catch (e: Exception) {
             android.util.Log.e("KakuyomuAdapter", "Next.jsデータ抽出エラー", e)
-            null
+            Pair(null, null)
         }
     }
 }
