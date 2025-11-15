@@ -16,7 +16,10 @@ import androidx.work.WorkerParameters
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
+import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -69,39 +72,54 @@ class UpdateCheckWorker(
                         continue
                     }
 
-                    // APIから最新情報を取得
-                    val info = NovelApiUtils.fetchNovelInfo(
-                        novel.ncode,
-                        novel.rating == 1
-                    )
-                    if (info != null) {
-                        if (session.isCancelled()) {
-                            Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
-                            continue
-                        }
+                    if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                        // カクヨムの場合、HTMLスクレイピングで更新確認
+                        val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                        val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
-                        // 常に最新情報を保存
-                        val updatedNovel = novel.copy(
-                            general_all_no = info.generalAllNo,
-                            updated_at = info.updatedAt,
-                            userid = novel.userid ?: info.userid,
-                            noveltype = novel.noveltype ?: info.noveltype,
-                            length = novel.length ?: info.length
-                        )
-                        repository.updateNovel(updatedNovel)
+                        val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
 
                         if (session.isCancelled()) {
                             Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
                             continue
                         }
 
-                        // 更新がある場合
-                        if (info.generalAllNo > novel.general_all_no) {
+                        if (hasUpdate) {
+                            // 詳細情報を取得して最新のエピソード数を確認
+                            val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+
+                            if (session.isCancelled()) {
+                                Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                                continue
+                            }
+
+                            val generalAllNo = episodes.size
+                            val updatedAt = updatedNovelDesc.updated_at
+
+                            // 小説情報を更新
+                            val updatedNovel = novel.copy(
+                                general_all_no = generalAllNo,
+                                updated_at = updatedAt,
+                                title = updatedNovelDesc.title,
+                                author = updatedNovelDesc.author,
+                                Synopsis = updatedNovelDesc.Synopsis,
+                                main_tag = updatedNovelDesc.main_tag,
+                                sub_tag = updatedNovelDesc.sub_tag,
+                                last_update_date = updatedNovelDesc.last_update_date
+                            )
+                            repository.updateNovel(updatedNovel)
+
+                            if (session.isCancelled()) {
+                                Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                                continue
+                            }
+
+                            // 更新キューに追加
                             val updateQueue = UpdateQueueEntity(
                                 ncode = novel.ncode,
                                 total_ep = novel.total_ep,
-                                general_all_no = info.generalAllNo,
-                                update_time = info.updatedAt
+                                general_all_no = generalAllNo,
+                                update_time = updatedAt
                             )
                             repository.insertUpdateQueue(updateQueue)
 
@@ -109,13 +127,63 @@ class UpdateCheckWorker(
 
                             if (novel.general_all_no == 0) {
                                 // 新着作品：全話数を加算
-                                episodeCount += info.generalAllNo
+                                episodeCount += generalAllNo
                             } else {
                                 // 更新作品：新しく追加された話数を加算
-                                episodeCount += (info.generalAllNo - novel.general_all_no)
+                                episodeCount += (generalAllNo - novel.general_all_no)
                             }
 
-                            Log.d(TAG, "小説「${novel.title}」の更新を検出: ${info.generalAllNo} > ${novel.general_all_no}")
+                            Log.d(TAG, "小説「${novel.title}」の更新を検出: ${generalAllNo} > ${novel.general_all_no}")
+                        }
+                    } else {
+                        // 小説家になろうのAPIから最新情報を取得
+                        val info = NovelApiUtils.fetchNovelInfo(
+                            novel.ncode,
+                            novel.rating == 1
+                        )
+                        if (info != null) {
+                            if (session.isCancelled()) {
+                                Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                                continue
+                            }
+
+                            // 常に最新情報を保存
+                            val updatedNovel = novel.copy(
+                                general_all_no = info.generalAllNo,
+                                updated_at = info.updatedAt,
+                                userid = novel.userid ?: info.userid,
+                                noveltype = novel.noveltype ?: info.noveltype,
+                                length = novel.length ?: info.length
+                            )
+                            repository.updateNovel(updatedNovel)
+
+                            if (session.isCancelled()) {
+                                Log.d(TAG, "小説\"${novel.ncode}\"の更新確認はキャンセルされました")
+                                continue
+                            }
+
+                            // 更新がある場合
+                            if (info.generalAllNo > novel.general_all_no) {
+                                val updateQueue = UpdateQueueEntity(
+                                    ncode = novel.ncode,
+                                    total_ep = novel.total_ep,
+                                    general_all_no = info.generalAllNo,
+                                    update_time = info.updatedAt
+                                )
+                                repository.insertUpdateQueue(updateQueue)
+
+                                workCount++
+
+                                if (novel.general_all_no == 0) {
+                                    // 新着作品：全話数を加算
+                                    episodeCount += info.generalAllNo
+                                } else {
+                                    // 更新作品：新しく追加された話数を加算
+                                    episodeCount += (info.generalAllNo - novel.general_all_no)
+                                }
+
+                                Log.d(TAG, "小説「${novel.title}」の更新を検出: ${info.generalAllNo} > ${novel.general_all_no}")
+                            }
                         }
                     }
 
