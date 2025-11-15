@@ -768,17 +768,19 @@ fun EnhancedHtmlRubyWebView(
             ${if (textOrientation == "Vertical") "height: auto;" else "word-wrap: break-word; overflow-wrap: break-word;"}
         }
         ruby {
+            display: ruby;
             ruby-align: center;
             ${if (textOrientation == "Horizontal") {
-                "ruby-position: over; display: inline-block; max-width: 100%;"
+                "ruby-position: over;"
             } else {
                 "ruby-position: right;"
             }}
         }
         rt {
+            display: ruby-text;
             font-size: ${rubyFontSize}px;
             text-align: center;
-            line-height: 1;
+            line-height: 1.2;
             color: $fontColor;
         }
         img {
