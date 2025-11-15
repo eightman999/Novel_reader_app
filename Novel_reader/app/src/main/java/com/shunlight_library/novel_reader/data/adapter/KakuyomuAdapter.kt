@@ -7,7 +7,17 @@ package com.shunlight_library.novel_reader.data.adapter
 
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
+
+/**
+ * カクヨムのエピソード取得結果（内部使用）
+ * エピソードとマッピング情報を一緒に保持する
+ */
+internal data class KakuyomuEpisodeWithMapping(
+    val episode: EpisodeEntity,
+    val kakuyomuEpisodeId: String  // カクヨムの実際のエピソードID
+)
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -31,6 +41,9 @@ import java.util.Locale
  * - エピソードページ: https://kakuyomu.jp/works/{workId}/episodes/{episodeId}
  */
 class KakuyomuAdapter : NovelSiteAdapter {
+    // 最後に取得したエピソードのマッピング情報を保持
+    private var cachedMappings: Map<Int, String> = emptyMap()
+
     companion object {
         private const val BASE_URL = "https://kakuyomu.jp"
         private const val RATE_LIMIT_DELAY_MS = 100L  // 1秒（スクレイピング時の推奨間隔）
@@ -39,6 +52,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // PC版User-Agentを使用（モバイル版では目次が省略される可能性があるため）
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    
+    /**
+     * 最後に取得したマッピング情報を取得（呼び出し側が保存に使用）
+     */
+    fun getCachedMappings(): Map<Int, String> = cachedMappings
 
     override fun getSiteType(): Int = NovelSiteAdapter.SITE_TYPE_KAKUYOMU
 
@@ -85,7 +103,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 各エピソードの本文を取得
         android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
         val episodesWithBody = episodesWithoutBody.map { episode ->
-            val episodeBody = fetchEpisodeContent(workId, episode.episode_no)
+            // episode.episode_no は連番（1, 2, 3...）なので、キャッシュから実際のIDを取得
+            val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+            val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
             episode.copy(body = episodeBody)
         }
 
@@ -574,19 +594,27 @@ class KakuyomuAdapter : NovelSiteAdapter {
      */
     private suspend fun parseEpisodeList(workId: String, pseudoNcode: String): List<EpisodeEntity> {
         // 方法1: episode_sidebarエンドポイントから取得（最優先、最も確実）
-        val episodesFromSidebar = extractEpisodesFromSidebar(workId, pseudoNcode)
-        if (episodesFromSidebar.isNotEmpty()) {
-            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (episode_sidebar): ${episodesFromSidebar.size}話")
-            return episodesFromSidebar
+        val episodesWithMapping = extractEpisodesFromSidebar(workId, pseudoNcode)
+        if (episodesWithMapping.isNotEmpty()) {
+            // マッピング情報をキャッシュに保存
+            cachedMappings = episodesWithMapping.associate { 
+                it.episode.episode_no.toInt() to it.kakuyomuEpisodeId 
+            }
+            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (episode_sidebar): ${episodesWithMapping.size}話")
+            return episodesWithMapping.map { it.episode }
         }
 
         android.util.Log.d("KakuyomuAdapter", "episode_sidebarからエピソード取得失敗、他の方法を試行")
 
         // 方法2: エピソードページの目次から取得（フォールバック）
-        val episodesFromToc = extractEpisodesFromToc(workId, pseudoNcode)
-        if (episodesFromToc.isNotEmpty()) {
-            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesFromToc.size}話")
-            return episodesFromToc
+        val episodesWithMappingFromToc = extractEpisodesFromToc(workId, pseudoNcode)
+        if (episodesWithMappingFromToc.isNotEmpty()) {
+            // マッピング情報をキャッシュに保存
+            cachedMappings = episodesWithMappingFromToc.associate { 
+                it.episode.episode_no.toInt() to it.kakuyomuEpisodeId 
+            }
+            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesWithMappingFromToc.size}話")
+            return episodesWithMappingFromToc.map { it.episode }
         }
 
         android.util.Log.d("KakuyomuAdapter", "目次からエピソード取得失敗、他の方法を試行")
@@ -708,9 +736,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
      *
      * @param workId 作品ID
      * @param pseudoNcode 疑似Ncode
-     * @return エピソードリスト（取得失敗時は空リスト）
+     * @return エピソードとマッピング情報のリスト（取得失敗時は空リスト）
      */
-    private suspend fun extractEpisodesFromSidebar(workId: String, pseudoNcode: String): List<EpisodeEntity> = withContext(Dispatchers.IO) {
+    private suspend fun extractEpisodesFromSidebar(workId: String, pseudoNcode: String): List<KakuyomuEpisodeWithMapping> = withContext(Dispatchers.IO) {
         return@withContext try {
             applyRateLimit()
 
@@ -767,7 +795,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             android.util.Log.d("KakuyomuAdapter", "=== episode_sidebar HTML構造調査終了 ===")
 
             // 全エピソードを抽出（章も含む）
-            val episodes = mutableListOf<EpisodeEntity>()
+            val episodesWithMapping = mutableListOf<KakuyomuEpisodeWithMapping>()
             val tocItems = sidebarDoc.select("ol.widget-toc-items li.widget-toc-episode")
 
             android.util.Log.d("KakuyomuAdapter", "episode_sidebarから検出したエピソード数: ${tocItems.size}")
@@ -782,7 +810,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         return@forEachIndexed
                     }
 
-                    val episodeId = link.substringAfterLast("/")
+                    val kakuyomuEpisodeId = link.substringAfterLast("/")
 
                     // エピソードタイトル
                     var title = item.select("span.widget-toc-episode-titleLabel").text()
@@ -802,39 +830,44 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         getCurrentDate()
                     }
 
-                    episodes.add(
-                        EpisodeEntity(
-                            ncode = pseudoNcode,
-                            episode_no = episodeId,
-                            body = "",  // 本文は後で個別に取得
-                            e_title = title,
-                            update_time = publishedDate,
-                            is_read = false,
-                            is_bookmark = false,
-                            reading_rate = 0.0f
+                    val episode = EpisodeEntity(
+                        ncode = pseudoNcode,
+                        episode_no = (index + 1).toString(),  // 連番（1, 2, 3...）を使用
+                        body = "",  // 本文は後で個別に取得
+                        e_title = title,
+                        update_time = publishedDate,
+                        is_read = false,
+                        is_bookmark = false,
+                        reading_rate = 0.0f
+                    )
+
+                    episodesWithMapping.add(
+                        KakuyomuEpisodeWithMapping(
+                            episode = episode,
+                            kakuyomuEpisodeId = kakuyomuEpisodeId
                         )
                     )
 
                     // 最初と最後のエピソードをログ出力
                     if (index < 3 || index >= tocItems.size - 3) {
-                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$episodeId, タイトル=${title.take(30)}, 日付=$publishedDate")
+                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$kakuyomuEpisodeId, タイトル=${title.take(30)}, 日付=$publishedDate")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("KakuyomuAdapter", "エピソード${index + 1}の解析エラー", e)
                 }
             }
 
-            if (episodes.isEmpty()) {
+            if (episodesWithMapping.isEmpty()) {
                 android.util.Log.w("KakuyomuAdapter", """
                     episode_sidebarからエピソードを取得できませんでした
                     - URL: $sidebarUrl
                     - tocItems.size: ${tocItems.size}
                 """.trimIndent())
             } else {
-                android.util.Log.d("KakuyomuAdapter", "episode_sidebarからエピソード抽出成功: ${episodes.size}話（最初: ${episodes.firstOrNull()?.e_title}, 最後: ${episodes.lastOrNull()?.e_title}）")
+                android.util.Log.d("KakuyomuAdapter", "episode_sidebarからエピソード抽出成功: ${episodesWithMapping.size}話（最初: ${episodesWithMapping.firstOrNull()?.episode?.e_title}, 最後: ${episodesWithMapping.lastOrNull()?.episode?.e_title}）")
             }
 
-            episodes
+            episodesWithMapping
         } catch (e: Exception) {
             android.util.Log.e("KakuyomuAdapter", "episode_sidebarからのエピソード抽出エラー", e)
             emptyList()
@@ -847,9 +880,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
      *
      * @param workId 作品ID
      * @param pseudoNcode 疑似Ncode
-     * @return エピソードリスト（取得失敗時は空リスト）
+     * @return エピソードとマッピング情報のリスト（取得失敗時は空リスト）
      */
-    private suspend fun extractEpisodesFromToc(workId: String, pseudoNcode: String): List<EpisodeEntity> = withContext(Dispatchers.IO) {
+    private suspend fun extractEpisodesFromToc(workId: String, pseudoNcode: String): List<KakuyomuEpisodeWithMapping> = withContext(Dispatchers.IO) {
         return@withContext try {
             applyRateLimit()
 
@@ -929,7 +962,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             android.util.Log.d("KakuyomuAdapter", "=== エピソードページHTML構造調査終了 ===")
 
             // 目次から全エピソードを抽出
-            val episodes = mutableListOf<EpisodeEntity>()
+            val episodesWithMapping = mutableListOf<KakuyomuEpisodeWithMapping>()
             val tocItems = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode")
 
             android.util.Log.d("KakuyomuAdapter", "目次から検出したエピソード数: ${tocItems.size}")
@@ -944,7 +977,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         return@forEachIndexed
                     }
 
-                    val episodeId = link.substringAfterLast("/")
+                    val kakuyomuEpisodeId = link.substringAfterLast("/")
 
                     // エピソードタイトル
                     var title = item.select("span.widget-toc-episode-titleLabel").text()
@@ -966,29 +999,34 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         getCurrentDate()
                     }
 
-                    episodes.add(
-                        EpisodeEntity(
-                            ncode = pseudoNcode,
-                            episode_no = episodeId,
-                            body = "",  // 本文は後で個別に取得
-                            e_title = title,
-                            update_time = publishedDate,
-                            is_read = false,
-                            is_bookmark = false,
-                            reading_rate = 0.0f
+                    val episode = EpisodeEntity(
+                        ncode = pseudoNcode,
+                        episode_no = (index + 1).toString(),  // 連番（1, 2, 3...）を使用
+                        body = "",  // 本文は後で個別に取得
+                        e_title = title,
+                        update_time = publishedDate,
+                        is_read = false,
+                        is_bookmark = false,
+                        reading_rate = 0.0f
+                    )
+
+                    episodesWithMapping.add(
+                        KakuyomuEpisodeWithMapping(
+                            episode = episode,
+                            kakuyomuEpisodeId = kakuyomuEpisodeId
                         )
                     )
 
                     // 最初と最後のエピソードをログ出力
                     if (index < 3 || index >= tocItems.size - 3) {
-                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$episodeId, タイトル=${title.take(20)}, 日付=$publishedDate")
+                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$kakuyomuEpisodeId, タイトル=${title.take(20)}, 日付=$publishedDate")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("KakuyomuAdapter", "エピソード${index + 1}の解析エラー", e)
                 }
             }
 
-            if (episodes.isEmpty()) {
+            if (episodesWithMapping.isEmpty()) {
                 android.util.Log.w("KakuyomuAdapter", """
                     目次からエピソードを取得できませんでした
                     - エピソードURL: $episodeUrl
@@ -996,10 +1034,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     - セレクタ: ol.widget-toc-items li.widget-toc-episode
                 """.trimIndent())
             } else {
-                android.util.Log.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodes.size}話（最初: ${episodes.firstOrNull()?.e_title}, 最後: ${episodes.lastOrNull()?.e_title}）")
+                android.util.Log.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodesWithMapping.size}話（最初: ${episodesWithMapping.firstOrNull()?.episode?.e_title}, 最後: ${episodesWithMapping.lastOrNull()?.episode?.e_title}）")
             }
 
-            episodes
+            episodesWithMapping
         } catch (e: Exception) {
             android.util.Log.e("KakuyomuAdapter", "目次からのエピソード抽出エラー", e)
             emptyList()
