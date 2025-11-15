@@ -7,7 +7,17 @@ package com.shunlight_library.novel_reader.data.adapter
 
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
+
+/**
+ * カクヨムのエピソード取得結果
+ * エピソードとマッピング情報を一緒に返す
+ */
+data class KakuyomuEpisodeResult(
+    val episode: EpisodeEntity,
+    val kakuyomuEpisodeId: String  // カクヨムの実際のエピソードID
+)
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -805,7 +815,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     episodes.add(
                         EpisodeEntity(
                             ncode = pseudoNcode,
-                            episode_no = episodeId,
+                            episode_no = (index + 1).toString(),  // 連番（1, 2, 3...）を使用
                             body = "",  // 本文は後で個別に取得
                             e_title = title,
                             update_time = publishedDate,
