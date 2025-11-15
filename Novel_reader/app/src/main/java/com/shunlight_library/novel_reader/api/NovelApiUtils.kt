@@ -360,8 +360,8 @@ object NovelApiUtils {
 
     /**
      * エピソードを取得する
-     * @param ncode 小説のNコード
-     * @param episodeNo エピソード番号
+     * @param ncode 小説のNコード（カクヨムの場合はPseudo-Ncode）
+     * @param episodeNo エピソード番号（カクヨムの場合はエピソードID文字列）
      * @param isR18 R18小説かどうか
      * @return 取得したエピソード、または取得できなかった場合はnull
      */
@@ -375,6 +375,42 @@ object NovelApiUtils {
     ): EpisodeEntity? {
         return withContext(Dispatchers.IO) {
             try {
+                // カクヨム小説の場合は KakuyomuAdapter を使用
+                if (com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)) {
+                    val adapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
+                    val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                    val episodeId = episodeNo.toString()
+
+                    // エピソード本文を取得
+                    val body = adapter.fetchEpisodeContent(workId, episodeId)
+
+                    // タイトル取得のためエピソードページをパース（簡易版）
+                    val url = adapter.generateEpisodeUrl(workId, episodeId)
+                    val doc = Jsoup.connect(url)
+                        .userAgent("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36")
+                        .timeout(30000)
+                        .get()
+
+                    val title = doc.select("h1").first()?.text() ?: "第${episodeNo}話"
+                    val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+                    return@withContext if (body.isNotEmpty()) {
+                        EpisodeEntity(
+                            ncode = ncode,
+                            episode_no = episodeId,
+                            body = body,
+                            e_title = title,
+                            update_time = currentDate,
+                            is_read = false,
+                            is_bookmark = false
+                        )
+                    } else {
+                        Log.e(TAG, "カクヨムエピソード本文が空です: workId=$workId, episodeId=$episodeId")
+                        null
+                    }
+                }
+
+                // 小説家になろうの場合は既存のロジックを使用
                 val baseUrl = if (isR18) {
                     "https://novel18.syosetu.com"
                 } else {
