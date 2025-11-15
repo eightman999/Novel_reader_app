@@ -102,8 +102,8 @@ fun WebViewScreen(
             builtInZoomControls = true
             displayZoomControls = false
 
-            // ユーザーエージェント設定（最新のChromeに更新）
-            userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            // ユーザーエージェント設定（モバイル版強制）
+            userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
             // WebViewデフォルトエンコーディング
             defaultTextEncodingName = "UTF-8"
