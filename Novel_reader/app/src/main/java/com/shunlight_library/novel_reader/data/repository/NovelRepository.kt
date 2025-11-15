@@ -319,7 +319,18 @@ class NovelRepository(
                     ?: return@withContext null
 
                 // 小説情報とエピソード一覧を取得
-                val (novel, episodes) = adapter.fetchNovelWithEpisodes(novelId)
+                val (novel, episodes) = when (adapter.getSiteType()) {
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                        // 小説家になろうの場合、URLからR18判定を取得してから小説データを取得
+                        val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+                        val (ncode, isR18) = syosetuAdapter.extractNcodeWithR18FromUrl(url)
+                        syosetuAdapter.fetchNovelWithEpisodesR18(novelId, isR18)
+                    }
+                    else -> {
+                        // その他のサイトは通常の取得方法
+                        adapter.fetchNovelWithEpisodes(novelId)
+                    }
+                }
 
                 // DBに保存
                 insertNovel(novel)
@@ -437,9 +448,10 @@ class NovelRepository(
 
                 when (adapter.getSiteType()) {
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
-                        // 小説家になろうの場合、URLEntityから取得
-                        val urlEntity = getURLByNcode(ncode)
-                        urlEntity?.url ?: adapter.generateWebUrl(ncode)
+                        // 小説家になろうの場合、R18判定を使用してURL生成
+                        val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+                        val isR18 = novel.rating == 1
+                        syosetuAdapter.generateWebUrlR18(ncode, isR18)
                     }
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
                         // カクヨムの場合、Pseudo-NcodeからworkIdを抽出してURL生成
@@ -470,7 +482,10 @@ class NovelRepository(
 
                 when (adapter.getSiteType()) {
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
-                        adapter.generateEpisodeUrl(ncode, episodeNo)
+                        // 小説家になろうの場合、R18判定を使用してURL生成
+                        val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+                        val isR18 = novel.rating == 1
+                        syosetuAdapter.generateEpisodeUrlR18(ncode, episodeNo, isR18)
                     }
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
                         val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
