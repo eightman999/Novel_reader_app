@@ -11,12 +11,14 @@ import com.shunlight_library.novel_reader.data.dao.NovelDescDao
 import com.shunlight_library.novel_reader.data.dao.URLEntityDao
 import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
 import com.shunlight_library.novel_reader.data.dao.ImageCacheDao
+import com.shunlight_library.novel_reader.data.dao.EpisodeMappingDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -31,7 +33,8 @@ class NovelRepository(
     private val lastReadNovelDao: LastReadNovelDao,
     private val updateQueueDao: UpdateQueueDao,
     private val urlEntityDao: URLEntityDao,
-    private val imageCacheDao: ImageCacheDao
+    private val imageCacheDao: ImageCacheDao,
+    private val episodeMappingDao: EpisodeMappingDao
 ) {
     // Novel Description関連メソッド
     val allNovels: Flow<List<NovelDescEntity>> = novelDescDao.getAllNovels()
@@ -75,6 +78,25 @@ class NovelRepository(
 
     suspend fun deleteEpisodesByNcode(ncode: String) {
         episodeDao.deleteEpisodesByNcode(ncode)
+        // カクヨムのマッピングも削除
+        episodeMappingDao.deleteMappingsByNcode(ncode)
+    }
+
+    // EpisodeMapping関連メソッド（カクヨム用）
+    suspend fun insertEpisodeMapping(mapping: EpisodeMappingEntity) {
+        episodeMappingDao.insertMapping(mapping)
+    }
+
+    suspend fun insertEpisodeMappings(mappings: List<EpisodeMappingEntity>) {
+        episodeMappingDao.insertMappings(mappings)
+    }
+
+    suspend fun getKakuyomuEpisodeId(ncode: String, episodeNo: Int): String? {
+        return episodeMappingDao.getKakuyomuEpisodeId(ncode, episodeNo)
+    }
+
+    suspend fun getEpisodeNo(ncode: String, kakuyomuEpisodeId: String): Int? {
+        return episodeMappingDao.getEpisodeNo(ncode, kakuyomuEpisodeId)
     }
 
     // LastReadNovel関連メソッド

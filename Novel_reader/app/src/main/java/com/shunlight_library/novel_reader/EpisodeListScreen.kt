@@ -489,7 +489,10 @@ fun EpisodeListScreen(
                         
                         val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
                         
-                        // エピソードをデータベースに保存
+                        // カクヨムのマッピング情報を取得
+                        val mappings = adapter.getCachedMappings()
+                        
+                        // エピソードとマッピングをデータベースに保存
                         episodes.forEachIndexed { index, episode ->
                             if (session.isCancelled()) {
                                 handleCancellation()
@@ -498,6 +501,18 @@ fun EpisodeListScreen(
                             
                             withContext(Dispatchers.IO) {
                                 repository.insertEpisode(episode)
+                                // カクヨムのマッピングも保存
+                                val episodeNoInt = episode.episode_no.toIntOrNull()
+                                val kakuyomuId = mappings[episodeNoInt]
+                                if (episodeNoInt != null && kakuyomuId != null) {
+                                    repository.insertEpisodeMapping(
+                                        com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                            ncode = ncode,
+                                            episode_no = episodeNoInt,
+                                            kakuyomu_episode_id = kakuyomuId
+                                        )
+                                    )
+                                }
                             }
                             successCount++
                             
