@@ -524,6 +524,34 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val workHtml = performHttpRequest(workUrl)
         val doc = Jsoup.parse(workHtml)
 
+        android.util.Log.d("KakuyomuAdapter", "=== 作品ページHTML構造調査開始 ===")
+        android.util.Log.d("KakuyomuAdapter", "作品URL: $workUrl")
+        android.util.Log.d("KakuyomuAdapter", "HTML長: ${workHtml.length}文字")
+
+        // 複数のセレクタパターンを試行
+        val workTocSelectors = listOf(
+            "a.WorkTocSection_link__ocg9K",
+            "a[href*='/episodes/']",
+            "ol.widget-toc-items li.widget-toc-episode",
+            "div[class*='WorkToc']",
+            "div[class*='Toc']",
+            "section[class*='toc']",
+            "li[class*='episode']"
+        )
+
+        workTocSelectors.forEach { selector ->
+            val elements = doc.select(selector)
+            android.util.Log.d("KakuyomuAdapter", "作品ページセレクタ「$selector」: ${elements.size}件")
+            if (selector == "a[href*='/episodes/']" && elements.size > 0) {
+                val sample = elements.take(3)
+                sample.forEach { link ->
+                    android.util.Log.d("KakuyomuAdapter", "  サンプルリンク - href: ${link.attr("href")}, class: ${link.className()}, text: ${link.text().take(50)}")
+                }
+            }
+        }
+
+        android.util.Log.d("KakuyomuAdapter", "=== 作品ページHTML構造調査終了 ===")
+
         val episodes = mutableListOf<EpisodeEntity>()
 
         // 新しいHTML構造: WorkTocSection_link
