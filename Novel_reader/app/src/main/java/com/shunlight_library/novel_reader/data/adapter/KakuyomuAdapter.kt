@@ -198,8 +198,20 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 connection.connectTimeout = 15000
                 connection.readTimeout = 15000
 
+                // User-Agentをログ出力
+                android.util.Log.d("KakuyomuAdapter", "HTTP接続: URL=$urlString")
+                android.util.Log.d("KakuyomuAdapter", "User-Agent: $USER_AGENT")
+
                 connection.connect()
                 val responseCode = connection.responseCode
+
+                // レスポンスヘッダーをログ出力
+                android.util.Log.d("KakuyomuAdapter", "レスポンスコード: $responseCode")
+                connection.headerFields.forEach { (key, values) ->
+                    if (key != null) {
+                        android.util.Log.d("KakuyomuAdapter", "レスポンスヘッダー: $key = ${values.joinToString(", ")}")
+                    }
+                }
 
                 when (responseCode) {
                     HttpURLConnection.HTTP_OK -> {
@@ -221,6 +233,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         val actualLength = htmlString.length
 
                         android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString (Content-Length: $contentLength, Actual: $actualLength)")
+
+                        // HTML全文をログ出力（4000文字ずつ分割）
+                        logHtmlContent(urlString, htmlString)
 
                         return htmlString
                     }
@@ -1368,6 +1383,34 @@ class KakuyomuAdapter : NovelSiteAdapter {
         } catch (e: Exception) {
             android.util.Log.e("KakuyomuAdapter", "Next.jsデータ抽出エラー", e)
             Pair(null, null)
+        }
+    }
+
+    /**
+     * HTML全文をログ出力（長い場合は分割して出力）
+     *
+     * @param url リクエストURL
+     * @param html HTML文字列
+     */
+    private fun logHtmlContent(url: String, html: String) {
+        try {
+            android.util.Log.d("KakuyomuAdapter", "=== HTML全文のログ出力開始: $url ===")
+            android.util.Log.d("KakuyomuAdapter", "HTML長: ${html.length}文字")
+
+            // Logcatの1行の制限は約4000文字なので、4000文字ずつ分割して出力
+            val chunkSize = 4000
+            val chunks = (html.length + chunkSize - 1) / chunkSize  // 切り上げ
+
+            for (i in 0 until chunks) {
+                val start = i * chunkSize
+                val end = minOf(start + chunkSize, html.length)
+                val chunk = html.substring(start, end)
+                android.util.Log.d("KakuyomuAdapter", "HTML[${i + 1}/$chunks]: $chunk")
+            }
+
+            android.util.Log.d("KakuyomuAdapter", "=== HTML全文のログ出力終了: $url ===")
+        } catch (e: Exception) {
+            android.util.Log.e("KakuyomuAdapter", "HTMLログ出力エラー", e)
         }
     }
 }
