@@ -88,7 +88,25 @@ class KakuyomuAdapter : NovelSiteAdapter {
             episode.copy(body = episodeBody)
         }
 
-        android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+        // エピソード数の不一致をチェック
+        val expectedCount = novelDesc.total_ep
+        val actualCount = episodesWithBody.size
+
+        if (expectedCount != actualCount) {
+            android.util.Log.e("KakuyomuAdapter", """
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                エピソード数の不一致を検出しました！
+                - 期待されるエピソード数: $expectedCount話
+                - 実際に取得したエピソード数: $actualCount話
+                - 不足: ${expectedCount - actualCount}話
+                - 作品ID: $workId
+                - タイトル: ${novelDesc.title}
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            """.trimIndent())
+        } else {
+            android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+        }
+
         Pair(novelDesc, episodesWithBody)
     }
 
@@ -614,6 +632,47 @@ class KakuyomuAdapter : NovelSiteAdapter {
             val episodeHtml = performHttpRequest(episodeUrl)
             val episodeDoc = Jsoup.parse(episodeHtml)
 
+            android.util.Log.d("KakuyomuAdapter", "=== エピソードページHTML構造調査開始 ===")
+            android.util.Log.d("KakuyomuAdapter", "エピソードURL: $episodeUrl")
+            android.util.Log.d("KakuyomuAdapter", "HTML長: ${episodeHtml.length}文字")
+
+            // 複数のセレクタパターンを試行
+            val tocSelectors = listOf(
+                "ol.widget-toc-items li.widget-toc-episode",
+                "ol.widget-toc-items li",
+                "ol.widget-toc-items",
+                ".widget-toc-items",
+                "ol[class*='toc']",
+                "li[class*='toc-episode']",
+                "li[class*='episode']",
+                "nav ol li",
+                "aside ol li"
+            )
+
+            tocSelectors.forEach { selector ->
+                val elements = episodeDoc.select(selector)
+                android.util.Log.d("KakuyomuAdapter", "セレクタ「$selector」: ${elements.size}件")
+            }
+
+            // aタグで目次リンクを検索
+            val allLinks = episodeDoc.select("a[href*='/episodes/']")
+            android.util.Log.d("KakuyomuAdapter", "全エピソードリンク（a[href*='/episodes/']）: ${allLinks.size}件")
+            if (allLinks.size > 0 && allLinks.size <= 5) {
+                allLinks.take(5).forEach { link ->
+                    android.util.Log.d("KakuyomuAdapter", "  - href: ${link.attr("href")}, class: ${link.className()}, text: ${link.text().take(30)}")
+                }
+            }
+
+            // HTMLの一部を出力（デバッグ用）
+            val bodyHtml = episodeDoc.body().html()
+            val tocIndex = bodyHtml.indexOf("toc", ignoreCase = true)
+            if (tocIndex >= 0) {
+                val snippet = bodyHtml.substring(maxOf(0, tocIndex - 100), minOf(bodyHtml.length, tocIndex + 500))
+                android.util.Log.d("KakuyomuAdapter", "目次付近のHTML: ${snippet.take(300)}...")
+            }
+
+            android.util.Log.d("KakuyomuAdapter", "=== エピソードページHTML構造調査終了 ===")
+
             // 目次から全エピソードを抽出
             val episodes = mutableListOf<EpisodeEntity>()
             val tocItems = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode")
@@ -657,7 +716,17 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 }
             }
 
-            android.util.Log.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodes.size}話")
+            if (episodes.isEmpty()) {
+                android.util.Log.w("KakuyomuAdapter", """
+                    目次からエピソードを取得できませんでした
+                    - エピソードURL: $episodeUrl
+                    - tocItems.size: ${tocItems.size}
+                    - セレクタ: ol.widget-toc-items li.widget-toc-episode
+                """.trimIndent())
+            } else {
+                android.util.Log.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodes.size}話")
+            }
+
             episodes
         } catch (e: Exception) {
             android.util.Log.e("KakuyomuAdapter", "目次からのエピソード抽出エラー", e)
