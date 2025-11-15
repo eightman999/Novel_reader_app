@@ -111,6 +111,39 @@ class KakuyomuAdapter : NovelSiteAdapter {
         Pair(novelDesc, episodesWithBody)
     }
 
+    /**
+     * 小説のメタデータとエピソードリスト（本文なし）のみを取得する
+     *
+     * このメソッドは再取得時の確認ダイアログ前に使用され、
+     * 本文を取得せずにエピソード数などのメタデータのみを取得する。
+     *
+     * @param novelId カクヨムの作品IDまたはPseudo-Ncode
+     * @return 小説メタデータとエピソードリスト（本文は空文字列）のペア
+     */
+    suspend fun fetchNovelMetadataWithEpisodeList(novelId: String): Pair<NovelDescEntity, List<EpisodeEntity>> = withContext(Dispatchers.IO) {
+        val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
+            PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)
+        } else {
+            novelId
+        }
+
+        applyRateLimit()
+
+        val url = generateWebUrl(workId)
+        val html = performHttpRequest(url)
+        val doc = Jsoup.parse(html)
+
+        // 小説情報を抽出
+        val novelDesc = parseNovelInfo(doc, workId)
+
+        // エピソード一覧を抽出（本文なし）
+        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
+
+        android.util.Log.d("KakuyomuAdapter", "小説メタデータとエピソードリスト取得完了（本文なし）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
+
+        Pair(novelDesc, episodesWithoutBody)
+    }
+
     override suspend fun checkForUpdates(novelId: String, currentEpisodeCount: Int): Boolean = withContext(Dispatchers.IO) {
         val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
             PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)

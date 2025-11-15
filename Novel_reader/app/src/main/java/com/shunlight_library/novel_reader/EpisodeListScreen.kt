@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
@@ -335,7 +336,8 @@ fun EpisodeListScreen(
                         val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
                         val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                        val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+                        // 本文なしでメタデータとエピソードリストのみを取得
+                        val (updatedNovelDesc, episodes) = (adapter as KakuyomuAdapter).fetchNovelMetadataWithEpisodeList(workId)
 
                         if (session.isCancelled()) {
                             handleCancellation()
