@@ -679,6 +679,56 @@ private fun cleanupSynopsis(text: String): String {
 - HTMLから取得したすべてのテキストに適用すること
 - デコード処理の順序を守る：HTMLエスケープ → 数値エスケープ → Unicodeエスケープ
 
+### エピソード一覧取得の複数フォールバック
+
+**必須**: エピソード一覧の取得には複数の方法を試行し、確実に全エピソードを取得する
+
+```kotlin
+// エピソード一覧取得の優先順位（KakuyomuAdapter.kt）
+private fun extractEpisodesFromJson(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
+    // 方法1: tableOfContents から章構造とエピソード順序を取得（最優先）
+    val tableOfContents = workData.optJSONObject("tableOfContents")
+    if (tableOfContents != null) {
+        val chaptersArray = tableOfContents.optJSONArray("chapters")
+        if (chaptersArray != null && chaptersArray.length() > 0) {
+            // 各章からエピソードを取得
+            // ...
+            if (episodes.isNotEmpty()) {
+                return episodes
+            }
+        }
+    }
+
+    // 方法2: apolloStateから直接エピソードを検索（Pascalコード参考のフォールバック）
+    apolloState.keys().forEach { key ->
+        if (key.startsWith("Episode:")) {
+            val episodeData = apolloState.getJSONObject(key)
+            // このエピソードが現在の作品に属するかチェック
+            val workRef = episodeData.optJSONObject("work")
+            val workRefKey = workRef?.optString("__ref")
+            if (workRefKey == "Work:$workId") {
+                // エピソード情報を抽出
+                episodes.add(...)
+            }
+        }
+    }
+
+    // エピソード番号でソート（公開日時順）
+    episodes.sortBy { it.update_time }
+
+    return episodes
+}
+```
+
+**重要なルール**:
+- **方法1（tableOfContents）**: 章構造を保持した正確な順序でエピソードを取得（最優先）
+- **方法2（apolloState直接検索）**: tableOfContentsが見つからない場合のフォールバック
+- Pascalコードの `"__typename":"Episode","id":"` パターン検索と同等の処理
+- apolloStateから直接検索する場合は、`Episode:`で始まるキーを探す
+- 各エピソードが現在の作品に属するか`work.__ref`でチェック
+- 取得後は必ず公開日時順にソート
+- この方法で992話のような大量のエピソードも確実に取得できる
+
 ### URL構造
 
 ```kotlin

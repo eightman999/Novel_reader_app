@@ -562,6 +562,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
     /**
      * JSONデータからエピソード一覧を抽出
+     * Pascalコードを参考に、ページ内のJSONから直接エピソードIDを検索
      *
      * @param doc HTMLドキュメント
      * @param workId 作品ID
@@ -578,70 +579,117 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             val episodes = mutableListOf<EpisodeEntity>()
 
-            // tableOfContents から章構造とエピソード順序を取得
+            // 方法1: tableOfContents から章構造とエピソード順序を取得（推奨）
             val tableOfContents = workData.optJSONObject("tableOfContents")
-            if (tableOfContents == null) {
-                android.util.Log.d("KakuyomuAdapter", "tableOfContentsが見つかりません")
-                return emptyList()
-            }
+            if (tableOfContents != null) {
+                // chaptersから章一覧を取得
+                val chaptersArray = tableOfContents.optJSONArray("chapters")
+                if (chaptersArray != null && chaptersArray.length() > 0) {
+                    // 各章を処理
+                    for (i in 0 until chaptersArray.length()) {
+                        val chapter = chaptersArray.getJSONObject(i)
 
-            // chaptersから章一覧を取得
-            val chaptersArray = tableOfContents.optJSONArray("chapters")
-            if (chaptersArray == null || chaptersArray.length() == 0) {
-                android.util.Log.d("KakuyomuAdapter", "chaptersが見つかりません")
-                return emptyList()
-            }
+                        // エピソード一覧を取得（episodesフィールド）
+                        val episodesArray = chapter.optJSONArray("episodes")
+                        if (episodesArray != null) {
+                            for (j in 0 until episodesArray.length()) {
+                                val episodeRef = episodesArray.getJSONObject(j)
+                                val refKey = episodeRef.optString("__ref")
 
-            // 各章を処理
-            for (i in 0 until chaptersArray.length()) {
-                val chapter = chaptersArray.getJSONObject(i)
+                                if (refKey.isNotEmpty()) {
+                                    // 参照を解決してエピソードデータを取得
+                                    val episodeData = apolloState.optJSONObject(refKey)
+                                    if (episodeData != null) {
+                                        val episodeId = episodeData.optString("id")
+                                        var title = episodeData.optString("title", "")
 
-                // エピソード一覧を取得（episodesフィールド）
-                val episodesArray = chapter.optJSONArray("episodes")
-                if (episodesArray != null) {
-                    for (j in 0 until episodesArray.length()) {
-                        val episodeRef = episodesArray.getJSONObject(j)
-                        val refKey = episodeRef.optString("__ref")
+                                        // タイトルのクリーンアップ処理（HTMLエスケープ文字のデコード）
+                                        if (title.isNotEmpty()) {
+                                            title = cleanupText(title)
+                                        }
 
-                        if (refKey.isNotEmpty()) {
-                            // 参照を解決してエピソードデータを取得
-                            val episodeData = apolloState.optJSONObject(refKey)
-                            if (episodeData != null) {
-                                val episodeId = episodeData.optString("id")
-                                var title = episodeData.optString("title", "")
+                                        // 公開日時を取得
+                                        val publishedAt = episodeData.optString("publishedAt", "")
+                                        val publishedDate = if (publishedAt.isNotEmpty()) {
+                                            publishedAt.take(10)  // YYYY-MM-DD部分を取得
+                                        } else {
+                                            getCurrentDate()
+                                        }
 
-                                // タイトルのクリーンアップ処理（HTMLエスケープ文字のデコード）
-                                if (title.isNotEmpty()) {
-                                    title = cleanupText(title)
+                                        episodes.add(
+                                            EpisodeEntity(
+                                                ncode = pseudoNcode,
+                                                episode_no = episodeId,
+                                                body = "",  // 本文は後で個別に取得
+                                                e_title = title,
+                                                update_time = publishedDate,
+                                                is_read = false,
+                                                is_bookmark = false,
+                                                reading_rate = 0.0f
+                                            )
+                                        )
+                                    }
                                 }
-
-                                // 公開日時を取得
-                                val publishedAt = episodeData.optString("publishedAt", "")
-                                val publishedDate = if (publishedAt.isNotEmpty()) {
-                                    publishedAt.take(10)  // YYYY-MM-DD部分を取得
-                                } else {
-                                    getCurrentDate()
-                                }
-
-                                episodes.add(
-                                    EpisodeEntity(
-                                        ncode = pseudoNcode,
-                                        episode_no = episodeId,
-                                        body = "",  // 本文は後で個別に取得
-                                        e_title = title,
-                                        update_time = publishedDate,
-                                        is_read = false,
-                                        is_bookmark = false,
-                                        reading_rate = 0.0f
-                                    )
-                                )
                             }
                         }
+                    }
+
+                    if (episodes.isNotEmpty()) {
+                        android.util.Log.d("KakuyomuAdapter", "JSONからエピソード抽出成功 (tableOfContents): ${episodes.size}話")
+                        return episodes
                     }
                 }
             }
 
-            android.util.Log.d("KakuyomuAdapter", "JSONからエピソード抽出成功: ${episodes.size}話")
+            // 方法2: apolloStateから直接エピソードを検索（Pascalコード参考のフォールバック）
+            android.util.Log.d("KakuyomuAdapter", "tableOfContents未使用、apolloStateから直接検索")
+            apolloState.keys().forEach { key ->
+                if (key.startsWith("Episode:")) {
+                    try {
+                        val episodeData = apolloState.getJSONObject(key)
+                        // このエピソードが現在の作品に属するかチェック
+                        val workRef = episodeData.optJSONObject("work")
+                        val workRefKey = workRef?.optString("__ref")
+                        if (workRefKey == "Work:$workId") {
+                            val episodeId = episodeData.optString("id")
+                            var title = episodeData.optString("title", "")
+
+                            // タイトルのクリーンアップ処理
+                            if (title.isNotEmpty()) {
+                                title = cleanupText(title)
+                            }
+
+                            // 公開日時を取得
+                            val publishedAt = episodeData.optString("publishedAt", "")
+                            val publishedDate = if (publishedAt.isNotEmpty()) {
+                                publishedAt.take(10)
+                            } else {
+                                getCurrentDate()
+                            }
+
+                            episodes.add(
+                                EpisodeEntity(
+                                    ncode = pseudoNcode,
+                                    episode_no = episodeId,
+                                    body = "",
+                                    e_title = title,
+                                    update_time = publishedDate,
+                                    is_read = false,
+                                    is_bookmark = false,
+                                    reading_rate = 0.0f
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("KakuyomuAdapter", "エピソード解析エラー: $key", e)
+                    }
+                }
+            }
+
+            // エピソード番号でソート（公開日時順）
+            episodes.sortBy { it.update_time }
+
+            android.util.Log.d("KakuyomuAdapter", "JSONからエピソード抽出成功 (apolloState直接検索): ${episodes.size}話")
             episodes
         } catch (e: Exception) {
             android.util.Log.e("KakuyomuAdapter", "JSONからのエピソード抽出エラー", e)
