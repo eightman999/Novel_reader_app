@@ -597,9 +597,14 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             val episodes = mutableListOf<EpisodeEntity>()
 
+            // デバッグ: workDataのキー一覧を出力
+            android.util.Log.d("KakuyomuAdapter", "workDataのキー: ${workData.keys().asSequence().toList()}")
+
             // 方法1: tableOfContents から章構造とエピソード順序を取得（推奨）
             val tableOfContents = workData.optJSONObject("tableOfContents")
+            android.util.Log.d("KakuyomuAdapter", "tableOfContents: ${if (tableOfContents != null) "存在" else "なし"}")
             if (tableOfContents != null) {
+                android.util.Log.d("KakuyomuAdapter", "tableOfContentsのキー: ${tableOfContents.keys().asSequence().toList()}")
                 // chaptersから章一覧を取得
                 val chaptersArray = tableOfContents.optJSONArray("chapters")
                 if (chaptersArray != null && chaptersArray.length() > 0) {
@@ -661,6 +666,19 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             // 方法2: apolloStateから直接エピソードを検索（Pascalコード参考のフォールバック）
             android.util.Log.d("KakuyomuAdapter", "tableOfContents未使用、apolloStateから直接検索")
+
+            // デバッグ: apolloStateの全キーの統計情報を出力
+            val allKeys = apolloState.keys().asSequence().toList()
+            val keyPrefixes = allKeys.map { it.substringBefore(":") }.groupBy { it }.mapValues { it.value.size }
+            android.util.Log.d("KakuyomuAdapter", "apolloStateのキー統計: $keyPrefixes")
+
+            // デバッグ: apolloStateのキー一覧を出力（Episode:で始まるキーのみ）
+            val episodeKeys = apolloState.keys().asSequence().filter { it.startsWith("Episode:") }.toList()
+            android.util.Log.d("KakuyomuAdapter", "apolloStateにあるEpisode:キーの数: ${episodeKeys.size}")
+            if (episodeKeys.size <= 10) {
+                android.util.Log.d("KakuyomuAdapter", "Episode:キー一覧: $episodeKeys")
+            }
+
             apolloState.keys().forEach { key ->
                 if (key.startsWith("Episode:")) {
                     try {
