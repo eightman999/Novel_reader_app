@@ -98,7 +98,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
         // エピソード数を取得して比較
         // JSONから取得を試みる
-        val (_, workData) = extractNextDataJson(doc)
+        val (_, workData) = extractNextDataJson(doc, workId)
         var episodeCount = workData?.optInt("publicEpisodeCount") ?: 0
 
         // JSONから取得できない場合はHTML
@@ -176,7 +176,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
      */
     private fun parseNovelInfo(doc: Document, workId: String): NovelDescEntity {
         // Next.jsのJSONデータを取得（最優先）
-        val (apolloState, workData) = extractNextDataJson(doc)
+        val (apolloState, workData) = extractNextDataJson(doc, workId)
 
         // タイトル: 複数のパターンに対応
         var title = workData?.optString("title") ?: ""
@@ -487,9 +487,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
     /**
      * Next.jsのJSONデータを抽出
      *
+     * @param doc HTMLドキュメント
+     * @param workId 作品ID（正しいWork:キーを探すために使用）
      * @return Pair<apolloState, workData> - apolloStateは参照解決用、workDataは作品情報
      */
-    private fun extractNextDataJson(doc: Document): Pair<JSONObject?, JSONObject?> {
+    private fun extractNextDataJson(doc: Document, workId: String): Pair<JSONObject?, JSONObject?> {
         return try {
             // <script id="__NEXT_DATA__" type="application/json">...</script> を取得
             val scriptElement = doc.select("script#__NEXT_DATA__").firstOrNull()
@@ -501,11 +503,19 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val pageProps = rootJson.optJSONObject("props")?.optJSONObject("pageProps")
                 val apolloState = pageProps?.optJSONObject("__APOLLO_STATE__")
 
-                // Work:で始まるキーを探す
+                // 正しいWork:workIdのキーを優先的に探す
+                val targetKey = "Work:$workId"
+                if (apolloState?.has(targetKey) == true) {
+                    val workData = apolloState.getJSONObject(targetKey)
+                    android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功（指定workId一致）: $targetKey")
+                    return Pair(apolloState, workData)
+                }
+
+                // 見つからない場合はWork:で始まる最初のキーを探す（フォールバック）
                 apolloState?.keys()?.forEach { key ->
                     if (key.startsWith("Work:")) {
                         val workData = apolloState.getJSONObject(key)
-                        android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功: $key")
+                        android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功（フォールバック）: $key (期待値: $targetKey)")
                         return Pair(apolloState, workData)
                     }
                 }
