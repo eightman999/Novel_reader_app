@@ -404,8 +404,19 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
     /**
      * HTMLからエピソード一覧を抽出（TOC情報のみ、本文は含まない）
+     * JSONデータから優先的に取得し、失敗した場合のみHTMLフォールバック
      */
     private fun parseEpisodeList(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
+        // まずJSONデータからエピソード一覧を取得
+        val episodesFromJson = extractEpisodesFromJson(doc, workId, pseudoNcode)
+        if (episodesFromJson.isNotEmpty()) {
+            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (JSON): ${episodesFromJson.size}話")
+            return episodesFromJson
+        }
+
+        // JSONから取得できない場合はHTMLフォールバック
+        android.util.Log.d("KakuyomuAdapter", "JSONからエピソード取得失敗、HTMLフォールバックを試行")
+
         val episodes = mutableListOf<EpisodeEntity>()
 
         // 新しいHTML構造: WorkTocSection_link
@@ -417,7 +428,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             episodeElements = doc.select("ol.widget-toc-items li.widget-toc-episode")
         }
 
-        android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得: ${episodeElements.size}話 (新構造: $isNewStructure)")
+        android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得 (HTML): ${episodeElements.size}話 (新構造: $isNewStructure)")
 
         episodeElements.forEachIndexed { index, element ->
             // エピソードID: <a href="/works/{workId}/episodes/{episodeId}">
@@ -476,8 +487,92 @@ class KakuyomuAdapter : NovelSiteAdapter {
             )
         }
 
-        android.util.Log.d("KakuyomuAdapter", "エピソード一覧パース完了: ${episodes.size}話")
+        android.util.Log.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML): ${episodes.size}話")
         return episodes
+    }
+
+    /**
+     * JSONデータからエピソード一覧を抽出
+     *
+     * @param doc HTMLドキュメント
+     * @param workId 作品ID
+     * @param pseudoNcode 疑似Ncode
+     * @return エピソードリスト（取得失敗時は空リスト）
+     */
+    private fun extractEpisodesFromJson(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
+        return try {
+            val (apolloState, workData) = extractNextDataJson(doc, workId)
+            if (apolloState == null || workData == null) {
+                android.util.Log.d("KakuyomuAdapter", "JSONデータが見つかりません")
+                return emptyList()
+            }
+
+            val episodes = mutableListOf<EpisodeEntity>()
+
+            // tableOfContents から章構造とエピソード順序を取得
+            val tableOfContents = workData.optJSONObject("tableOfContents")
+            if (tableOfContents == null) {
+                android.util.Log.d("KakuyomuAdapter", "tableOfContentsが見つかりません")
+                return emptyList()
+            }
+
+            // chaptersから章一覧を取得
+            val chaptersArray = tableOfContents.optJSONArray("chapters")
+            if (chaptersArray == null || chaptersArray.length() == 0) {
+                android.util.Log.d("KakuyomuAdapter", "chaptersが見つかりません")
+                return emptyList()
+            }
+
+            // 各章を処理
+            for (i in 0 until chaptersArray.length()) {
+                val chapter = chaptersArray.getJSONObject(i)
+
+                // エピソード一覧を取得（episodesフィールド）
+                val episodesArray = chapter.optJSONArray("episodes")
+                if (episodesArray != null) {
+                    for (j in 0 until episodesArray.length()) {
+                        val episodeRef = episodesArray.getJSONObject(j)
+                        val refKey = episodeRef.optString("__ref")
+
+                        if (refKey.isNotEmpty()) {
+                            // 参照を解決してエピソードデータを取得
+                            val episodeData = apolloState.optJSONObject(refKey)
+                            if (episodeData != null) {
+                                val episodeId = episodeData.optString("id")
+                                val title = episodeData.optString("title", "")
+
+                                // 公開日時を取得
+                                val publishedAt = episodeData.optString("publishedAt", "")
+                                val publishedDate = if (publishedAt.isNotEmpty()) {
+                                    publishedAt.take(10)  // YYYY-MM-DD部分を取得
+                                } else {
+                                    getCurrentDate()
+                                }
+
+                                episodes.add(
+                                    EpisodeEntity(
+                                        ncode = pseudoNcode,
+                                        episode_no = episodeId,
+                                        body = "",  // 本文は後で個別に取得
+                                        e_title = title,
+                                        update_time = publishedDate,
+                                        is_read = false,
+                                        is_bookmark = false,
+                                        reading_rate = 0.0f
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            android.util.Log.d("KakuyomuAdapter", "JSONからエピソード抽出成功: ${episodes.size}話")
+            episodes
+        } catch (e: Exception) {
+            android.util.Log.e("KakuyomuAdapter", "JSONからのエピソード抽出エラー", e)
+            emptyList()
+        }
     }
 
     /**
