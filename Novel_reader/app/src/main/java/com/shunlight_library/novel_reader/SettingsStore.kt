@@ -48,7 +48,7 @@ data class NovelListFilterSettings(
     val showFavoritesOnly: Boolean = false,
     val showLongNovels: Boolean = true,
     val showShortNovels: Boolean = true,
-    val siteFilter: String = "SYOSETU_ONLY"
+    val siteFilter: String = "ALL"
 )
 
 // DataStoreのインスタンスをトップレベルで定義
@@ -153,7 +153,7 @@ class SettingsStore(private val context: Context) {
     val defaultNovelListShowFavoritesOnly = false
     val defaultNovelListShowLong = true
     val defaultNovelListShowShort = true
-    val defaultNovelListSiteFilter = "SYOSETU_ONLY"
+    val defaultNovelListSiteFilter = "ALL"
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
