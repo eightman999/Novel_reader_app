@@ -2,6 +2,7 @@ package com.shunlight_library.novel_reader.metadata
 
 import android.util.Log
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,12 @@ object MetadataUpdateManager {
         repository: NovelRepository,
         novel: NovelDescEntity
     ): Boolean? {
+        // カクヨムの作品はメタデータ補完の対象外（HTMLスクレイピングではこれらの情報が取得できない）
+        if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+            return null
+        }
+
+        // 小説家になろうの作品のみAPIから情報を取得
         val beforeCount = novel.metadataCount()
         val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
         if (info != null) {

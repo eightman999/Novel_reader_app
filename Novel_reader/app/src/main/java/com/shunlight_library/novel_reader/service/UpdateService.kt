@@ -19,6 +19,7 @@ import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -276,35 +277,47 @@ class UpdateService : Service() {
                     return@launch
                 }
 
-                // URLEntityを取得または作成
-                val urlEntity = repository.getOrCreateURL(ncode, novel.rating == 1)
+                // サイトタイプに応じて最新情報を取得
+                val generalAllNo: Int
+                val updatedAt: String
 
-                // Fetch latest info from API
-                val info = NovelApiUtils.fetchNovelInfo(
-                    ncode = ncode,
-                    isR18 = novel.rating == 1,
-                    apiUrl = urlEntity.api_url
-                )
-
-                if (!isRunning || session.isCancelled()) {
-                    updateComplete(false, "更新処理が中断されました")
+                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    // カクヨムの場合、HTMLスクレイピングで取得
+                    updateComplete(false, "カクヨムの更新確認は現在サポートされていません")
                     return@launch
-                }
+                } else {
+                    // 小説家になろうの場合、APIから取得
+                    val urlEntity = repository.getOrCreateURL(ncode, novel.rating == 1)
 
-                if (info == null) {
-                    updateComplete(false, "APIからデータが取得できませんでした")
-                    return@launch
-                }
+                    val info = NovelApiUtils.fetchNovelInfo(
+                        ncode = ncode,
+                        isR18 = novel.rating == 1,
+                        apiUrl = urlEntity.api_url
+                    )
 
-                // 常に最新情報を保存
-                val updatedNovel = novel.copy(
-                    general_all_no = info.generalAllNo,
-                    updated_at = info.updatedAt,
-                    userid = novel.userid ?: info.userid,
-                    noveltype = novel.noveltype ?: info.noveltype,
-                    length = novel.length ?: info.length
-                )
-                repository.updateNovel(updatedNovel)
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    if (info == null) {
+                        updateComplete(false, "APIからデータが取得できませんでした")
+                        return@launch
+                    }
+
+                    generalAllNo = info.generalAllNo
+                    updatedAt = info.updatedAt
+
+                    // 常に最新情報を保存
+                    val updatedNovel = novel.copy(
+                        general_all_no = generalAllNo,
+                        updated_at = updatedAt,
+                        userid = novel.userid ?: info.userid,
+                        noveltype = novel.noveltype ?: info.noveltype,
+                        length = novel.length ?: info.length
+                    )
+                    repository.updateNovel(updatedNovel)
+                }
 
                 if (!isRunning || session.isCancelled()) {
                     updateComplete(false, "更新処理が中断されました")
@@ -312,13 +325,13 @@ class UpdateService : Service() {
                 }
 
                 // Check if update is available
-                if (info.generalAllNo > novel.general_all_no) {
+                if (generalAllNo > novel.general_all_no) {
                     // Add to update queue
                     val updateQueue = UpdateQueueEntity(
                         ncode = novel.ncode,
                         total_ep = novel.total_ep,
-                        general_all_no = info.generalAllNo,
-                        update_time = info.updatedAt
+                        general_all_no = generalAllNo,
+                        update_time = updatedAt
                     )
                     repository.insertUpdateQueue(updateQueue)
 
@@ -372,24 +385,34 @@ class UpdateService : Service() {
 
                 updateProgress(0.2f, "APIで最新情報を確認中...")
 
-                // Get latest info from API
-                val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+                // サイトタイプに応じて最新情報を取得
+                val generalAllNoValue: Int
+                val newUpdatedAt: String
 
-                if (!isRunning || session.isCancelled()) {
-                    updateComplete(false, "更新処理が中断されました")
+                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    // カクヨムの場合、エピソードダウンロードは現在サポートされていません
+                    updateComplete(false, "カクヨムのエピソードダウンロードは現在サポートされていません")
                     return@launch
-                }
+                } else {
+                    // 小説家になろうの場合、APIから取得
+                    val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
 
-                var generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
-                val newUpdatedAt = info?.updatedAt ?: novel.updated_at
-                val updatedNovel = novel.copy(
-                    general_all_no = generalAllNoValue,
-                    updated_at = newUpdatedAt,
-                    userid = novel.userid ?: info?.userid,
-                    noveltype = novel.noveltype ?: info?.noveltype,
-                    length = novel.length ?: info?.length
-                )
-                repository.updateNovel(updatedNovel)
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                    newUpdatedAt = info?.updatedAt ?: novel.updated_at
+                    val updatedNovel = novel.copy(
+                        general_all_no = generalAllNoValue,
+                        updated_at = newUpdatedAt,
+                        userid = novel.userid ?: info?.userid,
+                        noveltype = novel.noveltype ?: info?.noveltype,
+                        length = novel.length ?: info?.length
+                    )
+                    repository.updateNovel(updatedNovel)
+                }
 
                 if (!isRunning || session.isCancelled()) {
                     updateComplete(false, "更新処理が中断されました")
@@ -525,23 +548,32 @@ class UpdateService : Service() {
                     return@launch
                 }
 
-                // Get latest info from API
-                val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
+                // サイトタイプに応じて最新情報を取得
+                val generalAllNoValue: Int
 
-                if (!isRunning || session.isCancelled()) {
-                    updateComplete(false, "更新処理が中断されました")
+                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    // カクヨムの場合、エピソードエラー修正は現在サポートされていません
+                    updateComplete(false, "カクヨムのエピソードエラー修正は現在サポートされていません")
                     return@launch
-                }
+                } else {
+                    // 小説家になろうの場合、APIから取得
+                    val info = NovelApiUtils.fetchNovelInfo(ncode, novel.rating == 1)
 
-                var generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
-                val updatedNovel = novel.copy(
-                    general_all_no = generalAllNoValue,
-                    updated_at = info?.updatedAt ?: novel.updated_at,
-                    userid = novel.userid ?: info?.userid,
-                    noveltype = novel.noveltype ?: info?.noveltype,
-                    length = novel.length ?: info?.length
-                )
-                repository.updateNovel(updatedNovel)
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                    val updatedNovel = novel.copy(
+                        general_all_no = generalAllNoValue,
+                        updated_at = info?.updatedAt ?: novel.updated_at,
+                        userid = novel.userid ?: info?.userid,
+                        noveltype = novel.noveltype ?: info?.noveltype,
+                        length = novel.length ?: info?.length
+                    )
+                    repository.updateNovel(updatedNovel)
+                }
 
                 if (!isRunning || session.isCancelled()) {
                     updateComplete(false, "更新処理が中断されました")

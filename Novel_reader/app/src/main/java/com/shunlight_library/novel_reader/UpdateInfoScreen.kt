@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
@@ -251,6 +252,11 @@ fun UpdateInfoScreen(
                                     val deferreds = batch.map { novel ->
                                         async(Dispatchers.IO) {
                                             try {
+                                                // カクヨムの作品はスキップ
+                                                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                                                    return@async null
+                                                }
+
                                                 val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
 
                                                 if (info != null) {
@@ -657,6 +663,11 @@ fun UpdateInfoScreen(
                                             syncMessage = "「${novel.title}」のエラーをチェック中... (${index + 1}/${novels.size})"
 
                                             try {
+                                                // カクヨムの作品はスキップ
+                                                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                                                    return@forEachIndexed
+                                                }
+
                                                 // エピソードを取得
                                                 val episodes = repository.getEpisodesByNcode(novel.ncode).first()
 

@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -143,6 +144,17 @@ fun EpisodeListScreen(
             }
 
             try {
+                // カクヨムの作品はスキップ
+                if (targetNovel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    updateProgress = 1f
+                    updateMessage = "カクヨムの更新確認は現在サポートされていません"
+                    Toast.makeText(context, "カクヨムの更新確認は現在サポートされていません", Toast.LENGTH_SHORT).show()
+                    delay(1500)
+                    isUpdating = false
+                    showUpdateDialog = false
+                    return@launch
+                }
+
                 val info = fetchNovelInfo(targetNovel.ncode, targetNovel.rating == 1)
 
                 if (info == null) {
@@ -201,6 +213,12 @@ fun EpisodeListScreen(
         val targetNovel = novel
         if (targetNovel == null) {
             Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // カクヨムの作品はサポートされていません
+        if (targetNovel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+            Toast.makeText(context, "カクヨムの再取得は現在サポートされていません", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -480,6 +498,18 @@ fun EpisodeListScreen(
 
     // 「エラー修正」実行関数
     fun performErrorFix() {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // カクヨムの作品はサポートされていません
+        if (targetNovel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+            Toast.makeText(context, "カクヨムのエラー修正は現在サポートされていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         isUpdating = true
         updateProgress = 0f
         updateMessage = "エピソードをチェック中..."

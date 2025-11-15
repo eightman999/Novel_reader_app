@@ -16,6 +16,7 @@ import androidx.work.WorkerParameters
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +70,13 @@ class UpdateCheckWorker(
                         continue
                     }
 
-                    // APIから最新情報を取得
+                    // カクヨムの作品はスキップ（HTMLスクレイピングでは効率的な更新確認ができない）
+                    if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                        Log.d(TAG, "カクヨムの小説\"${novel.ncode}\"はスキップします")
+                        continue
+                    }
+
+                    // 小説家になろうのAPIから最新情報を取得
                     val info = NovelApiUtils.fetchNovelInfo(
                         novel.ncode,
                         novel.rating == 1
