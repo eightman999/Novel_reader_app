@@ -96,8 +96,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
             android.util.Log.e("KakuyomuAdapter", """
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 エピソード数の不一致を検出しました！
-                - 期待されるエピソード数: $expectedCount話
-                - 実際に取得したエピソード数: $actualCount話
+                - 期待されるエピソード数: ${expectedCount}話
+                - 実際に取得したエピソード数: ${actualCount}話
                 - 不足: ${expectedCount - actualCount}話
                 - 作品ID: $workId
                 - タイトル: ${novelDesc.title}
