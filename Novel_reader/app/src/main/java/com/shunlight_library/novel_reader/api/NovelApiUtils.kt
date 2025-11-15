@@ -451,7 +451,7 @@ object NovelApiUtils {
                     connection.get()
                 } catch (e: org.jsoup.HttpStatusException) {
                     // 404エラーかつepisodeNo == 1の場合、短編小説の可能性があるため話数なしURLを試す
-                    if (e.statusCode == 404 && episodeNo == 1 && noveltype != 2) {
+                    if (e.statusCode == 404 && episodeNo == "1" && noveltype != 2) {
                         Log.d(TAG, "404エラーを検出。短編小説として話数なしURLを試します: $baseUrl/$ncode/")
                         val fallbackConnection = Jsoup.connect("$baseUrl/$ncode/")
                             .userAgent(randomUserAgent)
