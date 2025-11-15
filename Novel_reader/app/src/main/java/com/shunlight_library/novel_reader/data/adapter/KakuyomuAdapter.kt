@@ -36,7 +36,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
         private const val RATE_LIMIT_DELAY_MS = 1000L  // 1秒（スクレイピング時の推奨間隔）
         private var lastAccessTime = 0L
 
-        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
+        // PC版User-Agentを使用（モバイル版では目次が省略される可能性があるため）
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
     override fun getSiteType(): Int = NovelSiteAdapter.SITE_TYPE_KAKUYOMU
