@@ -13,6 +13,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -96,8 +97,22 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val doc = Jsoup.parse(html)
 
         // エピソード数を取得して比較
-        val episodes = doc.select("ol.widget-toc-items li.widget-toc-episode")
-        episodes.size > currentEpisodeCount
+        // JSONから取得を試みる
+        val nextDataJson = extractNextDataJson(doc)
+        var episodeCount = nextDataJson?.optInt("publicEpisodeCount") ?: 0
+
+        // JSONから取得できない場合はHTML
+        if (episodeCount == 0) {
+            // 新しいHTML構造
+            var episodes = doc.select("a.WorkTocSection_link__ocg9K")
+            if (episodes.isEmpty()) {
+                // 古い構造（フォールバック）
+                episodes = doc.select("ol.widget-toc-items li.widget-toc-episode")
+            }
+            episodeCount = episodes.size
+        }
+
+        episodeCount > currentEpisodeCount
     }
 
     override fun extractNovelIdFromUrl(url: String): String? {
@@ -160,25 +175,55 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * HTMLから小説情報を抽出
      */
     private fun parseNovelInfo(doc: Document, workId: String): NovelDescEntity {
-        // タイトル: <h1 id="workTitle">タイトル</h1>
-        val title = doc.select("h1#workTitle a").text()
-            .ifEmpty { doc.select("h1#workTitle").text() }
-            .ifEmpty { doc.select("h1.WorkTitle").text() }
+        // Next.jsのJSONデータを取得（最優先）
+        val nextDataJson = extractNextDataJson(doc)
 
-        // 作者名: <span id="workAuthor-activityName">作者名</span>
-        val author = doc.select("span#workAuthor-activityName a").text()
-            .ifEmpty { doc.select("span#workAuthor-activityName").text() }
-            .ifEmpty { doc.select("a#workAuthor-activityName").text() }
+        // タイトル: 複数のパターンに対応
+        var title = nextDataJson?.optString("title") ?: ""
+        if (title.isEmpty()) {
+            // 新しいHTML構造: h1 with Heading classes
+            title = doc.select("h1.Heading_heading__lQ85n a").text()
+                .ifEmpty { doc.select("h1.Heading_heading__lQ85n").text() }
+                // 古い構造（フォールバック）
+                .ifEmpty { doc.select("h1#workTitle a").text() }
+                .ifEmpty { doc.select("h1#workTitle").text() }
+                .ifEmpty { doc.select("h1.WorkTitle").text() }
+        }
+
+        // 作者名: 複数のパターンに対応
+        var author = nextDataJson?.optString("author") ?: ""
+        if (author.isEmpty()) {
+            // 新しいHTML構造: partialGiftWidgetActivityName
+            author = doc.select("div.partialGiftWidgetActivityName a").text()
+                .ifEmpty { doc.select("div.partialGiftWidgetActivityName").text() }
+                // Typography with ActivityName
+                .ifEmpty { doc.select("div.Typography_fontWeight-bold__jDh15 div.partialGiftWidgetActivityName a").text() }
+                // 古い構造（フォールバック）
+                .ifEmpty { doc.select("span#workAuthor-activityName a").text() }
+                .ifEmpty { doc.select("span#workAuthor-activityName").text() }
+                .ifEmpty { doc.select("a#workAuthor-activityName").text() }
+        }
 
         // あらすじ: 複数のパターンに対応（改行も保持）
-        var synopsis = ""
-        var synopsisSource = ""
+        var synopsis = nextDataJson?.optString("introduction") ?: ""
+        var synopsisSource = if (synopsis.isNotEmpty()) "JSON" else ""
+
+        // 新しいHTML構造: CollapseTextWithKakuyomuLinks
+        if (synopsis.isEmpty()) {
+            val intro0 = doc.select("div.CollapseTextWithKakuyomuLinks_collapseText__XSlmz")
+            if (intro0.isNotEmpty()) {
+                synopsis = intro0.html().replace("<br>", "\n").let { Jsoup.parse(it).text() }
+                synopsisSource = "div.CollapseTextWithKakuyomuLinks"
+            }
+        }
 
         // パターン1: p#introduction
-        val intro1 = doc.select("p#introduction")
-        if (intro1.isNotEmpty()) {
-            synopsis = intro1.text()
-            synopsisSource = "p#introduction"
+        if (synopsis.isEmpty()) {
+            val intro1 = doc.select("p#introduction")
+            if (intro1.isNotEmpty()) {
+                synopsis = intro1.text()
+                synopsisSource = "p#introduction"
+            }
         }
 
         // パターン2: div#introduction p（段落が複数ある場合）
@@ -223,11 +268,21 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val tags = mutableListOf<String>()
         var tagSource = ""
 
+        // JSONからタグを取得（最優先）
+        nextDataJson?.optJSONArray("tagLabels")?.let { tagArray ->
+            for (i in 0 until tagArray.length()) {
+                tags.add(tagArray.getString(i))
+            }
+            tagSource = "JSON"
+        }
+
         // パターン1: ul.partialGiftWidgetTagList
-        val tagList1 = doc.select("ul.partialGiftWidgetTagList li a").map { it.text().trim() }.filter { it.isNotEmpty() }
-        if (tagList1.isNotEmpty()) {
-            tags.addAll(tagList1)
-            tagSource = "ul.partialGiftWidgetTagList li a"
+        if (tags.isEmpty()) {
+            val tagList1 = doc.select("ul.partialGiftWidgetTagList li a").map { it.text().trim() }.filter { it.isNotEmpty() }
+            if (tagList1.isNotEmpty()) {
+                tags.addAll(tagList1)
+                tagSource = "ul.partialGiftWidgetTagList li a"
+            }
         }
 
         // パターン2: Tags-tag クラス
@@ -275,9 +330,19 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val lastUpdateElement = doc.select("time[datetime]").last()
         val lastUpdateDate = lastUpdateElement?.attr("datetime")?.take(10) ?: getCurrentDate()
 
-        // エピソード総数
-        val episodes = doc.select("ol.widget-toc-items li.widget-toc-episode")
-        val totalEp = episodes.size
+        // エピソード総数: JSONまたはHTML
+        var totalEp = nextDataJson?.optInt("publicEpisodeCount") ?: 0
+        if (totalEp == 0) {
+            // 新しいHTML構造: WorkTocSection_link
+            val newEpisodes = doc.select("a.WorkTocSection_link__ocg9K")
+            totalEp = newEpisodes.size
+
+            // 古い構造（フォールバック）
+            if (totalEp == 0) {
+                val oldEpisodes = doc.select("ol.widget-toc-items li.widget-toc-episode")
+                totalEp = oldEpisodes.size
+            }
+        }
 
         // Pseudo-Ncode生成
         val pseudoNcode = PseudoNcodeGenerator.generateKakuyomuNcode(workId)
@@ -319,28 +384,47 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * HTMLからエピソード一覧を抽出
      */
     private fun parseEpisodeList(doc: Document, workId: String, pseudoNcode: String): List<EpisodeEntity> {
-        val episodeElements = doc.select("ol.widget-toc-items li.widget-toc-episode")
         val episodes = mutableListOf<EpisodeEntity>()
 
-        android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得: ${episodeElements.size}話")
+        // 新しいHTML構造: WorkTocSection_link
+        var episodeElements = doc.select("a.WorkTocSection_link__ocg9K")
+        var isNewStructure = episodeElements.isNotEmpty()
+
+        // 古い構造（フォールバック）
+        if (!isNewStructure) {
+            episodeElements = doc.select("ol.widget-toc-items li.widget-toc-episode")
+        }
+
+        android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得: ${episodeElements.size}話 (新構造: $isNewStructure)")
 
         episodeElements.forEachIndexed { index, element ->
             // エピソードID: <a href="/works/{workId}/episodes/{episodeId}">
-            val episodeLink = element.select("a").attr("href")
+            val episodeLink = if (isNewStructure) {
+                element.attr("href")
+            } else {
+                element.select("a").attr("href")
+            }
             val episodeId = episodeLink.substringAfterLast("/")
 
             // エピソードタイトル: 複数のパターンに対応
-            var episodeTitle = element.select("span.widget-toc-episode-titleLabel").text()
-            if (episodeTitle.isEmpty()) {
-                episodeTitle = element.select("span.widget-toc-episode-title").text()
+            var episodeTitle = ""
+
+            if (isNewStructure) {
+                // 新しい構造: WorkTocSection_title内のdiv
+                episodeTitle = element.select("div.WorkTocSection_title__H2007 div").text()
+                    .ifEmpty { element.select("div.WorkTocSection_title__H2007").text() }
+                    // Typography classを持つdiv
+                    .ifEmpty { element.select("div.Typography_lineHeight-1s__3iKaG div").text() }
+                    // リンク全体のテキスト
+                    .ifEmpty { element.text() }
+            } else {
+                // 古い構造
+                episodeTitle = element.select("span.widget-toc-episode-titleLabel").text()
+                    .ifEmpty { element.select("span.widget-toc-episode-title").text() }
+                    .ifEmpty { element.select("a.widget-toc-episode-episodeTitle").text() }
+                    .ifEmpty { element.select("a").text() }
             }
-            if (episodeTitle.isEmpty()) {
-                episodeTitle = element.select("a.widget-toc-episode-episodeTitle").text()
-            }
-            if (episodeTitle.isEmpty()) {
-                // リンクのテキストをフォールバックとして使用
-                episodeTitle = element.select("a").text()
-            }
+
             if (episodeTitle.isEmpty()) {
                 // 最後のフォールバック: "第X話"
                 episodeTitle = "第${index + 1}話"
@@ -384,5 +468,40 @@ class KakuyomuAdapter : NovelSiteAdapter {
      */
     private fun getCurrentDateTime(): String {
         return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    }
+
+    /**
+     * Next.jsのJSONデータを抽出
+     */
+    private fun extractNextDataJson(doc: Document): JSONObject? {
+        return try {
+            // <script id="__NEXT_DATA__" type="application/json">...</script> を取得
+            val scriptElement = doc.select("script#__NEXT_DATA__").firstOrNull()
+            if (scriptElement != null) {
+                val jsonText = scriptElement.html()
+                val rootJson = JSONObject(jsonText)
+
+                // props.pageProps.__APOLLO_STATE__.Work:workId の階層を探索
+                val pageProps = rootJson.optJSONObject("props")?.optJSONObject("pageProps")
+                val apolloState = pageProps?.optJSONObject("__APOLLO_STATE__")
+
+                // Work:で始まるキーを探す
+                apolloState?.keys()?.forEach { key ->
+                    if (key.startsWith("Work:")) {
+                        val workData = apolloState.getJSONObject(key)
+                        android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功: $key")
+                        return workData
+                    }
+                }
+
+                android.util.Log.d("KakuyomuAdapter", "Work:キーが見つかりませんでした")
+            } else {
+                android.util.Log.d("KakuyomuAdapter", "__NEXT_DATA__スクリプトが見つかりませんでした")
+            }
+            null
+        } catch (e: Exception) {
+            android.util.Log.e("KakuyomuAdapter", "Next.jsデータ抽出エラー", e)
+            null
+        }
     }
 }
