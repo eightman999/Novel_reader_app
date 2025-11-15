@@ -55,7 +55,7 @@ fun UpdateInfoScreen(
     var errorNovelCount by remember { mutableStateOf(0) }
     var errorEpisodeCount by remember { mutableStateOf(0) }
     var missingEpisodeCount by remember { mutableStateOf(0) }
-    var redownloadTargets by remember { mutableStateOf<Map<String, List<Int>>>(emptyMap()) }
+    var redownloadTargets by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
 
     // 進捗表示用の変数
     var isSyncing by remember { mutableStateOf(false) }
@@ -552,7 +552,7 @@ fun UpdateInfoScreen(
                                                                 try {
                                                                     val episode = NovelApiUtils.fetchEpisodeWithRetry(
                                                                         novel.ncode,
-                                                                        episodeNo,
+                                                                        episodeNoStr,
                                                                         novel.rating == 1,
                                                                         novel.noveltype
                                                                     )
@@ -695,7 +695,7 @@ fun UpdateInfoScreen(
                                         totalCount = novels.size
 
                                         // 各小説のエラーをチェック
-                                        val novelErrorMap = mutableMapOf<String, List<Int>>()
+                                        val novelErrorMap = mutableMapOf<String, List<String>>()
                                         var totalErrorEps = 0
                                         var totalMissingEps = 0
                                         var novelsWithErrors = 0
@@ -742,26 +742,40 @@ fun UpdateInfoScreen(
                                                     generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
                                                 }
 
-                                                // エピソードのマップを作成
-                                                val episodeNumberMap = episodes.associate { episode ->
-                                                    val numericValue = episode.episode_no.toIntOrNull() ?: 0
-                                                    numericValue to episode.episode_no
+                                                // カクヨムかどうかをチェック
+                                                val isKakuyomu = novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU
+
+                                                val missingEpisodes: List<String>
+                                                if (isKakuyomu) {
+                                                    // カクヨムの場合は欠番チェックをしない（エピソードIDが連番でないため）
+                                                    missingEpisodes = emptyList()
+                                                } else {
+                                                    // 小説家になろうの場合は欠番チェック
+                                                    val episodeNumberMap = episodes.associate { episode ->
+                                                        val numericValue = episode.episode_no.toIntOrNull() ?: 0
+                                                        numericValue to episode.episode_no
+                                                    }
+
+                                                    val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
+                                                    val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
+
+                                                    missingEpisodes = (1..checkRangeMax).filter { epNo ->
+                                                        !episodeNumberMap.containsKey(epNo)
+                                                    }.map { it.toString() }
                                                 }
 
-                                                // 最大エピソード番号
-                                                val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
-                                                val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
-
-                                                // 欠番を特定
-                                                val missingEpisodes = (1..checkRangeMax).filter { epNo ->
-                                                    !episodeNumberMap.containsKey(epNo)
-                                                }
-
-                                                // エラーエピソードの番号リスト
-                                                val errorEpisodeNumbers = errorEpisodes.mapNotNull { it.episode_no.toIntOrNull() }
+                                                // エラーエピソードの番号リスト（episode_noをそのまま使用）
+                                                val errorEpisodeNumbers = errorEpisodes.map { it.episode_no }
 
                                                 // 再取得対象（エラーと欠番を合わせる）
-                                                val targets = (errorEpisodeNumbers + missingEpisodes).distinct().sorted()
+                                                val targets = (errorEpisodeNumbers + missingEpisodes).distinct().let { list ->
+                                                    // 小説家になろうの場合のみソート（数値として）
+                                                    if (isKakuyomu) {
+                                                        list
+                                                    } else {
+                                                        list.sortedBy { it.toIntOrNull() ?: 0 }
+                                                    }
+                                                }
 
                                                 if (targets.isNotEmpty()) {
                                                     novelErrorMap[novel.ncode] = targets

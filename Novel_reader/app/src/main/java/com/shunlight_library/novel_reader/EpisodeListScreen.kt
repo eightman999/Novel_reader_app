@@ -88,7 +88,7 @@ fun EpisodeListScreen(
     var showErrorFixConfirmDialog by remember { mutableStateOf(false) }
     var errorEpisodeCount by remember { mutableStateOf(0) }
     var missingEpisodeCount by remember { mutableStateOf(0) }
-    var redownloadTargets by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var redownloadTargets by remember { mutableStateOf<List<String>>(emptyList()) }
 
     var isMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteNovelDialog by remember { mutableStateOf(false) }
@@ -476,35 +476,66 @@ fun EpisodeListScreen(
                     var successCount = 0
                     var failCount = 0
 
-                    // エピソード番号のリスト
-                    val episodeNumbers = (1..generalAllNo).toList()
-
-                    // スクレイピングの実行
-                    for ((index, episodeNo) in episodeNumbers.withIndex()) {
-                        if (session.isCancelled()) {
-                            handleCancellation()
-                            return@launch
-                        }
-
-                        val episode = fetchEpisodeWithRetry(ncode, episodeNo, targetNovel.rating == 1, targetNovel.noveltype)
-
-                        if (episode != null) {
-                            // データベースに保存
+                    // カクヨムの場合は専用の処理を使用
+                    val isKakuyomu = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)
+                    
+                    if (isKakuyomu) {
+                        // カクヨムの場合は一括取得
+                        updateMessage = "カクヨムからエピソードを取得中..."
+                        val adapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
+                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                        
+                        val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+                        
+                        // エピソードをデータベースに保存
+                        episodes.forEachIndexed { index, episode ->
+                            if (session.isCancelled()) {
+                                handleCancellation()
+                                return@launch
+                            }
+                            
                             withContext(Dispatchers.IO) {
                                 repository.insertEpisode(episode)
                             }
                             successCount++
-                        } else {
-                            failCount++
+                            
+                            // 進捗を更新
+                            val progress = (index + 1).toFloat() / episodes.size
+                            updateProgress = 0.3f + (0.7f * progress)
+                            updateMessage = "エピソードを保存中... (${index + 1}/${episodes.size})"
                         }
+                    } else {
+                        // 小説家になろうの場合は逐次取得
+                        // エピソード番号のリスト
+                        val episodeNumbers = (1..generalAllNo).toList()
 
-                        // サーバーに負荷をかけないように少し待機
-                        delay(50)
+                        // スクレイピングの実行
+                        for ((index, episodeNo) in episodeNumbers.withIndex()) {
+                            if (session.isCancelled()) {
+                                handleCancellation()
+                                return@launch
+                            }
 
-                        // 進捗を更新
-                        val progress = (index + 1).toFloat() / generalAllNo
-                        updateProgress = 0.3f + (0.7f * progress)
-                        updateMessage = "エピソードを取得中... (${index + 1}/$generalAllNo)"
+                            val episode = fetchEpisodeWithRetry(ncode, episodeNo.toString(), targetNovel.rating == 1, targetNovel.noveltype)
+
+                            if (episode != null) {
+                                // データベースに保存
+                                withContext(Dispatchers.IO) {
+                                    repository.insertEpisode(episode)
+                                }
+                                successCount++
+                            } else {
+                                failCount++
+                            }
+
+                            // サーバーに負荷をかけないように少し待機
+                            delay(50)
+
+                            // 進捗を更新
+                            val progress = (index + 1).toFloat() / generalAllNo
+                            updateProgress = 0.3f + (0.7f * progress)
+                            updateMessage = "エピソードを取得中... (${index + 1}/$generalAllNo)"
+                        }
                     }
 
                     if (session.isCancelled()) {
@@ -627,29 +658,42 @@ fun EpisodeListScreen(
                         generalAllNoValue = info?.generalAllNo ?: it.general_all_no
                     }
 
-                    // エピソードの番号リスト（IntとStringの両方を持つ）
-                    val episodeNumberMap = episodesList.associate { episode ->
-                        val numericValue = episode.episode_no.toIntOrNull() ?: 0
-                        numericValue to episode.episode_no
-                    }
+                    // カクヨムかどうかをチェック
+                    val isKakuyomu = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(it.ncode)
 
-                    // 最大エピソード番号を取得
-                    val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
+                    val missingEpisodes: List<String>
+                    if (isKakuyomu) {
+                        // カクヨムの場合は欠番チェックをしない（エピソードIDが連番でないため）
+                        missingEpisodes = emptyList()
+                    } else {
+                        // 小説家になろうの場合は欠番チェック
+                        val episodeNumberMap = episodesList.associate { episode ->
+                            val numericValue = episode.episode_no.toIntOrNull() ?: 0
+                            numericValue to episode.episode_no
+                        }
 
-                    // 欠番リスト（1から最大の番号の範囲で）
-                    val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
-                    val missingEpisodes = (1..checkRangeMax).filter { epNo ->
-                        !episodeNumberMap.containsKey(epNo)
+                        val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
+                        val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
+                        missingEpisodes = (1..checkRangeMax).filter { epNo ->
+                            !episodeNumberMap.containsKey(epNo)
+                        }.map { it.toString() }
                     }
 
                     errorEpisodeCount = errorEpisodes.size
                     missingEpisodeCount = missingEpisodes.size
 
-                    // エラーのあるエピソードの番号リスト
-                    val errorEpisodeNumbers = errorEpisodes.mapNotNull { episode -> episode.episode_no.toIntOrNull() }
+                    // エラーのあるエピソードの番号リスト（episode_noをそのまま使用）
+                    val errorEpisodeNumbers = errorEpisodes.map { it.episode_no }
 
                     // 再取得対象の番号リスト（エラーと欠番を合わせる）
-                    redownloadTargets = (errorEpisodeNumbers + missingEpisodes).distinct().sorted()
+                    redownloadTargets = (errorEpisodeNumbers + missingEpisodes).distinct().let { list ->
+                        // 小説家になろうの場合のみソート（数値として）
+                        if (isKakuyomu) {
+                            list
+                        } else {
+                            list.sortedBy { it.toIntOrNull() ?: 0 }
+                        }
+                    }
 
                     if (redownloadTargets.isEmpty()) {
                         // エラーも欠番もない
