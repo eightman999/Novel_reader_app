@@ -249,6 +249,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 .ifEmpty { doc.select("h1.WorkTitle").text() }
         }
 
+        // タイトルのクリーンアップ処理（HTMLエスケープ文字のデコード）
+        if (title.isNotEmpty()) {
+            title = cleanupText(title)
+        }
+
         // 作者名: 複数のパターンに対応（JSON参照を解決）
         var author = ""
         if (workData != null && apolloState != null) {
@@ -275,6 +280,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 .ifEmpty { doc.select("span#workAuthor-activityName a").text() }
                 .ifEmpty { doc.select("span#workAuthor-activityName").text() }
                 .ifEmpty { doc.select("a#workAuthor-activityName").text() }
+        }
+
+        // 作者名のクリーンアップ処理（HTMLエスケープ文字のデコード）
+        if (author.isNotEmpty()) {
+            author = cleanupText(author)
         }
 
         // あらすじ: 複数のパターンに対応（改行も保持）
@@ -333,6 +343,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 synopsis = intro5.text()
                 synopsisSource = "p.catchphrase-body"
             }
+        }
+
+        // あらすじのクリーンアップ処理（HTMLエスケープ文字のデコード、改行処理など）
+        if (synopsis.isNotEmpty()) {
+            synopsis = cleanupSynopsis(synopsis)
         }
 
         android.util.Log.d("KakuyomuAdapter", "あらすじ取得: source=$synopsisSource, length=${synopsis.length}")
@@ -514,6 +529,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 episodeTitle = "第${index + 1}話"
             }
 
+            // エピソードタイトルのクリーンアップ処理（HTMLエスケープ文字のデコード）
+            episodeTitle = cleanupText(episodeTitle)
+
             // 公開日: <time datetime="2024-01-01T12:00:00Z">
             val timeElement = element.select("time[datetime]")
             val publishedDate = if (timeElement.isNotEmpty()) {
@@ -590,7 +608,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
                             val episodeData = apolloState.optJSONObject(refKey)
                             if (episodeData != null) {
                                 val episodeId = episodeData.optString("id")
-                                val title = episodeData.optString("title", "")
+                                var title = episodeData.optString("title", "")
+
+                                // タイトルのクリーンアップ処理（HTMLエスケープ文字のデコード）
+                                if (title.isNotEmpty()) {
+                                    title = cleanupText(title)
+                                }
 
                                 // 公開日時を取得
                                 val publishedAt = episodeData.optString("publishedAt", "")
@@ -689,6 +712,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             if (episodeBody.isEmpty()) {
                 android.util.Log.w("KakuyomuAdapter", "エピソード本文が空です: $episodeId")
+            } else {
+                // 本文のクリーンアップ処理を適用
+                episodeBody = cleanupEpisodeBody(episodeBody)
             }
 
             episodeBody
@@ -696,6 +722,176 @@ class KakuyomuAdapter : NovelSiteAdapter {
             android.util.Log.e("KakuyomuAdapter", "エピソード本文取得エラー: $episodeId", e)
             ""
         }
+    }
+
+    /**
+     * エピソード本文のクリーンアップ処理
+     * - HTMLエスケープ文字のデコード
+     * - Unicodeエスケープ文字のデコード
+     * - 改行タグの処理
+     * - 余計なタグの除去
+     *
+     * @param html 生のHTML本文
+     * @return クリーンアップされた本文
+     */
+    private fun cleanupEpisodeBody(html: String): String {
+        var cleaned = html
+
+        // 1. 改行タグを実際の改行に変換（<br />、<br>、<br/>）
+        cleaned = cleaned.replace(Regex("<br\\s*/?>"), "\n")
+
+        // 2. HTMLエスケープ文字のデコード（Jsoupが自動的に処理する部分もあるが、念のため）
+        cleaned = decodeHtmlEntities(cleaned)
+
+        // 3. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+        cleaned = decodeNumericEntities(cleaned)
+
+        // 4. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+        cleaned = decodeUnicodeEscapes(cleaned)
+
+        // 5. 余計なタグの除去（空の <p> タグなど）
+        cleaned = cleaned.replace(Regex("<p[^>]*>\\s*</p>"), "")
+
+        // 6. 各行の先頭にある半角空白を除去
+        cleaned = cleaned.lines().joinToString("\n") { line ->
+            line.trimStart(' ')
+        }
+
+        return cleaned
+    }
+
+    /**
+     * HTMLエスケープ文字をデコード
+     * Pascalコードの Restore2RealChar 関数を参考
+     */
+    private fun decodeHtmlEntities(text: String): String {
+        var decoded = text
+        // 基本的なHTMLエスケープ文字（Jsoupで処理されない場合に備えて）
+        decoded = decoded.replace("&lt;", "<")
+        decoded = decoded.replace("&gt;", ">")
+        decoded = decoded.replace("&quot;", "\"")
+        decoded = decoded.replace("&nbsp;", " ")
+        decoded = decoded.replace("&yen;", "\\")
+        decoded = decoded.replace("&brvbar;", "|")
+        decoded = decoded.replace("&copy;", "©")
+        // &amp; は最後に処理（他のエスケープ文字に影響しないように）
+        decoded = decoded.replace("&amp;", "&")
+        return decoded
+    }
+
+    /**
+     * 数値エスケープ文字をデコード（&#xxxx; 形式）
+     * 10進数: &#1234;
+     * 16進数: &#x4E00;
+     * Pascalコードの Restore2RealChar 関数を参考
+     */
+    private fun decodeNumericEntities(text: String): String {
+        var decoded = text
+
+        // 16進数形式: &#x????;
+        val hexPattern = Regex("&#x([0-9A-Fa-f]+);")
+        decoded = hexPattern.replace(decoded) { matchResult ->
+            try {
+                val codePoint = matchResult.groupValues[1].toInt(16)
+                String(Character.toChars(codePoint))
+            } catch (e: Exception) {
+                "？"  // デコード失敗時は？に置換
+            }
+        }
+
+        // 10進数形式: &#????;
+        val decPattern = Regex("&#([0-9]+);")
+        decoded = decPattern.replace(decoded) { matchResult ->
+            try {
+                val codePoint = matchResult.groupValues[1].toInt(10)
+                String(Character.toChars(codePoint))
+            } catch (e: Exception) {
+                "？"  // デコード失敗時は？に置換
+            }
+        }
+
+        return decoded
+    }
+
+    /**
+     * Unicodeエスケープ文字をデコード（\uxxxx 形式）
+     * Pascalコードの Restore2RealChar 関数を参考
+     */
+    private fun decodeUnicodeEscapes(text: String): String {
+        val pattern = Regex("\\\\u([0-9A-Fa-f]{4})")
+        return pattern.replace(text) { matchResult ->
+            try {
+                val codePoint = matchResult.groupValues[1].toInt(16)
+                String(Character.toChars(codePoint))
+            } catch (e: Exception) {
+                "？"  // デコード失敗時は？に置換
+            }
+        }
+    }
+
+    /**
+     * 一般的なテキストのクリーンアップ処理
+     * タイトル、作者名、エピソードタイトルなどに使用
+     * - HTMLエスケープ文字のデコード
+     * - Unicodeエスケープ文字のデコード
+     * - 前後の空白を除去
+     *
+     * @param text 生のテキスト
+     * @return クリーンアップされたテキスト
+     */
+    private fun cleanupText(text: String): String {
+        var cleaned = text
+
+        // 1. HTMLエスケープ文字のデコード
+        cleaned = decodeHtmlEntities(cleaned)
+
+        // 2. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+        cleaned = decodeNumericEntities(cleaned)
+
+        // 3. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+        cleaned = decodeUnicodeEscapes(cleaned)
+
+        // 4. 前後の空白を除去
+        cleaned = cleaned.trim()
+
+        return cleaned
+    }
+
+    /**
+     * あらすじのクリーンアップ処理
+     * - HTMLエスケープ文字のデコード
+     * - Unicodeエスケープ文字のデコード
+     * - "…続きを読む"などの不要なテキストを除去
+     * - エスケープされた引用符の復元
+     *
+     * @param text 生のあらすじテキスト
+     * @return クリーンアップされたあらすじ
+     */
+    private fun cleanupSynopsis(text: String): String {
+        var cleaned = text
+
+        // 1. あらすじ部分の"が\"とエスケープされているため"に戻す（Pascalコード参考）
+        cleaned = cleaned.replace("\\\"", "\"")
+
+        // 2. 改行が\n表記となっている場合は実際の改行に変換（Pascalコード参考）
+        cleaned = cleaned.replace("\\n", "\n")
+
+        // 3. HTMLエスケープ文字のデコード
+        cleaned = decodeHtmlEntities(cleaned)
+
+        // 4. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+        cleaned = decodeNumericEntities(cleaned)
+
+        // 5. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+        cleaned = decodeUnicodeEscapes(cleaned)
+
+        // 6. 前書きの最後にある"…続きを読む"を削除する（Pascalコード参考）
+        cleaned = cleaned.replace("…続きを読む", "")
+
+        // 7. 前後の空白を除去
+        cleaned = cleaned.trim()
+
+        return cleaned
     }
 
     /**

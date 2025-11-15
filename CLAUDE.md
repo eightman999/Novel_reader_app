@@ -461,6 +461,145 @@ private suspend fun performHttpRequest(urlString: String, maxRetries: Int = 3): 
 - HTTPエラー（404、403等）は即座にスロー（再試行しない）
 - 詳細なログ出力で問題の特定を容易にする
 
+### テキストクリーンアップ処理
+
+**必須**: HTMLから取得したテキストは必ずクリーンアップ処理を行う
+
+#### HTMLエスケープ文字のデコード
+
+```kotlin
+// HTMLエスケープ文字のデコード（KakuyomuAdapter.kt）
+private fun decodeHtmlEntities(text: String): String {
+    var decoded = text
+    decoded = decoded.replace("&lt;", "<")
+    decoded = decoded.replace("&gt;", ">")
+    decoded = decoded.replace("&quot;", "\"")
+    decoded = decoded.replace("&nbsp;", " ")
+    decoded = decoded.replace("&yen;", "\\")
+    decoded = decoded.replace("&brvbar;", "|")
+    decoded = decoded.replace("&copy;", "©")
+    // &amp; は最後に処理（他のエスケープ文字に影響しないように）
+    decoded = decoded.replace("&amp;", "&")
+    return decoded
+}
+```
+
+#### Unicodeエスケープ文字のデコード
+
+```kotlin
+// 数値エスケープ文字のデコード（&#xxxx; 形式）
+private fun decodeNumericEntities(text: String): String {
+    var decoded = text
+
+    // 16進数形式: &#x????;
+    val hexPattern = Regex("&#x([0-9A-Fa-f]+);")
+    decoded = hexPattern.replace(decoded) { matchResult ->
+        try {
+            val codePoint = matchResult.groupValues[1].toInt(16)
+            String(Character.toChars(codePoint))
+        } catch (e: Exception) {
+            "？"  // デコード失敗時は？に置換
+        }
+    }
+
+    // 10進数形式: &#????;
+    val decPattern = Regex("&#([0-9]+);")
+    decoded = decPattern.replace(decoded) { matchResult ->
+        try {
+            val codePoint = matchResult.groupValues[1].toInt(10)
+            String(Character.toChars(codePoint))
+        } catch (e: Exception) {
+            "？"  // デコード失敗時は？に置換
+        }
+    }
+
+    return decoded
+}
+
+// Unicodeエスケープ文字のデコード（\uxxxx 形式）
+private fun decodeUnicodeEscapes(text: String): String {
+    val pattern = Regex("\\\\u([0-9A-Fa-f]{4})")
+    return pattern.replace(text) { matchResult ->
+        try {
+            val codePoint = matchResult.groupValues[1].toInt(16)
+            String(Character.toChars(codePoint))
+        } catch (e: Exception) {
+            "？"  // デコード失敗時は？に置換
+        }
+    }
+}
+```
+
+#### 本文のクリーンアップ処理
+
+```kotlin
+// エピソード本文のクリーンアップ（KakuyomuAdapter.kt）
+private fun cleanupEpisodeBody(html: String): String {
+    var cleaned = html
+
+    // 1. 改行タグを実際の改行に変換（<br />、<br>、<br/>）
+    cleaned = cleaned.replace(Regex("<br\\s*/?>"), "\n")
+
+    // 2. HTMLエスケープ文字のデコード
+    cleaned = decodeHtmlEntities(cleaned)
+
+    // 3. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+    cleaned = decodeNumericEntities(cleaned)
+
+    // 4. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+    cleaned = decodeUnicodeEscapes(cleaned)
+
+    // 5. 余計なタグの除去（空の <p> タグなど）
+    cleaned = cleaned.replace(Regex("<p[^>]*>\\s*</p>"), "")
+
+    // 6. 各行の先頭にある半角空白を除去
+    cleaned = cleaned.lines().joinToString("\n") { line ->
+        line.trimStart(' ')
+    }
+
+    return cleaned
+}
+```
+
+#### あらすじのクリーンアップ処理
+
+```kotlin
+// あらすじのクリーンアップ（KakuyomuAdapter.kt）
+private fun cleanupSynopsis(text: String): String {
+    var cleaned = text
+
+    // 1. あらすじ部分の"が\"とエスケープされているため"に戻す
+    cleaned = cleaned.replace("\\\"", "\"")
+
+    // 2. 改行が\n表記となっている場合は実際の改行に変換
+    cleaned = cleaned.replace("\\n", "\n")
+
+    // 3. HTMLエスケープ文字のデコード
+    cleaned = decodeHtmlEntities(cleaned)
+
+    // 4. Unicodeエスケープ文字のデコード（&#xxxx; 形式）
+    cleaned = decodeNumericEntities(cleaned)
+
+    // 5. Unicodeエスケープ文字のデコード（\uxxxx 形式）
+    cleaned = decodeUnicodeEscapes(cleaned)
+
+    // 6. 前書きの最後にある"…続きを読む"を削除する
+    cleaned = cleaned.replace("…続きを読む", "")
+
+    // 7. 前後の空白を除去
+    cleaned = cleaned.trim()
+
+    return cleaned
+}
+```
+
+**重要なルール**:
+- **タイトル、作者名、エピソードタイトル**: `cleanupText()` を使用
+- **あらすじ**: `cleanupSynopsis()` を使用（エスケープされた引用符や改行の処理を含む）
+- **エピソード本文**: `cleanupEpisodeBody()` を使用（改行タグの変換や余計なタグの除去を含む）
+- HTMLから取得したすべてのテキストに適用すること
+- デコード処理の順序を守る：HTMLエスケープ → 数値エスケープ → Unicodeエスケープ
+
 ### URL構造
 
 ```kotlin
