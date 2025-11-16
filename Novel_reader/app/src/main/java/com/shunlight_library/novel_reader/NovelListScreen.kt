@@ -38,7 +38,7 @@ enum class SortField(val displayName: String) {
     TOTAL_EP("総話数"),
     UNREAD_COUNT("未読数"),
     LENGTH("文字数"),
-    LAST_UPDATE_DATE("ダウンロード日"),
+    REGISTERED_AT("登録日"),
     UPDATED_AT("最終更新日")
 }
 
@@ -284,10 +284,10 @@ fun NovelListScreen(
                     filtered.sortedByDescending { it.novel.length ?: 0 }
                 }
 
-                SortField.LAST_UPDATE_DATE -> if (sortDirection == SortDirection.ASCENDING) {
-                    filtered.sortedBy { it.novel.last_update_date }
+                SortField.REGISTERED_AT -> if (sortDirection == SortDirection.ASCENDING) {
+                    filtered.sortedBy { it.novel.registered_at }
                 } else {
-                    filtered.sortedByDescending { it.novel.last_update_date }
+                    filtered.sortedByDescending { it.novel.registered_at }
                 }
 
                 SortField.UPDATED_AT -> if (sortDirection == SortDirection.ASCENDING) {

@@ -17,7 +17,8 @@ import androidx.room.Index
         Index(value = ["is_favorite"], name = "idx_novels_favorite"),
         Index(value = ["length"], name = "idx_novels_length"),
         Index(value = ["noveltype"], name = "idx_novels_type"),
-        Index(value = ["site_type"], name = "idx_novels_site")
+        Index(value = ["site_type"], name = "idx_novels_site"),
+        Index(value = ["registered_at"], name = "idx_novels_registered")
     ]
 )
 /**
@@ -30,15 +31,16 @@ import androidx.room.Index
  * @property main_tag メインタグ
  * @property sub_tag サブタグ
  * @property rating レーティング種別 (1=R18, 2=一般)
- * @property last_update_date 最終更新日
+ * @property last_update_date 小説の最終更新日（サイト上の更新日）
  * @property total_ep エピソード総数
  * @property general_all_no 評価ポイント総数
  * @property userid 作者ID
  * @property noveltype 作品種別 (1=連載, 2=短編)
  * @property length 文字数
- * @property updated_at メタデータ更新日時
+ * @property updated_at 小説メタデータの最終更新日時（サイト上の更新日時）
  * @property is_favorite お気に入り登録フラグ
  * @property site_type サイト種別 (1=小説家になろう, 2=カクヨム)
+ * @property registered_at データベースへの登録日時（ダウンロード日時）
  */
 data class NovelDescEntity(
     val ncode: String,
@@ -56,7 +58,8 @@ data class NovelDescEntity(
     val length: Int? = null,
     val updated_at: String,
     val is_favorite: Boolean = false,
-    val site_type: Int = 1  // 1=小説家になろう, 2=カクヨム
+    val site_type: Int = 1,  // 1=小説家になろう, 2=カクヨム
+    val registered_at: String  // データベース登録日時
 )
 
 //https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode={ncode}&gzip=5&json

@@ -160,6 +160,20 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
 }
 
 /**
+ * v10→v11のマイグレーション: データベース登録日時を追加
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // registered_atカラムを追加（既存データにはlast_update_dateの値をコピー）
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN registered_at TEXT NOT NULL DEFAULT ''")
+        // 既存データのregistered_atをlast_update_dateと同じ値に設定
+        database.execSQL("UPDATE novels_descs SET registered_at = last_update_date")
+        // インデックスを作成
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_registered ON novels_descs (registered_at)")
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -172,7 +186,7 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         ImageCacheEntity::class,
         EpisodeMappingEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -207,7 +221,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_6_7,
                         MIGRATION_7_8,
                         MIGRATION_8_9,
-                        MIGRATION_9_10
+                        MIGRATION_9_10,
+                        MIGRATION_10_11
                     )
                     .build()
                 INSTANCE = instance

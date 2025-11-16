@@ -38,7 +38,7 @@ data class CustomFontInfo(
 
 // NovelListFilter設定用のデータクラス
 data class NovelListFilterSettings(
-    val sortField: String = "LAST_UPDATE_DATE",
+    val sortField: String = "UPDATED_AT",
     val sortDirection: String = "DESCENDING",
     val minRating: Int = 0,
     val maxRating: Int = 5,

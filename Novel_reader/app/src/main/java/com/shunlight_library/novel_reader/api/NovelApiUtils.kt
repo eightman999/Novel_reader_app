@@ -322,12 +322,15 @@ object NovelApiUtils {
                         val length = (novelData["length"] as? Int)
                         val keyword = novelData["keyword"] as? String ?: ""
 
+                        // APIから取得した小説の最終更新日時（サイト上の更新日時）
+                        val updatedAt = novelData["updated_at"] as? String ?: ""
+
                         // キーワードから最初のタグをメインタグ、残りをサブタグとして扱う
                         val tags = keyword.split(" ")
                         val mainTag = if (tags.isNotEmpty()) tags[0] else ""
                         val subTag = if (tags.size > 1) tags.subList(1, tags.size).joinToString(" ") else ""
 
-                        // 現在の日時を取得
+                        // 現在の日時を取得（データベース登録日時として使用）
                         val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
                         // レーティング（R18なら1、それ以外なら2）
@@ -341,13 +344,14 @@ object NovelApiUtils {
                             main_tag = mainTag,
                             sub_tag = subTag,
                             rating = rating,
-                            last_update_date = currentDate,
+                            last_update_date = updatedAt,  // サイト上の最終更新日
                             total_ep = 0, // 初期値は0、後で更新処理で正確な値が設定される
                             general_all_no = generalAllNo,
                             userid = userid,
                             noveltype = noveltype,
                             length = length,
-                            updated_at = currentDate
+                            updated_at = updatedAt,  // サイト上の最終更新日時
+                            registered_at = currentDate  // データベース登録日時
                         )
                     } else {
                         null
