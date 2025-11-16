@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -767,7 +768,7 @@ fun NovelListScreen(
 
                         // 並び替えボタン
                         IconButton(onClick = { showSortDialog = true }) {
-                            Icon(Icons.Default.Sort, contentDescription = "並び替え")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "並び替え")
                         }
 
                         // フィルターボタン

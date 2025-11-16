@@ -320,6 +320,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
             val columnNoveltype = getColumnIndexSafely(cursor, "noveltype")
             val columnLength = getColumnIndexSafely(cursor, "length")
             val columnUpdatedAt = getColumnIndexSafely(cursor, "updated_at")
+            val columnRegisteredAt = getColumnIndexSafely(cursor, "registered_at")
 
             val batchSize = 50
             val novels = mutableListOf<NovelDescEntity>()
@@ -345,6 +346,8 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                     noveltype = if (columnNoveltype != null && !cursor.isNull(columnNoveltype)) noveltype else null,
                     length = if (columnLength != null && !cursor.isNull(columnLength)) length else null,
                     updated_at = getStringSafely(cursor, columnUpdatedAt,
+                        DatabaseSyncUtils.getCurrentDateTimeString()),
+                    registered_at = getStringSafely(cursor, columnRegisteredAt,
                         DatabaseSyncUtils.getCurrentDateTimeString())
                 )
 
