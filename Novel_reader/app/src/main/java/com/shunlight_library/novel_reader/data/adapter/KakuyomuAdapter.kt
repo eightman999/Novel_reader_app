@@ -576,15 +576,16 @@ class KakuyomuAdapter : NovelSiteAdapter {
             main_tag = mainTag,
             sub_tag = subTag,
             rating = 2,  // カクヨムは一般のみ
-            last_update_date = lastUpdateDate,
+            last_update_date = lastUpdateDate,  // サイト上の最終更新日
             total_ep = totalEp,
             general_all_no = 0,  // カクヨムにはこの情報がない
             userid = null,  // HTMLから抽出困難
             noveltype = if (totalEp == 1) 2 else 1,  // 1話のみなら短編、それ以外は連載
             length = null,  // HTMLから抽出困難
-            updated_at = getCurrentDateTime(),
+            updated_at = lastUpdateDate,  // サイト上の最終更新日時
             is_favorite = false,
-            site_type = NovelSiteAdapter.SITE_TYPE_KAKUYOMU
+            site_type = NovelSiteAdapter.SITE_TYPE_KAKUYOMU,
+            registered_at = getCurrentDateTime()  // データベース登録日時
         )
     }
 
