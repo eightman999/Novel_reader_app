@@ -641,26 +641,32 @@ fun NovelListScreen(
                     Text("サイトフィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    SiteFilter.values().forEach { filter ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    tempFilterSettings = tempFilterSettings.copy(siteFilter = filter)
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    var siteFilterExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(
+                            onClick = { siteFilterExpanded = true },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            RadioButton(
-                                selected = tempFilterSettings.siteFilter == filter,
-                                onClick = {
-                                    tempFilterSettings = tempFilterSettings.copy(siteFilter = filter)
-                                }
-                            )
                             Text(
-                                text = filter.displayName,
-                                modifier = Modifier.padding(start = 8.dp)
+                                text = tempFilterSettings.siteFilter.displayName,
+                                modifier = Modifier.weight(1f)
                             )
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "サイト選択")
+                        }
+
+                        DropdownMenu(
+                            expanded = siteFilterExpanded,
+                            onDismissRequest = { siteFilterExpanded = false }
+                        ) {
+                            SiteFilter.values().forEach { filter ->
+                                DropdownMenuItem(
+                                    text = { Text(filter.displayName) },
+                                    onClick = {
+                                        tempFilterSettings = tempFilterSettings.copy(siteFilter = filter)
+                                        siteFilterExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
