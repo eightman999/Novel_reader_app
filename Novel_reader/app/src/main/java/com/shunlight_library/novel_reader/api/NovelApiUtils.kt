@@ -167,12 +167,18 @@ object NovelApiUtils {
 
                 val inputStream = try {
                     if (useGzip) {
-                        GZIPInputStream(connection.inputStream)
+                        try {
+                            GZIPInputStream(connection.inputStream)
+                        } catch (gzipError: Exception) {
+                            // GZIP解凍に失敗した場合、非圧縮として再試行
+                            Log.w(TAG, "GZIP解凍エラー、非圧縮として再試行: ${gzipError.message}")
+                            connection.inputStream
+                        }
                     } else {
                         connection.inputStream
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "GZIP解凍エラー: ${e.message}", e)
+                    Log.e(TAG, "InputStream取得エラー: ${e.message}", e)
                     throw e
                 }
 

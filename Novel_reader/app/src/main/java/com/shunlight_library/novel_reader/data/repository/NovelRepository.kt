@@ -282,9 +282,9 @@ class NovelRepository(
 
         // 新しいURLEntityを作成
         val apiUrl = if (isR18) {
-            "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+            "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
         } else {
-            "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5&json"
+            "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
         }
         val webUrl = if (isR18) {
             "https://novel18.syosetu.com/$ncode/"
