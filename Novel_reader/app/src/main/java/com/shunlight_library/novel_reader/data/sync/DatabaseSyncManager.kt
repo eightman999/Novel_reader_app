@@ -202,6 +202,7 @@ class DatabaseSyncManager(private val context: Context) {
             val columnNoveltype = getColumnIndexOrDefault(cursor, "noveltype")
             val columnLength = getColumnIndexOrDefault(cursor, "length")
             val columnUpdatedAt = getColumnIndexOrDefault(cursor, "updated_at")
+            val columnRegisteredAt = getColumnIndexOrDefault(cursor, "registered_at")
             val urlEntities = mutableListOf<URLEntity>() // URLEntityリスト追加
             val batchSize = 50
             val novels = mutableListOf<NovelDescEntity>()
@@ -222,7 +223,8 @@ class DatabaseSyncManager(private val context: Context) {
                     userid = columnUserid?.let { cursor.getString(it) }?.takeIf { it.isNotEmpty() },
                     noveltype = columnNoveltype?.let { cursor.getInt(it) },
                     length = columnLength?.let { cursor.getInt(it) },
-                    updated_at = columnUpdatedAt?.let { cursor.getString(it) } ?: getCurrentDateString()
+                    updated_at = columnUpdatedAt?.let { cursor.getString(it) } ?: getCurrentDateString(),
+                    registered_at = columnRegisteredAt?.let { cursor.getString(it) } ?: getCurrentDateString()
                 )
 
                 novels.add(novel)
