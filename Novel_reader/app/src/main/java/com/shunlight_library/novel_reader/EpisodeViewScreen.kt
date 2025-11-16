@@ -32,9 +32,12 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
 import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -468,77 +471,126 @@ fun EpisodeViewScreen(
         
         // エピソード本文の表示
         if (episode != null) {
-            var dragAmountX by remember { mutableStateOf(0f) }
-            var dragAmountY by remember { mutableStateOf(0f) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .background(actualBackgroundColor)
-                    .pointerInput(episodeNo, textOrientation, swipeEnabled) {
-                        detectDragGestures(
-                            onDrag = { _, dragAmount ->
-                                dragAmountX += dragAmount.x
-                                dragAmountY += dragAmount.y
-                            },
-                            onDragEnd = {
-                                val threshold = if (textOrientation == "Horizontal") 150f else 100f
-                                val isHorizontalSwipe =
-                                    abs(dragAmountX) > threshold && abs(dragAmountX) > abs(dragAmountY)
+                    .pointerInput(episodeNo, textOrientation, swipeEnabled, tapEnabled) {
+                        // スワイプとスクロールを区別するための改善されたジェスチャー検出
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val downPosition = down.position
+                                val downTime = System.currentTimeMillis()
 
-                                if (swipeEnabled && isHorizontalSwipe) {
+                                var totalDragX = 0f
+                                var totalDragY = 0f
+                                var isDragging = false
+                                var isScrolling = false
+
+                                // ドラッグを追跡
+                                val dragResult = drag(down.id) { change ->
+                                    val dragAmount = change.position - change.previousPosition
+                                    totalDragX += dragAmount.x
+                                    totalDragY += dragAmount.y
+
+                                    // 初動の判定：スクロールかスワイプかを決定
+                                    if (!isDragging && !isScrolling) {
+                                        val absX = abs(totalDragX)
+                                        val absY = abs(totalDragY)
+
+                                        // 一定距離移動したら方向を判定
+                                        if (absX > 10f || absY > 10f) {
+                                            if (textOrientation == "Vertical") {
+                                                // 縦書き時: 横スクロールが必要
+                                                // 縦方向の動き→スワイプ、横方向の動き→スクロール
+                                                if (absY > absX * 1.5f && swipeEnabled) {
+                                                    // 縦方向の動きが明確→スワイプと判定
+                                                    isDragging = true
+                                                } else {
+                                                    // 横方向の動き→WebViewのスクロールに任せる
+                                                    isScrolling = true
+                                                }
+                                            } else {
+                                                // 横書き時: 縦スクロールが必要
+                                                // 横方向の動き→スワイプ、縦方向の動き→スクロール
+                                                if (absX > absY * 1.5f && swipeEnabled) {
+                                                    // 横方向の動きが明確→スワイプと判定
+                                                    isDragging = true
+                                                } else {
+                                                    // 縦方向の動き→WebViewのスクロールに任せる
+                                                    isScrolling = true
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // スワイプと判定された場合のみイベントを消費
+                                    if (isDragging) {
+                                        change.consume()
+                                    }
+                                }
+
+                                // ドラッグ終了時の処理
+                                if (dragResult && isDragging && !isScrolling) {
+                                    val swipeTime = System.currentTimeMillis() - downTime
+                                    val swipeThreshold = 200f // スワイプと判定する最小距離
+                                    val maxSwipeTime = 500L // スワイプと判定する最大時間（素早い動作）
+
                                     val currentEp = episodeNo.toIntOrNull() ?: 1
                                     val canPrev = currentEp > 1
                                     val canNext = novel?.let { currentEp < it.total_ep } ?: true
-                                    saveReadingRate()
 
                                     if (textOrientation == "Vertical") {
-                                        // 縦書き時: 右スワイプ=次、左スワイプ=前
-                                        if (dragAmountX > 0 && canNext) {
-                                            onNext()
-                                        } else if (dragAmountX < 0 && canPrev) {
-                                            onPrevious()
+                                        // 縦書き時: 縦方向のスワイプでページ切り替え
+                                        if (abs(totalDragY) > swipeThreshold && swipeTime < maxSwipeTime) {
+                                            saveReadingRate()
+                                            if (totalDragY < 0 && canNext) {
+                                                // 上スワイプ=次
+                                                onNext()
+                                            } else if (totalDragY > 0 && canPrev) {
+                                                // 下スワイプ=前
+                                                onPrevious()
+                                            }
                                         }
                                     } else {
-                                        // 横書き時: 右スワイプ=前、左スワイプ=次
-                                        if (dragAmountX > 0 && canPrev) {
-                                            onPrevious()
-                                        } else if (dragAmountX < 0 && canNext) {
-                                            onNext()
+                                        // 横書き時: 横方向のスワイプでページ切り替え
+                                        if (abs(totalDragX) > swipeThreshold && swipeTime < maxSwipeTime) {
+                                            saveReadingRate()
+                                            if (totalDragX > 0 && canPrev) {
+                                                // 右スワイプ=前
+                                                onPrevious()
+                                            } else if (totalDragX < 0 && canNext) {
+                                                // 左スワイプ=次
+                                                onNext()
+                                            }
                                         }
                                     }
-                                }
-                                dragAmountX = 0f
-                                dragAmountY = 0f
-                            },
-                            onDragCancel = {
-                                dragAmountX = 0f
-                                dragAmountY = 0f
-                            }
-                        )
-                    }
-                    .pointerInput(episodeNo, tapEnabled, textOrientation) {
-                        if (tapEnabled) {
-                            detectTapGestures { offset ->
-                                val width = size.width
-                                val currentEp = episodeNo.toIntOrNull() ?: 1
-                                val canPrev = currentEp > 1
-                                val canNext = novel?.let { currentEp < it.total_ep } ?: true
-                                saveReadingRate()
+                                } else if (!dragResult) {
+                                    // タップの処理
+                                    if (tapEnabled && abs(totalDragX) < 10f && abs(totalDragY) < 10f) {
+                                        val width = size.width
+                                        val currentEp = episodeNo.toIntOrNull() ?: 1
+                                        val canPrev = currentEp > 1
+                                        val canNext = novel?.let { currentEp < it.total_ep } ?: true
+                                        saveReadingRate()
 
-                                if (textOrientation == "Vertical") {
-                                    // 縦書き時: 左タップ=次、右タップ=前
-                                    if (offset.x < width / 2f && canNext) {
-                                        onNext()
-                                    } else if (offset.x >= width / 2f && canPrev) {
-                                        onPrevious()
-                                    }
-                                } else {
-                                    // 横書き時: 左タップ=前、右タップ=次
-                                    if (offset.x < width / 2f && canPrev) {
-                                        onPrevious()
-                                    } else if (offset.x >= width / 2f && canNext) {
-                                        onNext()
+                                        if (textOrientation == "Vertical") {
+                                            // 縦書き時: 左タップ=次、右タップ=前
+                                            if (downPosition.x < width / 2f && canNext) {
+                                                onNext()
+                                            } else if (downPosition.x >= width / 2f && canPrev) {
+                                                onPrevious()
+                                            }
+                                        } else {
+                                            // 横書き時: 左タップ=前、右タップ=次
+                                            if (downPosition.x < width / 2f && canPrev) {
+                                                onPrevious()
+                                            } else if (downPosition.x >= width / 2f && canNext) {
+                                                onNext()
+                                            }
+                                        }
                                     }
                                 }
                             }
