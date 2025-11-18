@@ -314,7 +314,13 @@ fun UpdateInfoScreen(
                                                             }
                                                         }
 
+                                                        var hasNewEpisodes = false
+                                                        var hasRevisedEpisodes = false
+                                                        var revisedEpisodeCount = 0
+
+                                                        // 新規エピソードのチェック
                                                         if (info.generalAllNo > novel.general_all_no) {
+                                                            hasNewEpisodes = true
                                                             val updatedNovel = novel.copy(
                                                                 general_all_no = info.generalAllNo,
                                                                 updated_at = info.updatedAt
@@ -329,8 +335,6 @@ fun UpdateInfoScreen(
                                                             )
                                                             repository.insertUpdateQueue(updateQueue)
 
-                                                            workCount++
-
                                                             if (novel.general_all_no == 0) {
                                                                 // 新着作品：全話数を加算
                                                                 episodeCount += info.generalAllNo
@@ -338,7 +342,54 @@ fun UpdateInfoScreen(
                                                                 // 更新作品：新しく追加された話数を加算
                                                                 episodeCount += (info.generalAllNo - novel.general_all_no)
                                                             }
+                                                        }
 
+                                                        // 改稿チェック（短編を除く）
+                                                        if (novel.noveltype != 2) {
+                                                            try {
+                                                                val revisionInfos = NovelApiUtils.fetchEpisodeRevisionsFromToc(
+                                                                    ncode = novel.ncode,
+                                                                    isR18 = novel.rating == 1,
+                                                                    noveltype = novel.noveltype
+                                                                )
+
+                                                                if (revisionInfos.isNotEmpty()) {
+                                                                    val existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                                                                    val episodeMap = existingEpisodes.associateBy { it.episode_no.toIntOrNull() ?: 0 }
+
+                                                                    for (revisionInfo in revisionInfos) {
+                                                                        val existingEpisode = episodeMap[revisionInfo.episodeNo]
+                                                                        if (existingEpisode != null && revisionInfo.updateTime > existingEpisode.update_time) {
+                                                                            // エピソードを再取得
+                                                                            val updatedEpisode = NovelApiUtils.fetchEpisodeWithRetry(
+                                                                                ncode = novel.ncode,
+                                                                                episodeNo = revisionInfo.episodeNo.toString(),
+                                                                                isR18 = novel.rating == 1,
+                                                                                noveltype = novel.noveltype
+                                                                            )
+
+                                                                            if (updatedEpisode != null) {
+                                                                                val episodeWithRevisionTime = updatedEpisode.copy(
+                                                                                    update_time = revisionInfo.updateTime
+                                                                                )
+                                                                                repository.insertEpisode(episodeWithRevisionTime)
+                                                                                hasRevisedEpisodes = true
+                                                                                revisedEpisodeCount++
+                                                                                Log.d("UpdateCheck", "改稿を検出: ${novel.title} 第${revisionInfo.episodeNo}話 (${revisionInfo.updateTime})")
+                                                                            }
+
+                                                                            delay(200) // サーバー負荷軽減
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                Log.e("UpdateCheck", "改稿チェックエラー: ${novel.ncode}", e)
+                                                            }
+                                                        }
+
+                                                        // カウント更新
+                                                        if (hasNewEpisodes || hasRevisedEpisodes) {
+                                                            workCount++
                                                             return@async true
                                                         }
                                                     }
@@ -516,6 +567,13 @@ fun UpdateInfoScreen(
                                                     // total_ep+1からgeneral_all_noまでのリストを作成
                                                     val startEpisode = novel.total_ep + 1
                                                     val endEpisode = queueItem.general_all_no
+
+                                                    // 既に更新済みの場合はキューから削除してスキップ
+                                                    if (startEpisode > endEpisode) {
+                                                        repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                                        Log.d("UpdateInfo", "小説「${novel.title}」は既に更新済みのためキューから削除しました")
+                                                        continue
+                                                    }
 
                                                     if (startEpisode <= endEpisode) {
                                                         syncMessage = "「${novel.title}」のエピソードを更新中..."
