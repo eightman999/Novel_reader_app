@@ -17,8 +17,8 @@ import androidx.room.Index
  * 更新キューの 1 行を表す。
  *
  * @property ncode 小説の N コード
- * @property total_ep チェック時点のエピソード総数
- * @property general_all_no チェック時点の評価ポイント総数
+ * @property total_ep 更新確認時点で取得済みのエピソード数（novel.total_ep）
+ * @property general_all_no APIから取得した最新のエピソード総数（novel.general_all_no）
  * @property update_time 更新検出日時
  */
 data class UpdateQueueEntity(
