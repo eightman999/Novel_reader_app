@@ -32,6 +32,16 @@ internal data class KakuyomuEpisodeWithMapping(
 )
 
 /**
+ * カクヨム小説の取得結果（マッピング情報を含む）
+ * 再取得・更新処理でマッピング情報を確実に保存するために使用
+ */
+data class NovelWithEpisodesAndMappings(
+    val novelDesc: NovelDescEntity,
+    val episodes: List<EpisodeEntity>,
+    val episodeMappings: Map<Int, String>  // 連番 → カクヨムEpisodeID
+)
+
+/**
  * カクヨム用のアダプター実装
  *
  * カクヨムには公式APIが存在しないため、HTMLスクレイピングで情報を取得する。
@@ -130,6 +140,69 @@ class KakuyomuAdapter : NovelSiteAdapter {
         }
 
         Pair(novelDesc, episodesWithBody)
+    }
+
+    /**
+     * 小説情報とエピソードをマッピング情報付きで取得
+     *
+     * このメソッドは再取得・更新処理で使用され、エピソードマッピング情報を
+     * 確実に保存できるようにする。
+     *
+     * @param novelId カクヨムの作品IDまたはPseudo-Ncode
+     * @return NovelWithEpisodesAndMappings（小説情報、エピソード、マッピング情報）
+     */
+    suspend fun fetchNovelWithEpisodesIncludingMappings(novelId: String): NovelWithEpisodesAndMappings = withContext(Dispatchers.IO) {
+        val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
+            PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)
+        } else {
+            novelId
+        }
+
+        applyRateLimit()
+
+        val url = generateWebUrl(workId)
+        val html = performHttpRequest(url)
+        val doc = Jsoup.parse(html)
+
+        // 小説情報を抽出
+        val novelDesc = parseNovelInfo(doc, workId)
+
+        // エピソード一覧を抽出（本文なし）
+        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
+
+        // 各エピソードの本文を取得
+        android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
+        val episodesWithBody = episodesWithoutBody.map { episode ->
+            // episode.episode_no は連番（1, 2, 3...）なので、キャッシュから実際のIDを取得
+            val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+            val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
+            episode.copy(body = episodeBody)
+        }
+
+        // エピソード数の不一致をチェック
+        val expectedCount = novelDesc.total_ep
+        val actualCount = episodesWithBody.size
+
+        if (expectedCount != actualCount) {
+            android.util.Log.e("KakuyomuAdapter", """
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                エピソード数の不一致を検出しました！
+                - 期待されるエピソード数: ${expectedCount}話
+                - 実際に取得したエピソード数: ${actualCount}話
+                - 不足: ${expectedCount - actualCount}話
+                - 作品ID: $workId
+                - タイトル: ${novelDesc.title}
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            """.trimIndent())
+        } else {
+            android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+        }
+
+        // マッピング情報をコピー（内部状態を外部に渡す）
+        val mappingsCopy = cachedMappings.toMap()
+        android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappingsCopy.size}件 (例: ${mappingsCopy.entries.take(3)})")
+
+        NovelWithEpisodesAndMappings(novelDesc, episodesWithBody, mappingsCopy)
     }
 
     /**
