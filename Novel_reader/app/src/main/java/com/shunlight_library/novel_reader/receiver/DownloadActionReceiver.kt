@@ -8,6 +8,7 @@ package com.shunlight_library.novel_reader.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import com.shunlight_library.novel_reader.service.UpdateService
 
@@ -30,7 +31,12 @@ class DownloadActionReceiver : BroadcastReceiver() {
                     action = UpdateService.ACTION_START_UPDATE
                     putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_BULK_UPDATE)
                 }
-                context.startService(serviceIntent)
+                // Android 8.0以降ではstartForegroundServiceを使用
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
                 Log.d(TAG, "Started UpdateService for bulk update")
             }
         }
