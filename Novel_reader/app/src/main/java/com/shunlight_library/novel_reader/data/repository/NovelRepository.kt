@@ -196,7 +196,7 @@ class NovelRepository(
             throw IllegalStateException("進行中の更新を停止できませんでした: ${novel.ncode}")
         }
         withContext(Dispatchers.IO) {
-            episodeDao.deleteEpisodesByNcode(novel.ncode)
+            deleteEpisodesByNcode(novel.ncode)
             lastReadNovelDao.getLastReadByNcode(novel.ncode)?.let {
                 lastReadNovelDao.deleteLastRead(it)
             }
