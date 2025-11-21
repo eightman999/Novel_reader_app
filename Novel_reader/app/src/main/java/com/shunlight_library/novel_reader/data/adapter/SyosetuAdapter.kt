@@ -8,6 +8,7 @@ package com.shunlight_library.novel_reader.data.adapter
 import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -61,7 +62,7 @@ class SyosetuAdapter : NovelSiteAdapter {
                 episodes.add(episode)
             } else {
                 // エピソード取得失敗時は警告ログを出すが、処理は継続
-                android.util.Log.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
+                AppLogger.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
             }
         }
 
@@ -113,7 +114,7 @@ class SyosetuAdapter : NovelSiteAdapter {
             if (episode != null) {
                 episodes.add(episode)
             } else {
-                android.util.Log.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
+                AppLogger.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
             }
         }
 
