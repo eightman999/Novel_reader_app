@@ -285,7 +285,7 @@ class UpdateService : Service() {
 
                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
                     // カクヨムの場合、HTMLスクレイピングで取得
-                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
                     val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
@@ -296,8 +296,8 @@ class UpdateService : Service() {
                     }
 
                     if (hasUpdate) {
-                        // 詳細情報を取得して最新のエピソード数を確認
-                        val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+                        // メタデータのみ取得（本文はダウンロードしない）
+                        val (updatedNovelDesc, episodes) = adapter.fetchNovelMetadataWithEpisodeList(workId)
 
                         if (!isRunning || session.isCancelled()) {
                             updateComplete(false, "更新処理が中断されました")
