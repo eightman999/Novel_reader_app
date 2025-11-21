@@ -128,6 +128,14 @@ fun EpisodeViewScreen(
                 episode = repository.getEpisode(ncode, episodeNo)
                 novel = repository.getNovelByNcode(ncode)
 
+                // 削除済み作品の検出
+                if (novel == null) {
+                    Toast.makeText(context, "この作品は削除されました。ホームに戻ります。", Toast.LENGTH_LONG).show()
+                    kotlinx.coroutines.delay(1500)
+                    onBack()
+                    return@launch
+                }
+
                 // エピソードを既読に設定
                 val episodeNumber = episodeNo.toIntOrNull() ?: 1
 

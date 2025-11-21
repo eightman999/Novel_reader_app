@@ -104,8 +104,16 @@ class AutoUpdateWorker(
 
                 novels.forEach { novel ->
                     try {
-                        // 新しいRepository APIを使用して更新チェック（マルチサイト対応）
-                        val hasUpdate = repository.checkNovelForUpdates(novel.ncode)
+                        // ロック機構を使用して同時実行を防ぐ
+                        val session = com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.beginUpdate(novel.ncode)
+                        if (session == null) {
+                            Log.d(TAG, "小説 ${novel.ncode} は既に更新処理中のためスキップ")
+                            return@forEach
+                        }
+
+                        try {
+                            // 新しいRepository APIを使用して更新チェック（マルチサイト対応）
+                            val hasUpdate = repository.checkNovelForUpdates(novel.ncode)
 
                         if (hasUpdate) {
                             // 更新がある場合、最新情報を取得するためにアダプター経由で詳細取得
@@ -197,6 +205,10 @@ class AutoUpdateWorker(
                                 Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)$revisionMsg")
                             }
                         }
+                        } finally {
+                            // ロックを解放
+                            com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishUpdate(session)
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "小説 ${novel.ncode} の更新確認エラー", e)
                         errors.add("${novel.title}: ${e.message}")
@@ -227,7 +239,7 @@ class AutoUpdateWorker(
 
     private fun sendSystemNotification(results: UpdateResult) {
         val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
+
         val totalUpdates = results.newNovelsCount + results.updatedNovelsCount
         val title = "小説更新通知"
         val content = buildString {
@@ -252,12 +264,27 @@ class AutoUpdateWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // ダウンロードアクションを作成
+        val downloadIntent = Intent("com.shunlight_library.novel_reader.ACTION_DOWNLOAD_ALL")
+        downloadIntent.setPackage(applicationContext.packageName)
+        val downloadPendingIntent = PendingIntent.getBroadcast(
+            applicationContext,
+            1,
+            downloadIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(content)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
+            .addAction(
+                android.R.drawable.stat_sys_download_done,
+                "すべてダウンロード",
+                downloadPendingIntent
+            )
             .setAutoCancel(true)
             .build()
 
