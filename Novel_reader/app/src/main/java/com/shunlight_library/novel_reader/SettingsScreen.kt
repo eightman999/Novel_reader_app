@@ -523,8 +523,8 @@ fun SettingsScreenUpdated(
                                     settingsStore.clearImageSaveLocation()
                                 }
 
-                                // 自動更新スケジュールを設定
-                                autoUpdateScheduler.scheduleAutoUpdate(autoUpdateEnabled, autoUpdateTime)
+                                // 自動更新スケジュールをリセット（バックログをクリアして再スケジュール）
+                                autoUpdateScheduler.resetSchedule(autoUpdateEnabled, autoUpdateTime)
 
                                 // 保存したことをユーザーに通知
                                 Toast.makeText(context, "設定を保存しました", Toast.LENGTH_SHORT).show()
