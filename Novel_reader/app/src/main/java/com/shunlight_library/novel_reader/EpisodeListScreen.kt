@@ -43,6 +43,8 @@ import java.util.Date
 import java.util.Locale
 import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisodeWithRetry
 import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelInfo
+import android.content.Intent
+import com.shunlight_library.novel_reader.service.UpdateService
 
 enum class UpdateType {
     UPDATE,      // 更新（新しいエピソードのみチェック）
@@ -100,6 +102,14 @@ fun EpisodeListScreen(
         // 小説情報の取得
         novel = repository.getNovelByNcode(ncode)
 
+        // 削除済み作品の検出
+        if (novel == null) {
+            Toast.makeText(context, "この作品は削除されました。ホームに戻ります。", Toast.LENGTH_LONG).show()
+            delay(1500)
+            onBack()
+            return@LaunchedEffect
+        }
+
         // 最後に読んだ情報の取得
         lastRead = repository.getLastReadByNcode(ncode)
 
@@ -129,8 +139,30 @@ fun EpisodeListScreen(
         updateMessage = ""
     }
 
-    // 「更新」実行関数
+    // 「更新」実行関数（UpdateService経由でバックグラウンド実行）
     fun performUpdate() {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // UpdateServiceを起動して更新処理を実行
+        val intent = Intent(context, UpdateService::class.java).apply {
+            action = UpdateService.ACTION_START_UPDATE
+            putExtra(UpdateService.EXTRA_NCODE, targetNovel.ncode)
+            putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_CHECK)
+        }
+        context.startService(intent)
+
+        // ダイアログを閉じて通知を表示
+        showUpdateDialog = false
+        Toast.makeText(context, "バックグラウンドで更新処理を開始しました", Toast.LENGTH_SHORT).show()
+    }
+
+    // 旧実装（UI処理版、参考用にコメントアウト）
+    /*
+    fun performUpdateOld() {
         isUpdating = true
         updateProgress = 0f
         updateMessage = "APIで最新情報を確認中..."
@@ -283,8 +315,30 @@ fun EpisodeListScreen(
         }
     }
 
-    // 「再取得」実行関数
+    // 「再取得」実行関数（UpdateService経由でバックグラウンド実行）
     fun performRedownload() {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // UpdateServiceを起動して再取得処理を実行
+        val intent = Intent(context, UpdateService::class.java).apply {
+            action = UpdateService.ACTION_START_UPDATE
+            putExtra(UpdateService.EXTRA_NCODE, targetNovel.ncode)
+            putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_DOWNLOAD)
+        }
+        context.startService(intent)
+
+        // ダイアログを閉じて通知を表示
+        showUpdateDialog = false
+        Toast.makeText(context, "バックグラウンドで再取得処理を開始しました", Toast.LENGTH_SHORT).show()
+    }
+
+    // 旧実装（UI処理版、参考用にコメントアウト）
+    /*
+    fun performRedownloadOld() {
         val targetNovel = novel
         if (targetNovel == null) {
             Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
