@@ -594,7 +594,7 @@ fun EpisodeListScreen(
                         updateProgress = 1.0f
                         updateMessage = "保存完了: ${episodes.size}話"
 
-                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード一括保存完了: $successCount話, マッピング: ${mappings.size}件")
+                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード一括保存完了: ${successCount}話, マッピング: ${mappings.size}件")
                     } else {
                         // 小説家になろうの場合は逐次取得
                         // エピソード番号のリスト
