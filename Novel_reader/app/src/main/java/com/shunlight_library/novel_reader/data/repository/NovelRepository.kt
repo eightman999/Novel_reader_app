@@ -19,6 +19,7 @@ import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -369,7 +370,7 @@ class NovelRepository(
 
                 novel
             } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to add novel from URL: $url", e)
+                AppLogger.e("NovelRepository", "Failed to add novel from URL: $url", e)
                 null
             }
         }
@@ -415,7 +416,7 @@ class NovelRepository(
 
                 novel
             } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to add novel by ncode: $ncode", e)
+                AppLogger.e("NovelRepository", "Failed to add novel by ncode: $ncode", e)
                 null
             }
         }
@@ -450,7 +451,7 @@ class NovelRepository(
                     else -> false
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to check updates for ncode: $ncode", e)
+                AppLogger.e("NovelRepository", "Failed to check updates for ncode: $ncode", e)
                 false
             }
         }
@@ -483,7 +484,7 @@ class NovelRepository(
                     else -> null
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to get web URL for ncode: $ncode", e)
+                AppLogger.e("NovelRepository", "Failed to get web URL for ncode: $ncode", e)
                 null
             }
         }
@@ -516,7 +517,7 @@ class NovelRepository(
                     else -> null
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NovelRepository", "Failed to get episode URL for ncode: $ncode, episode: $episodeNo", e)
+                AppLogger.e("NovelRepository", "Failed to get episode URL for ncode: $ncode, episode: $episodeNo", e)
                 null
             }
         }

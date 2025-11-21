@@ -20,9 +20,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 開発環境: バージョン名に δ を追加
+            versionNameSuffix = "δ"
+            // ログ出力を許可
+            buildConfigField("boolean", "ENABLE_LOGGING", "true")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // リリース環境: ログ出力を無効化
+            buildConfigField("boolean", "ENABLE_LOGGING", "false")
         }
     }
 
@@ -35,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     buildToolsVersion = "36.0.0"
 }

@@ -9,6 +9,7 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
+import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -101,7 +102,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
 
         // 各エピソードの本文を取得
-        android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
+        AppLogger.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
         val episodesWithBody = episodesWithoutBody.map { episode ->
             // episode.episode_no は連番（1, 2, 3...）なので、キャッシュから実際のIDを取得
             val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
@@ -114,7 +115,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val actualCount = episodesWithBody.size
 
         if (expectedCount != actualCount) {
-            android.util.Log.e("KakuyomuAdapter", """
+            AppLogger.e("KakuyomuAdapter", """
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 エピソード数の不一致を検出しました！
                 - 期待されるエピソード数: ${expectedCount}話
@@ -125,7 +126,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             """.trimIndent())
         } else {
-            android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+            AppLogger.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
         }
 
         Pair(novelDesc, episodesWithBody)
@@ -159,7 +160,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // エピソード一覧を抽出（本文なし）
         val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
 
-        android.util.Log.d("KakuyomuAdapter", "小説メタデータとエピソードリスト取得完了（本文なし）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
+        AppLogger.d("KakuyomuAdapter", "小説メタデータとエピソードリスト取得完了（本文なし）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
 
         Pair(novelDesc, episodesWithoutBody)
     }
@@ -262,20 +263,20 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 }
 
                 // リクエストヘッダーをログ出力
-                android.util.Log.d("KakuyomuAdapter", "HTTP接続: URL=$urlString")
-                android.util.Log.d("KakuyomuAdapter", "User-Agent: $USER_AGENT")
+                AppLogger.d("KakuyomuAdapter", "HTTP接続: URL=$urlString")
+                AppLogger.d("KakuyomuAdapter", "User-Agent: $USER_AGENT")
                 additionalHeaders.forEach { (key, value) ->
-                    android.util.Log.d("KakuyomuAdapter", "追加ヘッダー: $key = $value")
+                    AppLogger.d("KakuyomuAdapter", "追加ヘッダー: $key = $value")
                 }
 
                 connection.connect()
                 val responseCode = connection.responseCode
 
                 // レスポンスヘッダーをログ出力
-                android.util.Log.d("KakuyomuAdapter", "レスポンスコード: $responseCode")
+                AppLogger.d("KakuyomuAdapter", "レスポンスコード: $responseCode")
                 connection.headerFields.forEach { (key, values) ->
                     if (key != null) {
-                        android.util.Log.d("KakuyomuAdapter", "レスポンスヘッダー: $key = ${values.joinToString(", ")}")
+                        AppLogger.d("KakuyomuAdapter", "レスポンスヘッダー: $key = ${values.joinToString(", ")}")
                     }
                 }
 
@@ -298,7 +299,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         val htmlString = html.toString()
                         val actualLength = htmlString.length
 
-                        android.util.Log.d("KakuyomuAdapter", "HTTP取得成功: $urlString (Content-Length: $contentLength, Actual: $actualLength)")
+                        AppLogger.d("KakuyomuAdapter", "HTTP取得成功: $urlString (Content-Length: $contentLength, Actual: $actualLength)")
 
                         // HTML全文をログ出力（4000文字ずつ分割）
                         // 大量のログが出るため、デバッグ時のみ有効化
@@ -307,11 +308,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         return htmlString
                     }
                     HttpURLConnection.HTTP_NOT_FOUND -> {
-                        android.util.Log.e("KakuyomuAdapter", "404 Not Found: $urlString")
+                        AppLogger.e("KakuyomuAdapter", "404 Not Found: $urlString")
                         throw Exception("HTTP 404: ページが見つかりません")
                     }
                     HttpURLConnection.HTTP_FORBIDDEN -> {
-                        android.util.Log.e("KakuyomuAdapter", "403 Forbidden: $urlString")
+                        AppLogger.e("KakuyomuAdapter", "403 Forbidden: $urlString")
                         throw Exception("HTTP 403: アクセスが拒否されました")
                     }
                     else -> {
@@ -320,25 +321,25 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 }
             } catch (e: java.net.SocketTimeoutException) {
                 lastException = e
-                android.util.Log.w("KakuyomuAdapter", "タイムアウト (試行 $attempt/$maxRetries): $urlString")
+                AppLogger.w("KakuyomuAdapter", "タイムアウト (試行 $attempt/$maxRetries): $urlString")
                 if (attempt < maxRetries) {
                     delay(1000L * attempt)  // 指数バックオフ: 1秒、2秒、3秒
                 }
             } catch (e: java.net.UnknownHostException) {
                 lastException = e
-                android.util.Log.w("KakuyomuAdapter", "ネットワークエラー (試行 $attempt/$maxRetries): $urlString")
+                AppLogger.w("KakuyomuAdapter", "ネットワークエラー (試行 $attempt/$maxRetries): $urlString")
                 if (attempt < maxRetries) {
                     delay(1000L * attempt)
                 }
             } catch (e: java.net.ConnectException) {
                 lastException = e
-                android.util.Log.w("KakuyomuAdapter", "接続エラー (試行 $attempt/$maxRetries): $urlString")
+                AppLogger.w("KakuyomuAdapter", "接続エラー (試行 $attempt/$maxRetries): $urlString")
                 if (attempt < maxRetries) {
                     delay(1000L * attempt)
                 }
             } catch (e: Exception) {
                 // HTTPエラーやその他のエラーは即座にスロー（再試行しない）
-                android.util.Log.e("KakuyomuAdapter", "HTTP取得エラー: $urlString", e)
+                AppLogger.e("KakuyomuAdapter", "HTTP取得エラー: $urlString", e)
                 throw e
             } finally {
                 connection?.disconnect()
@@ -346,7 +347,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         }
 
         // 最大試行回数を超えた場合
-        android.util.Log.e("KakuyomuAdapter", "最大再試行回数を超えました: $urlString", lastException)
+        AppLogger.e("KakuyomuAdapter", "最大再試行回数を超えました: $urlString", lastException)
         throw lastException ?: Exception("HTTP取得失敗: $urlString")
     }
 
@@ -470,7 +471,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             synopsis = cleanupSynopsis(synopsis)
         }
 
-        android.util.Log.d("KakuyomuAdapter", "あらすじ取得: source=$synopsisSource, length=${synopsis.length}")
+        AppLogger.d("KakuyomuAdapter", "あらすじ取得: source=$synopsisSource, length=${synopsis.length}")
 
         // タグ: 複数のセレクタパターンに対応
         val tags = mutableListOf<String>()
@@ -532,7 +533,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val mainTag = tags.firstOrNull() ?: ""
         val subTag = tags.drop(1).joinToString(",")
 
-        android.util.Log.d("KakuyomuAdapter", "タグ取得: source=$tagSource, count=${tags.size}, tags=$tags")
+        AppLogger.d("KakuyomuAdapter", "タグ取得: source=$tagSource, count=${tags.size}, tags=$tags")
 
         // 更新日: <time datetime="2024-01-01T12:00:00Z">
         val lastUpdateElement = doc.select("time[datetime]").last()
@@ -556,7 +557,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val pseudoNcode = PseudoNcodeGenerator.generateKakuyomuNcode(workId)
 
         // 取得結果のログ出力
-        android.util.Log.d("KakuyomuAdapter", """
+        AppLogger.d("KakuyomuAdapter", """
             小説情報取得完了:
             - タイトル: $title
             - 作者: $author
@@ -601,11 +602,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
             cachedMappings = episodesWithMapping.associate { 
                 it.episode.episode_no.toInt() to it.kakuyomuEpisodeId 
             }
-            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (episode_sidebar): ${episodesWithMapping.size}話")
+            AppLogger.d("KakuyomuAdapter", "エピソード一覧取得成功 (episode_sidebar): ${episodesWithMapping.size}話")
             return episodesWithMapping.map { it.episode }
         }
 
-        android.util.Log.d("KakuyomuAdapter", "episode_sidebarからエピソード取得失敗、他の方法を試行")
+        AppLogger.d("KakuyomuAdapter", "episode_sidebarからエピソード取得失敗、他の方法を試行")
 
         // 方法2: エピソードページの目次から取得（フォールバック）
         val episodesWithMappingFromToc = extractEpisodesFromToc(workId, pseudoNcode)
@@ -614,20 +615,20 @@ class KakuyomuAdapter : NovelSiteAdapter {
             cachedMappings = episodesWithMappingFromToc.associate { 
                 it.episode.episode_no.toInt() to it.kakuyomuEpisodeId 
             }
-            android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesWithMappingFromToc.size}話")
+            AppLogger.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesWithMappingFromToc.size}話")
             return episodesWithMappingFromToc.map { it.episode }
         }
 
-        android.util.Log.d("KakuyomuAdapter", "目次からエピソード取得失敗、他の方法を試行")
+        AppLogger.d("KakuyomuAdapter", "目次からエピソード取得失敗、他の方法を試行")
 
         // 方法2: 作品ページのHTMLから取得（フォールバック）
         val workUrl = "https://kakuyomu.jp/works/$workId"
         val workHtml = performHttpRequest(workUrl)
         val doc = Jsoup.parse(workHtml)
 
-        android.util.Log.d("KakuyomuAdapter", "=== 作品ページHTML構造調査開始 ===")
-        android.util.Log.d("KakuyomuAdapter", "作品URL: $workUrl")
-        android.util.Log.d("KakuyomuAdapter", "HTML長: ${workHtml.length}文字")
+        AppLogger.d("KakuyomuAdapter", "=== 作品ページHTML構造調査開始 ===")
+        AppLogger.d("KakuyomuAdapter", "作品URL: $workUrl")
+        AppLogger.d("KakuyomuAdapter", "HTML長: ${workHtml.length}文字")
 
         // 複数のセレクタパターンを試行
         val workTocSelectors = listOf(
@@ -642,16 +643,16 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
         workTocSelectors.forEach { selector ->
             val elements = doc.select(selector)
-            android.util.Log.d("KakuyomuAdapter", "作品ページセレクタ「$selector」: ${elements.size}件")
+            AppLogger.d("KakuyomuAdapter", "作品ページセレクタ「$selector」: ${elements.size}件")
             if (selector == "a[href*='/episodes/']" && elements.size > 0) {
                 val sample = elements.take(3)
                 sample.forEach { link ->
-                    android.util.Log.d("KakuyomuAdapter", "  サンプルリンク - href: ${link.attr("href")}, class: ${link.className()}, text: ${link.text().take(50)}")
+                    AppLogger.d("KakuyomuAdapter", "  サンプルリンク - href: ${link.attr("href")}, class: ${link.className()}, text: ${link.text().take(50)}")
                 }
             }
         }
 
-        android.util.Log.d("KakuyomuAdapter", "=== 作品ページHTML構造調査終了 ===")
+        AppLogger.d("KakuyomuAdapter", "=== 作品ページHTML構造調査終了 ===")
 
         val episodes = mutableListOf<EpisodeEntity>()
 
@@ -664,7 +665,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             episodeElements = doc.select("ol.widget-toc-items li.widget-toc-episode")
         }
 
-        android.util.Log.d("KakuyomuAdapter", "エピソード一覧取得 (HTML): ${episodeElements.size}話 (新構造: $isNewStructure)")
+        AppLogger.d("KakuyomuAdapter", "エピソード一覧取得 (HTML): ${episodeElements.size}話 (新構造: $isNewStructure)")
 
         episodeElements.forEachIndexed { index, element ->
             // エピソードID: <a href="/works/{workId}/episodes/{episodeId}">
@@ -726,7 +727,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             )
         }
 
-        android.util.Log.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML): ${episodes.size}話")
+        AppLogger.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML): ${episodes.size}話")
         return episodes
     }
 
@@ -755,7 +756,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 ?: workDoc.select("a[href*='/episodes/']").firstOrNull()?.attr("href")
 
             if (firstEpisodeLink.isNullOrEmpty()) {
-                android.util.Log.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
+                AppLogger.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
                 return@withContext emptyList()
             }
 
@@ -765,7 +766,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             // episode_sidebarエンドポイントを取得
             val sidebarUrl = "https://kakuyomu.jp/works/$workId/episodes/$firstEpisodeId/episode_sidebar"
-            android.util.Log.d("KakuyomuAdapter", "episode_sidebar取得: $sidebarUrl")
+            AppLogger.d("KakuyomuAdapter", "episode_sidebar取得: $sidebarUrl")
 
             // AJAXリクエストに必要なヘッダーを設定
             val headers = mapOf(
@@ -777,29 +778,29 @@ class KakuyomuAdapter : NovelSiteAdapter {
             val sidebarHtml = performHttpRequest(sidebarUrl, additionalHeaders = headers)
             val sidebarDoc = Jsoup.parse(sidebarHtml)
 
-            android.util.Log.d("KakuyomuAdapter", "=== episode_sidebar HTML構造調査開始 ===")
-            android.util.Log.d("KakuyomuAdapter", "HTML長: ${sidebarHtml.length}文字")
+            AppLogger.d("KakuyomuAdapter", "=== episode_sidebar HTML構造調査開始 ===")
+            AppLogger.d("KakuyomuAdapter", "HTML長: ${sidebarHtml.length}文字")
 
             // 目次リストを取得
             val tocOl = sidebarDoc.select("ol.widget-toc-items")
-            android.util.Log.d("KakuyomuAdapter", "目次リスト (ol.widget-toc-items): ${tocOl.size}件")
+            AppLogger.d("KakuyomuAdapter", "目次リスト (ol.widget-toc-items): ${tocOl.size}件")
 
             val allLi = sidebarDoc.select("ol.widget-toc-items li")
-            android.util.Log.d("KakuyomuAdapter", "全てのli要素: ${allLi.size}件")
+            AppLogger.d("KakuyomuAdapter", "全てのli要素: ${allLi.size}件")
 
             val episodeLi = sidebarDoc.select("ol.widget-toc-items li.widget-toc-episode")
-            android.util.Log.d("KakuyomuAdapter", "エピソードli要素: ${episodeLi.size}件")
+            AppLogger.d("KakuyomuAdapter", "エピソードli要素: ${episodeLi.size}件")
 
             val chapterLi = sidebarDoc.select("ol.widget-toc-items li.widget-toc-chapter")
-            android.util.Log.d("KakuyomuAdapter", "章li要素: ${chapterLi.size}件")
+            AppLogger.d("KakuyomuAdapter", "章li要素: ${chapterLi.size}件")
 
-            android.util.Log.d("KakuyomuAdapter", "=== episode_sidebar HTML構造調査終了 ===")
+            AppLogger.d("KakuyomuAdapter", "=== episode_sidebar HTML構造調査終了 ===")
 
             // 全エピソードを抽出（章も含む）
             val episodesWithMapping = mutableListOf<KakuyomuEpisodeWithMapping>()
             val tocItems = sidebarDoc.select("ol.widget-toc-items li.widget-toc-episode")
 
-            android.util.Log.d("KakuyomuAdapter", "episode_sidebarから検出したエピソード数: ${tocItems.size}")
+            AppLogger.d("KakuyomuAdapter", "episode_sidebarから検出したエピソード数: ${tocItems.size}")
 
             tocItems.forEachIndexed { index, item ->
                 try {
@@ -807,7 +808,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     val link = item.select("a.widget-toc-episode-episodeTitle").attr("href")
 
                     if (link.isEmpty()) {
-                        android.util.Log.w("KakuyomuAdapter", "エピソード${index + 1}: リンクが空です")
+                        AppLogger.w("KakuyomuAdapter", "エピソード${index + 1}: リンクが空です")
                         return@forEachIndexed
                     }
 
@@ -851,26 +852,26 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
                     // 最初と最後のエピソードをログ出力
                     if (index < 3 || index >= tocItems.size - 3) {
-                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$kakuyomuEpisodeId, タイトル=${title.take(30)}, 日付=$publishedDate")
+                        AppLogger.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$kakuyomuEpisodeId, タイトル=${title.take(30)}, 日付=$publishedDate")
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("KakuyomuAdapter", "エピソード${index + 1}の解析エラー", e)
+                    AppLogger.w("KakuyomuAdapter", "エピソード${index + 1}の解析エラー", e)
                 }
             }
 
             if (episodesWithMapping.isEmpty()) {
-                android.util.Log.w("KakuyomuAdapter", """
+                AppLogger.w("KakuyomuAdapter", """
                     episode_sidebarからエピソードを取得できませんでした
                     - URL: $sidebarUrl
                     - tocItems.size: ${tocItems.size}
                 """.trimIndent())
             } else {
-                android.util.Log.d("KakuyomuAdapter", "episode_sidebarからエピソード抽出成功: ${episodesWithMapping.size}話（最初: ${episodesWithMapping.firstOrNull()?.episode?.e_title}, 最後: ${episodesWithMapping.lastOrNull()?.episode?.e_title}）")
+                AppLogger.d("KakuyomuAdapter", "episode_sidebarからエピソード抽出成功: ${episodesWithMapping.size}話（最初: ${episodesWithMapping.firstOrNull()?.episode?.e_title}, 最後: ${episodesWithMapping.lastOrNull()?.episode?.e_title}）")
             }
 
             episodesWithMapping
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "episode_sidebarからのエピソード抽出エラー", e)
+            AppLogger.e("KakuyomuAdapter", "episode_sidebarからのエピソード抽出エラー", e)
             emptyList()
         }
     }
@@ -899,7 +900,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             if (firstEpisodeLink == null) {
                 firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
                 if (firstEpisodeLink != null) {
-                    android.util.Log.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (widget-toc-episode-episodeTitle)")
+                    AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (widget-toc-episode-episodeTitle)")
                 }
             }
 
@@ -907,7 +908,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             if (firstEpisodeLink == null) {
                 firstEpisodeLink = workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
                 if (firstEpisodeLink != null) {
-                    android.util.Log.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (WorkTocSection_link)")
+                    AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (WorkTocSection_link)")
                 }
             }
 
@@ -915,12 +916,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
             if (firstEpisodeLink == null) {
                 firstEpisodeLink = workDoc.select("a[href*='/episodes/']").firstOrNull()?.attr("href")
                 if (firstEpisodeLink != null) {
-                    android.util.Log.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (a[href*='/episodes/'])")
+                    AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (a[href*='/episodes/'])")
                 }
             }
 
             if (firstEpisodeLink.isNullOrEmpty()) {
-                android.util.Log.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
+                AppLogger.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
                 return@withContext emptyList()
             }
 
@@ -928,45 +929,45 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             // エピソードページを取得（目次が含まれる）
             val episodeUrl = "https://kakuyomu.jp$firstEpisodeLink"
-            android.util.Log.d("KakuyomuAdapter", "エピソードページを取得: $episodeUrl")
+            AppLogger.d("KakuyomuAdapter", "エピソードページを取得: $episodeUrl")
 
             val episodeHtml = performHttpRequest(episodeUrl)
             val episodeDoc = Jsoup.parse(episodeHtml)
 
-            android.util.Log.d("KakuyomuAdapter", "=== エピソードページHTML構造調査開始 ===")
-            android.util.Log.d("KakuyomuAdapter", "エピソードURL: $episodeUrl")
-            android.util.Log.d("KakuyomuAdapter", "HTML長: ${episodeHtml.length}文字")
+            AppLogger.d("KakuyomuAdapter", "=== エピソードページHTML構造調査開始 ===")
+            AppLogger.d("KakuyomuAdapter", "エピソードURL: $episodeUrl")
+            AppLogger.d("KakuyomuAdapter", "HTML長: ${episodeHtml.length}文字")
 
             // 目次セクションの存在確認
             val tocSection = episodeDoc.select("section.widget-toc")
-            android.util.Log.d("KakuyomuAdapter", "目次セクション (section.widget-toc): ${tocSection.size}件")
+            AppLogger.d("KakuyomuAdapter", "目次セクション (section.widget-toc): ${tocSection.size}件")
 
             val tocOl = episodeDoc.select("ol.widget-toc-items")
-            android.util.Log.d("KakuyomuAdapter", "目次リスト (ol.widget-toc-items): ${tocOl.size}件")
+            AppLogger.d("KakuyomuAdapter", "目次リスト (ol.widget-toc-items): ${tocOl.size}件")
 
             // 全てのli要素を確認
             val allLi = episodeDoc.select("ol.widget-toc-items li")
-            android.util.Log.d("KakuyomuAdapter", "全てのli要素: ${allLi.size}件")
+            AppLogger.d("KakuyomuAdapter", "全てのli要素: ${allLi.size}件")
 
             // エピソードli要素のみを確認
             val episodeLi = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode")
-            android.util.Log.d("KakuyomuAdapter", "エピソードli要素 (li.widget-toc-episode): ${episodeLi.size}件")
+            AppLogger.d("KakuyomuAdapter", "エピソードli要素 (li.widget-toc-episode): ${episodeLi.size}件")
 
             // 章li要素も確認（デバッグ用）
             val chapterLi = episodeDoc.select("ol.widget-toc-items li.widget-toc-chapter")
-            android.util.Log.d("KakuyomuAdapter", "章li要素 (li.widget-toc-chapter): ${chapterLi.size}件")
+            AppLogger.d("KakuyomuAdapter", "章li要素 (li.widget-toc-chapter): ${chapterLi.size}件")
 
             // エピソードリンクの直接検索も試行
             val episodeLinks = episodeDoc.select("a.widget-toc-episode-episodeTitle")
-            android.util.Log.d("KakuyomuAdapter", "エピソードリンク (a.widget-toc-episode-episodeTitle): ${episodeLinks.size}件")
+            AppLogger.d("KakuyomuAdapter", "エピソードリンク (a.widget-toc-episode-episodeTitle): ${episodeLinks.size}件")
 
-            android.util.Log.d("KakuyomuAdapter", "=== エピソードページHTML構造調査終了 ===")
+            AppLogger.d("KakuyomuAdapter", "=== エピソードページHTML構造調査終了 ===")
 
             // 目次から全エピソードを抽出
             val episodesWithMapping = mutableListOf<KakuyomuEpisodeWithMapping>()
             val tocItems = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode")
 
-            android.util.Log.d("KakuyomuAdapter", "目次から検出したエピソード数: ${tocItems.size}")
+            AppLogger.d("KakuyomuAdapter", "目次から検出したエピソード数: ${tocItems.size}")
 
             tocItems.forEachIndexed { index, item ->
                 try {
@@ -974,7 +975,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     val link = item.select("a.widget-toc-episode-episodeTitle").attr("href")
 
                     if (link.isEmpty()) {
-                        android.util.Log.w("KakuyomuAdapter", "エピソード${index + 1}: リンクが空です")
+                        AppLogger.w("KakuyomuAdapter", "エピソード${index + 1}: リンクが空です")
                         return@forEachIndexed
                     }
 
@@ -985,7 +986,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     if (title.isEmpty()) {
                         // フォールバック: aタグのテキスト全体を取得
                         title = item.select("a.widget-toc-episode-episodeTitle").text()
-                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: タイトルをaタグから取得")
+                        AppLogger.d("KakuyomuAdapter", "エピソード${index + 1}: タイトルをaタグから取得")
                     }
 
                     if (title.isNotEmpty()) {
@@ -1020,27 +1021,27 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
                     // 最初と最後のエピソードをログ出力
                     if (index < 3 || index >= tocItems.size - 3) {
-                        android.util.Log.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$kakuyomuEpisodeId, タイトル=${title.take(20)}, 日付=$publishedDate")
+                        AppLogger.d("KakuyomuAdapter", "エピソード${index + 1}: ID=$kakuyomuEpisodeId, タイトル=${title.take(20)}, 日付=$publishedDate")
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("KakuyomuAdapter", "エピソード${index + 1}の解析エラー", e)
+                    AppLogger.w("KakuyomuAdapter", "エピソード${index + 1}の解析エラー", e)
                 }
             }
 
             if (episodesWithMapping.isEmpty()) {
-                android.util.Log.w("KakuyomuAdapter", """
+                AppLogger.w("KakuyomuAdapter", """
                     目次からエピソードを取得できませんでした
                     - エピソードURL: $episodeUrl
                     - tocItems.size: ${tocItems.size}
                     - セレクタ: ol.widget-toc-items li.widget-toc-episode
                 """.trimIndent())
             } else {
-                android.util.Log.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodesWithMapping.size}話（最初: ${episodesWithMapping.firstOrNull()?.episode?.e_title}, 最後: ${episodesWithMapping.lastOrNull()?.episode?.e_title}）")
+                AppLogger.d("KakuyomuAdapter", "目次からエピソード抽出成功: ${episodesWithMapping.size}話（最初: ${episodesWithMapping.firstOrNull()?.episode?.e_title}, 最後: ${episodesWithMapping.lastOrNull()?.episode?.e_title}）")
             }
 
             episodesWithMapping
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "目次からのエピソード抽出エラー", e)
+            AppLogger.e("KakuyomuAdapter", "目次からのエピソード抽出エラー", e)
             emptyList()
         }
     }
@@ -1058,7 +1059,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         return try {
             val (apolloState, workData) = extractNextDataJson(doc, workId)
             if (apolloState == null || workData == null) {
-                android.util.Log.d("KakuyomuAdapter", "JSONデータが見つかりません")
+                AppLogger.d("KakuyomuAdapter", "JSONデータが見つかりません")
                 return emptyList()
             }
 
@@ -1120,14 +1121,14 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     }
 
                     if (episodes.isNotEmpty()) {
-                        android.util.Log.d("KakuyomuAdapter", "JSONからエピソード抽出成功 (tableOfContents): ${episodes.size}話")
+                        AppLogger.d("KakuyomuAdapter", "JSONからエピソード抽出成功 (tableOfContents): ${episodes.size}話")
                         return episodes
                     }
                 }
             }
 
             // 方法2: apolloStateから直接エピソードを検索（Pascalコード参考のフォールバック）
-            android.util.Log.d("KakuyomuAdapter", "tableOfContents未使用、apolloStateから直接検索")
+            AppLogger.d("KakuyomuAdapter", "tableOfContents未使用、apolloStateから直接検索")
             apolloState.keys().forEach { key ->
                 if (key.startsWith("Episode:")) {
                     try {
@@ -1166,7 +1167,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                             )
                         }
                     } catch (e: Exception) {
-                        android.util.Log.w("KakuyomuAdapter", "エピソード解析エラー: $key", e)
+                        AppLogger.w("KakuyomuAdapter", "エピソード解析エラー: $key", e)
                     }
                 }
             }
@@ -1174,10 +1175,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
             // エピソード番号でソート（公開日時順）
             episodes.sortBy { it.update_time }
 
-            android.util.Log.d("KakuyomuAdapter", "JSONからエピソード抽出成功 (apolloState直接検索): ${episodes.size}話")
+            AppLogger.d("KakuyomuAdapter", "JSONからエピソード抽出成功 (apolloState直接検索): ${episodes.size}話")
             episodes
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "JSONからのエピソード抽出エラー", e)
+            AppLogger.e("KakuyomuAdapter", "JSONからのエピソード抽出エラー", e)
             emptyList()
         }
     }
@@ -1204,7 +1205,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             val bodyElement1 = doc.select("div.widget-episodeBody.js-episode-body")
             if (bodyElement1.isNotEmpty()) {
                 episodeBody = bodyElement1.html()
-                android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody.js-episode-body): $episodeId")
+                AppLogger.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody.js-episode-body): $episodeId")
             }
 
             // パターン2: widget-episodeBody のみ（古い構造）
@@ -1212,7 +1213,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val bodyElement2 = doc.select("div.widget-episodeBody")
                 if (bodyElement2.isNotEmpty()) {
                     episodeBody = bodyElement2.html()
-                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody): $episodeId")
+                    AppLogger.d("KakuyomuAdapter", "エピソード本文取得成功 (widget-episodeBody): $episodeId")
                 }
             }
 
@@ -1221,7 +1222,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val bodyElement3 = doc.select("div.js-episode-body")
                 if (bodyElement3.isNotEmpty()) {
                     episodeBody = bodyElement3.html()
-                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (js-episode-body): $episodeId")
+                    AppLogger.d("KakuyomuAdapter", "エピソード本文取得成功 (js-episode-body): $episodeId")
                 }
             }
 
@@ -1230,7 +1231,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val bodyElement4 = doc.select("div[class*='EpisodeBody']")
                 if (bodyElement4.isNotEmpty()) {
                     episodeBody = bodyElement4.html()
-                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (EpisodeBody): $episodeId")
+                    AppLogger.d("KakuyomuAdapter", "エピソード本文取得成功 (EpisodeBody): $episodeId")
                 }
             }
 
@@ -1239,16 +1240,16 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val bodyElement5 = doc.select("div#contentMain p")
                 if (bodyElement5.isNotEmpty()) {
                     episodeBody = bodyElement5.joinToString("\n") { it.outerHtml() }
-                    android.util.Log.d("KakuyomuAdapter", "エピソード本文取得成功 (contentMain p): $episodeId")
+                    AppLogger.d("KakuyomuAdapter", "エピソード本文取得成功 (contentMain p): $episodeId")
                 }
             }
 
             if (episodeBody.isEmpty()) {
-                android.util.Log.w("KakuyomuAdapter", "エピソード本文が空です: $episodeId")
+                AppLogger.w("KakuyomuAdapter", "エピソード本文が空です: $episodeId")
             } else {
                 // エラーチェック: HTMLページ読み込みエラーの検出（Pascalコード参考）
                 if (checkForLoadingError(episodeBody)) {
-                    android.util.Log.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
+                    AppLogger.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
                     return@withContext "★HTMLページ読み込みエラー\n本文を正しく取得できませんでした。\n後ほど再度お試しください。"
                 }
 
@@ -1258,7 +1259,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             episodeBody
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "エピソード本文取得エラー: $episodeId", e)
+            AppLogger.e("KakuyomuAdapter", "エピソード本文取得エラー: $episodeId", e)
             ""
         }
     }
@@ -1356,7 +1357,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             // エラーチェック
             if (checkForLoadingError(episodeBody)) {
-                android.util.Log.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
+                AppLogger.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
                 episodeBody = "★HTMLページ読み込みエラー"
             } else {
                 // 本文のクリーンアップ処理を適用
@@ -1369,7 +1370,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
             Triple(chapterTitle, episodeTitle, episodeBody)
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "エピソード詳細取得エラー: $episodeId", e)
+            AppLogger.e("KakuyomuAdapter", "エピソード詳細取得エラー: $episodeId", e)
             Triple("", "第${episodeNo}話", "")
         }
     }
@@ -1597,7 +1598,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val targetKey = "Work:$workId"
                 if (apolloState?.has(targetKey) == true) {
                     val workData = apolloState.getJSONObject(targetKey)
-                    android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功（指定workId一致）: $targetKey")
+                    AppLogger.d("KakuyomuAdapter", "Next.jsデータ取得成功（指定workId一致）: $targetKey")
                     return Pair(apolloState, workData)
                 }
 
@@ -1605,18 +1606,18 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 apolloState?.keys()?.forEach { key ->
                     if (key.startsWith("Work:")) {
                         val workData = apolloState.getJSONObject(key)
-                        android.util.Log.d("KakuyomuAdapter", "Next.jsデータ取得成功（フォールバック）: $key (期待値: $targetKey)")
+                        AppLogger.d("KakuyomuAdapter", "Next.jsデータ取得成功（フォールバック）: $key (期待値: $targetKey)")
                         return Pair(apolloState, workData)
                     }
                 }
 
-                android.util.Log.d("KakuyomuAdapter", "Work:キーが見つかりませんでした")
+                AppLogger.d("KakuyomuAdapter", "Work:キーが見つかりませんでした")
             } else {
-                android.util.Log.d("KakuyomuAdapter", "__NEXT_DATA__スクリプトが見つかりませんでした")
+                AppLogger.d("KakuyomuAdapter", "__NEXT_DATA__スクリプトが見つかりませんでした")
             }
             Pair(null, null)
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "Next.jsデータ抽出エラー", e)
+            AppLogger.e("KakuyomuAdapter", "Next.jsデータ抽出エラー", e)
             Pair(null, null)
         }
     }
@@ -1629,8 +1630,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
      */
     private fun logHtmlContent(url: String, html: String) {
         try {
-            android.util.Log.d("KakuyomuAdapter", "=== HTML全文のログ出力開始: $url ===")
-            android.util.Log.d("KakuyomuAdapter", "HTML長: ${html.length}文字")
+            AppLogger.d("KakuyomuAdapter", "=== HTML全文のログ出力開始: $url ===")
+            AppLogger.d("KakuyomuAdapter", "HTML長: ${html.length}文字")
 
             // Logcatの1行の制限は約4000文字なので、4000文字ずつ分割して出力
             val chunkSize = 4000
@@ -1640,12 +1641,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 val start = i * chunkSize
                 val end = minOf(start + chunkSize, html.length)
                 val chunk = html.substring(start, end)
-                android.util.Log.d("KakuyomuAdapter", "HTML[${i + 1}/$chunks]: $chunk")
+                AppLogger.d("KakuyomuAdapter", "HTML[${i + 1}/$chunks]: $chunk")
             }
 
-            android.util.Log.d("KakuyomuAdapter", "=== HTML全文のログ出力終了: $url ===")
+            AppLogger.d("KakuyomuAdapter", "=== HTML全文のログ出力終了: $url ===")
         } catch (e: Exception) {
-            android.util.Log.e("KakuyomuAdapter", "HTMLログ出力エラー", e)
+            AppLogger.e("KakuyomuAdapter", "HTMLログ出力エラー", e)
         }
     }
 }
