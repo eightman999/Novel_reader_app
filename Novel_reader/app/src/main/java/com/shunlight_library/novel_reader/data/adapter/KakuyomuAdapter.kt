@@ -420,8 +420,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
         }
 
         // 最大試行回数を超えた場合
-        AppLogger.e("KakuyomuAdapter", "最大再試行回数を超えました: $urlString", lastException)
-        throw lastException ?: Exception("HTTP取得失敗: $urlString")
+        val exception = lastException ?: Exception("HTTP取得失敗: $urlString")
+        AppLogger.e("KakuyomuAdapter", "最大再試行回数を超えました: $urlString", exception)
+        throw exception
     }
 
     /**

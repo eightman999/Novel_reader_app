@@ -314,6 +314,7 @@ fun EpisodeListScreen(
             }
         }
     }
+    */
 
     // 「再取得」実行関数（UpdateService経由でバックグラウンド実行）
     fun performRedownload() {
@@ -496,6 +497,7 @@ fun EpisodeListScreen(
             }
         }
     }
+    */
 
     // エピソードをダウンロードする関数
     fun performDownloadEpisodes(generalAllNo: Int) {
