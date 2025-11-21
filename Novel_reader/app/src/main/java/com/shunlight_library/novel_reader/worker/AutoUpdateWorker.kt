@@ -53,12 +53,15 @@ class AutoUpdateWorker(
     private val notificationStore = NotificationStore(context)
 
     override suspend fun doWork(): Result {
+        // 自動更新の開始を通知
+        com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.setAutoUpdateRunning(true)
+
         return try {
             Log.d(TAG, "自動更新処理開始")
-            
+
             // 通知チャンネルを作成
             createNotificationChannel()
-            
+
             // 更新確認処理
             val updateResults = performUpdateCheck()
 
@@ -79,6 +82,9 @@ class AutoUpdateWorker(
             sendErrorNotification(e.message ?: "不明なエラー")
             reschedule()
             Result.failure()
+        } finally {
+            // 自動更新の終了を通知
+            com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.setAutoUpdateRunning(false)
         }
     }
 

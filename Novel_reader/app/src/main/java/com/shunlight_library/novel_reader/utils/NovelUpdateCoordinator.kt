@@ -9,14 +9,23 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Coordinates concurrent update operations to ensure a single update per ncode.
+ * Coordinates concurrent update and registration operations.
+ *
+ * Rules:
+ * - Max 2 concurrent registrations allowed
+ * - No registration during updates (auto or manual)
+ * - Auto updates allowed during registration
+ * - Single update per ncode
  */
 object NovelUpdateCoordinator {
     private const val DEFAULT_TIMEOUT_MS = 30_000L
     private const val DEFAULT_CHECK_INTERVAL_MS = 100L
+    private const val MAX_CONCURRENT_REGISTRATIONS = 2
 
     private val mutex = Mutex()
     private val activeUpdates = ConcurrentHashMap<String, UpdateSession>()
+    private val activeRegistrations = ConcurrentHashMap<String, RegistrationSession>()
+    private val isAutoUpdateRunning = AtomicBoolean(false)
 
     /**
      * Attempts to reserve the update slot for the given ncode. Returns null if already taken.
@@ -122,5 +131,123 @@ object NovelUpdateCoordinator {
                 completion.complete(Unit)
             }
         }
+    }
+
+    /**
+     * Registration session for tracking novel registration operations
+     */
+    class RegistrationSession internal constructor(val ncode: String) {
+        private val cancelled = AtomicBoolean(false)
+        private val completion = CompletableDeferred<Unit>()
+
+        fun cancel() {
+            cancelled.set(true)
+        }
+
+        fun isCancelled(): Boolean = cancelled.get()
+
+        internal suspend fun awaitCompletion(timeoutMillis: Long): Boolean {
+            return if (timeoutMillis == Long.MAX_VALUE) {
+                completion.await()
+                true
+            } else {
+                withTimeoutOrNull(timeoutMillis) {
+                    completion.await()
+                    true
+                } ?: false
+            }
+        }
+
+        internal fun markFinished() {
+            if (!completion.isCompleted) {
+                completion.complete(Unit)
+            }
+        }
+    }
+
+    /**
+     * Result of attempting to begin registration
+     */
+    sealed class RegistrationResult {
+        data class Success(val session: RegistrationSession) : RegistrationResult()
+        object MaxConcurrentExceeded : RegistrationResult()
+        object UpdateInProgress : RegistrationResult()
+    }
+
+    /**
+     * Attempts to begin a registration. Returns Success with session if allowed, or an error result.
+     *
+     * Rules:
+     * - Maximum 2 concurrent registrations
+     * - No registration during manual or auto updates
+     */
+    suspend fun beginRegistration(ncode: String): RegistrationResult {
+        if (ncode.isBlank()) return RegistrationResult.Success(RegistrationSession(ncode))
+
+        return mutex.withLock {
+            // Check if any updates are in progress
+            if (activeUpdates.isNotEmpty() || isAutoUpdateRunning.get()) {
+                return@withLock RegistrationResult.UpdateInProgress
+            }
+
+            // Check if max concurrent registrations reached
+            if (activeRegistrations.size >= MAX_CONCURRENT_REGISTRATIONS) {
+                return@withLock RegistrationResult.MaxConcurrentExceeded
+            }
+
+            // Check if this ncode is already being registered
+            if (activeRegistrations.containsKey(ncode)) {
+                return@withLock RegistrationResult.MaxConcurrentExceeded
+            }
+
+            // Allow registration
+            val session = RegistrationSession(ncode)
+            activeRegistrations[ncode] = session
+            RegistrationResult.Success(session)
+        }
+    }
+
+    /**
+     * Releases the registration slot
+     */
+    fun finishRegistration(session: RegistrationSession?) {
+        session ?: return
+        session.markFinished()
+        activeRegistrations.remove(session.ncode, session)
+    }
+
+    /**
+     * Sets whether auto update is running
+     */
+    fun setAutoUpdateRunning(running: Boolean) {
+        isAutoUpdateRunning.set(running)
+    }
+
+    /**
+     * Checks if auto update is running
+     */
+    fun isAutoUpdateInProgress(): Boolean {
+        return isAutoUpdateRunning.get()
+    }
+
+    /**
+     * Checks if any manual updates are in progress
+     */
+    fun hasActiveUpdates(): Boolean {
+        return activeUpdates.isNotEmpty()
+    }
+
+    /**
+     * Checks if any registrations are in progress
+     */
+    fun hasActiveRegistrations(): Boolean {
+        return activeRegistrations.isNotEmpty()
+    }
+
+    /**
+     * Gets the count of active registrations
+     */
+    fun getActiveRegistrationCount(): Int {
+        return activeRegistrations.size
     }
 }

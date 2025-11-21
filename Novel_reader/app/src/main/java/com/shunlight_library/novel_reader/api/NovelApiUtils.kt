@@ -37,6 +37,11 @@ import kotlin.text.Charsets
  */
 object NovelApiUtils {
     private const val TAG = "NovelApiUtils"
+
+    // レート制限設定
+    private const val API_RATE_LIMIT_MS = 150L  // 0.15秒間隔
+    private var lastApiAccessTime = 0L
+
     private val IMAGE_EXTENSION_REGEX =
         ".*\\.(jpe?g|png|gif|bmp|webp|avif)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)
     private val API_USER_AGENTS = listOf(
@@ -44,6 +49,18 @@ object NovelApiUtils {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     )
+
+    /**
+     * APIレート制限を適用する
+     * 前回のAPIアクセスから指定時間経過していない場合は待機する
+     */
+    private suspend fun applyApiRateLimit() {
+        val elapsed = System.currentTimeMillis() - lastApiAccessTime
+        if (elapsed < API_RATE_LIMIT_MS) {
+            delay(API_RATE_LIMIT_MS - elapsed)
+        }
+        lastApiAccessTime = System.currentTimeMillis()
+    }
 
     data class NovelApiInfo(
         val generalAllNo: Int,
@@ -142,6 +159,9 @@ object NovelApiUtils {
     }
 
     private suspend fun requestNovelInfo(url: String, userAgent: String): NovelApiInfo? {
+        // レート制限を適用
+        applyApiRateLimit()
+
         return withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
@@ -281,6 +301,9 @@ object NovelApiUtils {
      * @return 取得した小説情報、または取得できなかった場合はnull
      */
     suspend fun fetchNovelDetails(ncode: String, isR18: Boolean = false): NovelDescEntity? {
+        // レート制限を適用
+        applyApiRateLimit()
+
         return withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
@@ -383,6 +406,11 @@ object NovelApiUtils {
         isR18: Boolean = false,
         noveltype: Int? = null
     ): EpisodeEntity? {
+        // レート制限を適用（なろう小説の場合のみ有効、カクヨムは独自のレート制限を持つ）
+        if (!com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)) {
+            applyApiRateLimit()
+        }
+
         return withContext(Dispatchers.IO) {
             try {
                 // カクヨム小説の場合は KakuyomuAdapter を使用
@@ -774,6 +802,9 @@ object NovelApiUtils {
                 } else {
                     "$baseUrl/$ncode/?p=$currentPage"
                 }
+
+                // レート制限を適用（各ページ取得前）
+                applyApiRateLimit()
 
                 Log.d(TAG, "目次ページを取得中: $tocUrl")
 
