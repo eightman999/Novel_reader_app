@@ -76,6 +76,49 @@ class NovelRepository(
         episodeDao.insertEpisodes(episodes)
     }
 
+    /**
+     * カクヨム小説のエピソードとマッピングを一括保存
+     *
+     * このメソッドは再取得・更新処理でエピソードマッピング情報を確実に保存する。
+     * エピソード番号（連番）とカクヨムの実際のエピソードIDの対応を保持する。
+     *
+     * @param episodes エピソードリスト（episode_noは連番）
+     * @param mappings エピソード番号（連番）→カクヨムEpisodeIDのマッピング
+     */
+    suspend fun insertKakuyomuEpisodesWithMappings(
+        episodes: List<EpisodeEntity>,
+        mappings: Map<Int, String>
+    ) {
+        withContext(Dispatchers.IO) {
+            if (episodes.isEmpty()) {
+                android.util.Log.w("NovelRepository", "エピソードリストが空です")
+                return@withContext
+            }
+
+            val ncode = episodes.first().ncode
+
+            // エピソードを保存
+            episodeDao.insertEpisodes(episodes)
+            android.util.Log.d("NovelRepository", "カクヨムエピソード保存: ${episodes.size}件 (ncode=$ncode)")
+
+            // マッピング情報を保存
+            val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                EpisodeMappingEntity(
+                    ncode = ncode,
+                    episode_no = episodeNo,
+                    kakuyomu_episode_id = kakuyomuId
+                )
+            }
+
+            if (mappingEntities.isNotEmpty()) {
+                episodeMappingDao.insertMappings(mappingEntities)
+                android.util.Log.d("NovelRepository", "カクヨムマッピング保存: ${mappingEntities.size}件 (ncode=$ncode)")
+            } else {
+                android.util.Log.w("NovelRepository", "マッピング情報が空です (ncode=$ncode)")
+            }
+        }
+    }
+
     suspend fun deleteEpisodesByNcode(ncode: String) {
         episodeDao.deleteEpisodesByNcode(ncode)
         // カクヨムのマッピングも削除
