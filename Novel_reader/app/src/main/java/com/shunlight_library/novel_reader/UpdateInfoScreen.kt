@@ -256,13 +256,14 @@ fun UpdateInfoScreen(
                                             try {
                                                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
                                                     // カクヨムの場合、HTMLスクレイピングで更新確認
-                                                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                                                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                                                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
                                                     val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
 
                                                     if (hasUpdate) {
-                                                        val (updatedNovelDesc, episodes) = adapter.fetchNovelWithEpisodes(workId)
+                                                        // メタデータのみ取得（本文はダウンロードしない）
+                                                        val (updatedNovelDesc, episodes) = adapter.fetchNovelMetadataWithEpisodeList(workId)
                                                         val generalAllNo = episodes.size
 
                                                         val updatedNovel = novel.copy(
@@ -598,51 +599,113 @@ fun UpdateInfoScreen(
                                                         var processedForNovel = 0
 
                                                         try {
-                                                            for (episodeNo in episodesList) {
-                                                                if (session.isCancelled()) {
-                                                                    cancelledForNovel = true
-                                                                    break
-                                                                }
+                                                            // カクヨムとなろう小説で処理を分岐
+                                                            if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                                                                // カクヨムの場合
+                                                                val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+                                                                val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
-                                                                val episodeNoStr = episodeNo.toString()
-                                                                syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
+                                                                for (episodeNo in episodesList) {
+                                                                    if (session.isCancelled()) {
+                                                                        cancelledForNovel = true
+                                                                        break
+                                                                    }
 
-                                                                try {
-                                                                    val episode = NovelApiUtils.fetchEpisodeWithRetry(
-                                                                        novel.ncode,
-                                                                        episodeNoStr,
-                                                                        novel.rating == 1,
-                                                                        novel.noveltype
-                                                                    )
+                                                                    val episodeNoStr = episodeNo.toString()
+                                                                    syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
 
-                                                                    if (episode != null) {
-                                                                        episodes.add(episode)
-                                                                        Log.d(
-                                                                            "UpdateInfo",
-                                                                            "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr"
-                                                                        )
-                                                                    } else {
+                                                                    try {
+                                                                        // データベースから既存のエピソード情報を取得（メタデータ取得時に保存されている）
+                                                                        val existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                                                                        val existingEpisode = existingEpisodes.find { it.episode_no == episodeNoStr }
+
+                                                                        if (existingEpisode != null) {
+                                                                            // カクヨムエピソードIDをマッピングから取得
+                                                                            val kakuyomuEpisodeId = repository.getKakuyomuEpisodeId(novel.ncode, episodeNo)
+                                                                                ?: existingEpisode.episode_no
+
+                                                                            // エピソード本文を取得
+                                                                            val episodeBody = adapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+
+                                                                            // エピソード情報を更新（本文を追加）
+                                                                            val updatedEpisode = existingEpisode.copy(body = episodeBody)
+                                                                            episodes.add(updatedEpisode)
+
+                                                                            Log.d(
+                                                                                "UpdateInfo",
+                                                                                "カクヨムエピソード取得成功: ${queueItem.ncode}-$episodeNoStr (ID: $kakuyomuEpisodeId)"
+                                                                            )
+                                                                        } else {
+                                                                            Log.e(
+                                                                                "UpdateInfo",
+                                                                                "カクヨムエピソード情報が見つかりません: ${queueItem.ncode}-$episodeNoStr"
+                                                                            )
+                                                                        }
+                                                                    } catch (e: Exception) {
                                                                         Log.e(
                                                                             "UpdateInfo",
-                                                                            "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr"
+                                                                            "カクヨムエピソード取得エラー: ${queueItem.ncode}-$episodeNoStr",
+                                                                            e
                                                                         )
                                                                     }
-                                                                } catch (e: Exception) {
-                                                                    Log.e(
-                                                                        "UpdateInfo",
-                                                                        "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr",
-                                                                        e
-                                                                    )
+
+                                                                    processedEpisodes++
+                                                                    processedForNovel++
+                                                                    currentCount = processedEpisodes
+                                                                    val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
+                                                                    totalCount = safeTotal
+                                                                    syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
+
+                                                                    delay(100)
                                                                 }
+                                                            } else {
+                                                                // なろう小説の場合
+                                                                for (episodeNo in episodesList) {
+                                                                    if (session.isCancelled()) {
+                                                                        cancelledForNovel = true
+                                                                        break
+                                                                    }
 
-                                                                processedEpisodes++
-                                                                processedForNovel++
-                                                                currentCount = processedEpisodes
-                                                                val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
-                                                                totalCount = safeTotal
-                                                                syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
+                                                                    val episodeNoStr = episodeNo.toString()
+                                                                    syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
 
-                                                                delay(100)
+                                                                    try {
+                                                                        val episode = NovelApiUtils.fetchEpisodeWithRetry(
+                                                                            novel.ncode,
+                                                                            episodeNoStr,
+                                                                            novel.rating == 1,
+                                                                            novel.noveltype
+                                                                        )
+
+                                                                        if (episode != null) {
+                                                                            episodes.add(episode)
+                                                                            Log.d(
+                                                                                "UpdateInfo",
+                                                                                "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr"
+                                                                            )
+                                                                        } else {
+                                                                            Log.e(
+                                                                                "UpdateInfo",
+                                                                                "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr"
+                                                                            )
+                                                                        }
+                                                                    } catch (e: Exception) {
+                                                                        Log.e(
+                                                                            "UpdateInfo",
+                                                                            "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr",
+                                                                            e
+                                                                        )
+                                                                    }
+
+                                                                    processedEpisodes++
+                                                                    processedForNovel++
+                                                                    currentCount = processedEpisodes
+                                                                    val safeTotal = if (totalEpisodes <= 0) processedEpisodes else totalEpisodes
+                                                                    totalCount = safeTotal
+                                                                    syncProgress = if (safeTotal == 0) 1f else processedEpisodes.toFloat() / safeTotal.toFloat()
+
+                                                                    delay(100)
+                                                                }
                                                             }
 
                                                             if (!cancelledForNovel && session.isCancelled()) {
