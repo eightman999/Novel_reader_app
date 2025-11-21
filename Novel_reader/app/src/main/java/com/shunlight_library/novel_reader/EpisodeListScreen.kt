@@ -194,13 +194,10 @@ fun EpisodeListScreen(
 
                     if (hasUpdate) {
                         updateProgress = 0.6f
-                        updateMessage = "詳細情報を取得中（マッピング情報含む）..."
+                        updateMessage = "詳細情報を取得中（メタデータのみ）..."
 
-                        // マッピング情報を含めて取得（改善版メソッド使用）
-                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(workId)
-                        val updatedNovelDesc = result.novelDesc
-                        val episodes = result.episodes
-                        val mappings = result.episodeMappings
+                        // メタデータのみ取得（本文はダウンロードしない）
+                        val (updatedNovelDesc, episodes) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
 
                         newGeneralAllNo = episodes.size
                         newUpdatedAt = updatedNovelDesc.updated_at
@@ -218,30 +215,6 @@ fun EpisodeListScreen(
                         )
                         repository.updateNovel(updatedNovel)
 
-                        // 既存エピソードを取得
-                        val existingEpisodes = repository.getEpisodesByNcode(targetNovel.ncode).first()
-                        val existingEpisodeNos = existingEpisodes.map { it.episode_no }.toSet()
-
-                        // 新しいエピソードのみをフィルタリング
-                        val newEpisodes = episodes.filter { it.episode_no !in existingEpisodeNos }
-
-                        if (newEpisodes.isNotEmpty()) {
-                            updateProgress = 0.8f
-                            updateMessage = "新しいエピソードとマッピングを保存中... (${newEpisodes.size}話)"
-
-                            // 新しいエピソードに対応するマッピングのみを抽出
-                            val newMappings = mappings.filter { (episodeNo, _) ->
-                                newEpisodes.any { it.episode_no == episodeNo.toString() }
-                            }
-
-                            // 新しいエピソードとマッピングを保存
-                            withContext(Dispatchers.IO) {
-                                repository.insertKakuyomuEpisodesWithMappings(newEpisodes, newMappings)
-                            }
-
-                            android.util.Log.d("EpisodeListScreen", "カクヨム更新: 新規エピソード${newEpisodes.size}話, マッピング${newMappings.size}件を保存")
-                        }
-
                         // 更新キューに追加
                         val updateQueue = UpdateQueueEntity(
                             ncode = targetNovel.ncode,
@@ -251,9 +224,11 @@ fun EpisodeListScreen(
                         )
                         repository.insertUpdateQueue(updateQueue)
 
+                        val newEpisodeCount = newGeneralAllNo - targetNovel.total_ep
+
                         updateProgress = 1f
-                        updateMessage = "更新を確認しました。新規${newEpisodes.size}話を保存し、更新キューに追加しました。"
-                        Toast.makeText(context, "更新を確認しました (新規${newEpisodes.size}話)", Toast.LENGTH_SHORT).show()
+                        updateMessage = "更新を確認しました。更新情報画面から一括更新を実行してください。"
+                        Toast.makeText(context, "更新を確認しました (新規${newEpisodeCount}話)\n更新情報画面から一括更新を実行してください", Toast.LENGTH_LONG).show()
                     } else {
                         updateProgress = 1f
                         updateMessage = "更新はありません"

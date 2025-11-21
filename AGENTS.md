@@ -112,7 +112,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 4. Use NavigationManager for navigation to maintain proper back stack
 5. Handle R18 content appropriately with dialog-based site selection
 6. Maintain reading progress and bookmark functionality in EpisodeViewScreen
-7. **Version Management**: Always increment `versionCode` by +1 when making any code changes in `Novel_reader/app/build.gradle.kts`
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`
 
 #### Back Navigation Implementation
 **必須**: Android標準のナビゲーションバーのバックハンドラーを使用する
