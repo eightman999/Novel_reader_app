@@ -379,10 +379,27 @@ class NovelRepository(
      */
     suspend fun addNovelByUrl(url: String): NovelDescEntity? {
         return withContext(Dispatchers.IO) {
+            var registrationSession: com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationSession? = null
+
             try {
                 // URLからアダプターと小説IDを取得
                 val (adapter, novelId) = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByUrl(url)
                     ?: return@withContext null
+
+                // 登録を開始（制限チェック）
+                when (val result = com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.beginRegistration(novelId)) {
+                    is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.Success -> {
+                        registrationSession = result.session
+                    }
+                    is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.UpdateInProgress -> {
+                        AppLogger.w("NovelRepository", "新規登録が拒否されました: 更新処理が実行中です")
+                        throw Exception("更新処理が実行中のため、新規登録できません。更新完了後に再度お試しください。")
+                    }
+                    is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.MaxConcurrentExceeded -> {
+                        AppLogger.w("NovelRepository", "新規登録が拒否されました: 同時登録数が上限（2個）に達しています")
+                        throw Exception("同時に登録できる小説は2作品までです。既存の登録が完了してから再度お試しください。")
+                    }
+                }
 
                 // 小説情報とエピソード一覧を取得
                 val (novel, episodes) = when (adapter.getSiteType()) {
@@ -414,7 +431,10 @@ class NovelRepository(
                 novel
             } catch (e: Exception) {
                 AppLogger.e("NovelRepository", "Failed to add novel from URL: $url", e)
-                null
+                throw e  // エラーメッセージを呼び出し元に伝える
+            } finally {
+                // 登録セッションを終了
+                com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishRegistration(registrationSession)
             }
         }
     }
@@ -430,7 +450,24 @@ class NovelRepository(
      */
     suspend fun addNovelByNcode(ncode: String, isR18: Boolean = false): NovelDescEntity? {
         return withContext(Dispatchers.IO) {
+            var registrationSession: com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationSession? = null
+
             try {
+                // 登録を開始（制限チェック）
+                when (val result = com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.beginRegistration(ncode)) {
+                    is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.Success -> {
+                        registrationSession = result.session
+                    }
+                    is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.UpdateInProgress -> {
+                        AppLogger.w("NovelRepository", "新規登録が拒否されました: 更新処理が実行中です")
+                        throw Exception("更新処理が実行中のため、新規登録できません。更新完了後に再度お試しください。")
+                    }
+                    is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.MaxConcurrentExceeded -> {
+                        AppLogger.w("NovelRepository", "新規登録が拒否されました: 同時登録数が上限（2個）に達しています")
+                        throw Exception("同時に登録できる小説は2作品までです。既存の登録が完了してから再度お試しください。")
+                    }
+                }
+
                 // Ncodeからアダプターを取得
                 val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByNcode(ncode)
 
@@ -460,7 +497,10 @@ class NovelRepository(
                 novel
             } catch (e: Exception) {
                 AppLogger.e("NovelRepository", "Failed to add novel by ncode: $ncode", e)
-                null
+                throw e  // エラーメッセージを呼び出し元に伝える
+            } finally {
+                // 登録セッションを終了
+                com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishRegistration(registrationSession)
             }
         }
     }
