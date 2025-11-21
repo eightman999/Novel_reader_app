@@ -52,6 +52,7 @@ import com.shunlight_library.novel_reader.metadata.MetadataUpdateResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
     private lateinit var navigationManager: NavigationManager
@@ -449,6 +450,10 @@ fun MainScreen(
     var unreadNotificationCount by remember { mutableStateOf(0) }
     var showNotificationDialog by remember { mutableStateOf(false) }
 
+    // 自動更新バックログ確認ダイアログの状態
+    var showAutoUpdateBacklogDialog by remember { mutableStateOf(false) }
+    val autoUpdateScheduler = remember { com.shunlight_library.novel_reader.worker.AutoUpdateScheduler(context) }
+
     // メタデータ補完ダイアログ用の状態
     var showMetadataConfirm by remember { mutableStateOf(false) }
     var showMetadataProgressDialog by remember { mutableStateOf(false) }
@@ -506,6 +511,11 @@ fun MainScreen(
         // 更新情報も取得
         val (workCount, episodeCount) = repository.getUpdateCountsWithEpisodes()
         updateInfoText = "${workCount}作品${episodeCount}話"
+
+        // 自動更新のバックログをチェック
+        if (autoUpdateScheduler.hasPendingWork()) {
+            showAutoUpdateBacklogDialog = true
+        }
     }
 
     // R18コンテンツ選択ダイアログ
@@ -553,6 +563,68 @@ fun MainScreen(
             dismissButton = {
                 TextButton(onClick = { showR18Dialog = false }) {
                     Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    // 自動更新バックログ確認ダイアログ
+    if (showAutoUpdateBacklogDialog) {
+        AlertDialog(
+            onDismissRequest = { showAutoUpdateBacklogDialog = false },
+            title = { Text("自動更新の確認") },
+            text = {
+                Column {
+                    Text("実行待ちの自動更新があります。")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "これは以下のいずれかの理由で発生します：",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text("• 長時間アプリを使用していなかった", style = MaterialTheme.typography.bodySmall)
+                    Text("• 実行予定時刻を過ぎている", style = MaterialTheme.typography.bodySmall)
+                    Text("• 設定を変更した直後", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("今すぐ実行しますか？それともスキップしますか？")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAutoUpdateBacklogDialog = false
+                        scope.launch {
+                            // 手動で更新を実行
+                            autoUpdateScheduler.runManualUpdate()
+                            android.widget.Toast.makeText(
+                                context,
+                                "自動更新を開始しました",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("今すぐ実行")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAutoUpdateBacklogDialog = false
+                        scope.launch {
+                            // バックログをリセット
+                            val settingsStore = SettingsStore(context)
+                            val enabled = settingsStore.autoUpdateEnabled.first()
+                            val time = settingsStore.autoUpdateTime.first()
+                            autoUpdateScheduler.resetSchedule(enabled, time)
+                            android.widget.Toast.makeText(
+                                context,
+                                "自動更新をスキップしました",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("スキップ")
                 }
             }
         )

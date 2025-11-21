@@ -9,6 +9,8 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.work.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
 
@@ -91,6 +93,34 @@ class AutoUpdateScheduler(private val context: Context) {
      */
     fun getWorkStatus(): LiveData<List<WorkInfo>> {
         return workManager.getWorkInfosForUniqueWorkLiveData(WORK_NAME)
+    }
+
+    /**
+     * バックログや実行待ちのワークがあるかチェック
+     * @return ワークが実行待ち、または実行中の場合はtrue
+     */
+    suspend fun hasPendingWork(): Boolean {
+        val workInfos = workManager.getWorkInfosForUniqueWork(WORK_NAME).await()
+        return workInfos.any { workInfo ->
+            workInfo.state == WorkInfo.State.ENQUEUED ||
+            workInfo.state == WorkInfo.State.RUNNING ||
+            workInfo.state == WorkInfo.State.BLOCKED
+        }
+    }
+
+    /**
+     * スケジュールをリセット（バックログをクリアして再スケジュール）
+     * @param enabled 自動更新の有効/無効
+     * @param timeString 時刻文字列 (例: "03:00")
+     */
+    fun resetSchedule(enabled: Boolean, timeString: String) {
+        // 既存のワークをキャンセル
+        cancelAutoUpdate()
+
+        // 再スケジュール
+        scheduleAutoUpdate(enabled, timeString)
+
+        Log.d(TAG, "スケジュールをリセットしました")
     }
 
     /**
