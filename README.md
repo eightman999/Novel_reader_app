@@ -4,9 +4,14 @@
 
 ## 概要 / Overview
 
-このアプリは、オンライン小説プラットフォームから小説を取得・管理し、オフラインでも快適に読書できる環境を提供します。縦書き表示、ルビ対応、カスタムフォント、自動更新チェックなど、日本語小説の読書に特化した機能を備えています。
+このアプリは、オンライン小説プラットフォーム（なろう小説・カクヨム）から小説を取得・管理し、オフラインでも快適に読書できる環境を提供します。縦書き表示、ルビ対応、カスタムフォント、バックグラウンド自動更新など、日本語小説の読書に特化した機能を備えています。
 
-*An Android application for comfortably reading novels from Japanese novel platforms Features offline reading, vertical text display, ruby text support, and automatic update checking.*
+### 対応サイト / Supported Platforms
+- **小説家になろう** (ncode.syosetu.com) - 一般作品
+- **ノクターンノベルズ/ムーンライトノベルズ** (novel18.syosetu.com) - R18作品
+- **カクヨム** (kakuyomu.jp)
+
+*An Android application for comfortably reading novels from Syosetu and Kakuyomu. Features offline reading, vertical text display, ruby text support, and automatic background updates.*
 
 ## 主な機能 / Features
 
@@ -25,10 +30,12 @@
 - 読書進度の自動保存
 - 既読管理
 
-### 🔄 同期機能
+### 🔄 自動更新機能
+- **バックグラウンド自動更新** - アプリ未起動時でも指定時刻に更新確認
+- **システム通知** - 更新結果をスマートフォンの通知で即座表示
+- **アプリ内通知** - 詳細な更新履歴と管理機能
+- **通知バッジ** - メイン画面に未読通知数表示
 - 外部SQLiteデータベースとの同期
-- 自動更新チェック（スケジュール設定可能）
-- バックグラウンド更新処理
 
 ### ⚙️ カスタマイズ
 - テーマ設定（ライト・ダーク・システム連動）
@@ -42,14 +49,19 @@
 
 ## 技術スタック / Tech Stack
 
+### アーキテクチャ
+- **パターン**: Clean Architecture + MVVM + Repository Pattern
+- **UI**: Jetpack Compose (Single Activity)
+- **ナビゲーション**: カスタムNavigationManager (バックスタック管理)
+- **状態管理**: Flow-based reactive programming
+
+### 主要技術
 - **言語**: Kotlin
-- **UI**: Jetpack Compose
-- **データベース**: Room
-- **非同期処理**: Coroutines
-- **ネットワーク**: OkHttp + Jsoup
-- **設定管理**: DataStore
-- **バックグラウンド処理**: WorkManager
-- **ナビゲーション**: Navigation Component
+- **データベース**: Room (v5 with migrations)
+- **非同期処理**: Coroutines + Flow
+- **ネットワーク**: HttpURLConnection + Jsoup + SnakeYAML
+- **設定管理**: DataStore (Preferences)
+- **バックグラウンド処理**: WorkManager (定期更新スケジューリング)
 
 ## セットアップ / Setup
 
@@ -63,17 +75,22 @@
 1. リポジトリをクローン
 ```bash
 git clone [repository-url]
-cd Novel_reader
+cd Novel_reader_app
 ```
 
 2. Android Studioでプロジェクトを開く
 
-3. 依存関係を同期
+3. 依存関係を同期とビルド
 ```bash
+cd Novel_reader
 ./gradlew build
 ```
+**注意**: Gradleコマンドは `Novel_reader/` ディレクトリから実行してください。
 
 4. エミュレータまたは実機でアプリを実行
+```bash
+./gradlew installDebug
+```
 
 ## 使い方 / Usage
 
@@ -106,28 +123,48 @@ cd Novel_reader
 ## プロジェクト構造 / Project Structure
 
 ```
-app/src/main/java/com/shunlight_library/novel_reader/
-├── data/                   # データ層
-│   ├── dao/               # Data Access Objects
-│   ├── entity/            # データベースエンティティ
-│   ├── database/          # Room データベース設定
-│   ├── repository/        # リポジトリパターン
-│   └── sync/              # データ同期処理
-├── ui/                     # UI層
-│   ├── components/        # 再利用可能なUIコンポーネント
-│   └── theme/             # テーマ設定
-├── navigation/            # ナビゲーション管理
-├── api/                   # API通信
-├── service/               # バックグラウンドサービス
-├── utils/                 # ユーティリティ
-└── worker/                # WorkManager関連
+Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/
+├── data/
+│   ├── dao/               # DAOs (5つ: NovelDesc, Episode, LastReadNovel, UpdateQueue, URL)
+│   ├── entity/            # Roomエンティティ
+│   ├── NovelDatabase.kt   # Room database (v5 with migrations)
+│   └── NovelRepository.kt # 単一リポジトリ (全データアクセス管理)
+├── ui/
+│   ├── NovelListScreen.kt        # 小説一覧（高度なフィルタ・ソート）
+│   ├── EpisodeViewScreen.kt      # エピソード閲覧（WebView + 進捗追跡）
+│   ├── WebViewScreen.kt          # サイト閲覧（R18対応）
+│   └── theme/                    # テーマ設定
+├── navigation/
+│   └── NavigationManager.kt      # カスタムナビゲーション（スタック管理）
+├── api/
+│   ├── NovelApiUtils.kt          # なろう小説API（YAML形式）
+│   └── KakuyomuAdapter.kt        # カクヨムスクレイピング
+├── worker/
+│   ├── AutoUpdateWorker.kt       # バックグラウンド自動更新
+│   └── AutoUpdateScheduler.kt    # 更新スケジュール管理
+├── utils/
+│   ├── SettingsStore.kt          # DataStore設定管理
+│   ├── NotificationStore.kt      # アプリ内通知管理
+│   └── ...
+├── NovelReaderApplication.kt     # Application singleton
+└── MainActivity.kt               # Single Activity (Compose)
 ```
+
+### 主要コンポーネント
+- **NovelDatabase**: 5テーブル構成（novels_descs, episodes, last_read_novels, update_queue, url_entity）
+- **NovelRepository**: 全DAOへの統一アクセス、Flow-based reactive reads
+- **NavigationManager**: sealed classによる型安全なナビゲーション
+- **AutoUpdateWorker**: WorkManagerによる24時間周期の自動更新
 
 ## 注意事項 / Important Notes
 
-⚠️ **利用規約の遵守**: このアプリは小説投稿サイトのAPI等を使用します。適切な間隔でのアクセスを心がけてください。
+⚠️ **利用規約の遵守**: このアプリは小説投稿サイトのAPI・スクレイピングを使用します。
+- **なろう小説**: 公式API（YAML形式、gzip圧縮）を使用
+- **カクヨム**: HTMLスクレイピング（1秒間隔のレート制限実装済み）
 
 ⚠️ **個人利用厳守**: 商用利用や大量アクセスは避け、個人の読書用途での利用をしてください。
+
+⚠️ **R18コンテンツ**: R18作品の閲覧には年齢確認が必要です。各サイトの利用規約を遵守してください。
 
 ⚠️ **データの取り扱い**: 取得した小説データは個人利用の範囲内で適切に管理してください。
 
