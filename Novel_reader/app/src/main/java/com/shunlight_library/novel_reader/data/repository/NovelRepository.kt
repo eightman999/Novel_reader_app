@@ -252,6 +252,13 @@ class NovelRepository(
         }
     }
 
+    // すべての更新キューをクリア
+    suspend fun clearAllUpdateQueue() {
+        withContext(Dispatchers.IO) {
+            updateQueueDao.clearAll()
+        }
+    }
+
     suspend fun updateEpisodeReadStatus(ncode: String, episodeNo: String, isRead: Boolean) {
         episodeDao.updateReadStatus(ncode, episodeNo, isRead)
     }

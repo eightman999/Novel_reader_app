@@ -13,8 +13,8 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 138
-        versionName = "1.5.13"
+        versionCode = 141
+        versionName = "1.5.16"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -82,5 +82,6 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation("androidx.work:work-runtime-ktx:2.8.1")
     implementation("androidx.compose.ui:ui-text-google-fonts:1.7.0")
+    // Non-blocking await for ListenableFuture
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.6.4")
 }
-

@@ -512,9 +512,33 @@ fun MainScreen(
         val (workCount, episodeCount) = repository.getUpdateCountsWithEpisodes()
         updateInfoText = "${workCount}作品${episodeCount}話"
 
-        // 自動更新のバックログをチェック
-        if (autoUpdateScheduler.hasPendingWork()) {
-            showAutoUpdateBacklogDialog = true
+        // 自動更新のバックログをチェック（予定時刻を過ぎて未実行の場合のみ）
+        run {
+            val settingsStore = SettingsStore(context)
+            val enabled = settingsStore.autoUpdateEnabled.first()
+            val timeStr = settingsStore.autoUpdateTime.first()
+            val lastRun = settingsStore.lastAutoUpdateRunAt.first()
+            val lastPrompt = settingsStore.lastBacklogPromptAt.first()
+
+            val now = System.currentTimeMillis()
+            val cal = java.util.Calendar.getInstance()
+            val parts = timeStr.split(":")
+            val hour = parts.getOrNull(0)?.toIntOrNull() ?: 3
+            val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            cal.set(java.util.Calendar.HOUR_OF_DAY, hour)
+            cal.set(java.util.Calendar.MINUTE, minute)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            val scheduledToday = cal.timeInMillis
+
+            val debounceMs = 6 * 60 * 60 * 1000L // 6時間
+            val shouldPrompt = enabled && now >= scheduledToday && lastRun < scheduledToday &&
+                (now - lastPrompt) > debounceMs && autoUpdateScheduler.hasPendingWork()
+
+            if (shouldPrompt) {
+                showAutoUpdateBacklogDialog = true
+                settingsStore.setLastBacklogPromptAt(now)
+            }
         }
     }
 
@@ -616,6 +640,16 @@ fun MainScreen(
                             val enabled = settingsStore.autoUpdateEnabled.first()
                             val time = settingsStore.autoUpdateTime.first()
                             autoUpdateScheduler.resetSchedule(enabled, time)
+
+                            // 今日分は処理済み扱いにして再表示を防止
+                            settingsStore.setLastAutoUpdateRunAt(System.currentTimeMillis())
+
+                            // 更新キューをクリア
+                            repository.clearAllUpdateQueue()
+
+                            // 表示更新
+                            val (workCount, episodeCount) = repository.getUpdateCountsWithEpisodes()
+                            updateInfoText = "${workCount}作品${episodeCount}話"
                             android.widget.Toast.makeText(
                                 context,
                                 "自動更新をスキップしました",

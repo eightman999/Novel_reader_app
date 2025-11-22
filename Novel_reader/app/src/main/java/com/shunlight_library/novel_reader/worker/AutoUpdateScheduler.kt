@@ -9,9 +9,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.work.*
-import androidx.work.await
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.guava.await
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
 
@@ -101,11 +99,16 @@ class AutoUpdateScheduler(private val context: Context) {
      * @return ワークが実行待ち、または実行中の場合はtrue
      */
     suspend fun hasPendingWork(): Boolean {
-        val workInfos = workManager.getWorkInfosForUniqueWork(WORK_NAME).await()
-        return workInfos.any { workInfo ->
-            workInfo.state == WorkInfo.State.ENQUEUED ||
-            workInfo.state == WorkInfo.State.RUNNING ||
-            workInfo.state == WorkInfo.State.BLOCKED
+        return try {
+            val workInfos = workManager.getWorkInfosForUniqueWork(WORK_NAME).await()
+            workInfos.any { workInfo ->
+                workInfo.state == WorkInfo.State.ENQUEUED ||
+                workInfo.state == WorkInfo.State.RUNNING ||
+                workInfo.state == WorkInfo.State.BLOCKED
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "ワーク状態の取得に失敗", e)
+            false
         }
     }
 

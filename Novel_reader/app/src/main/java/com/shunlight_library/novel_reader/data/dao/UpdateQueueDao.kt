@@ -37,4 +37,8 @@ interface UpdateQueueDao {
 
     @Query("SELECT COUNT(*) FROM update_queue")
     suspend fun getUpdateQueueCount(): Int
+
+    // すべての更新キューをクリア
+    @Query("DELETE FROM update_queue")
+    suspend fun clearAll()
 }

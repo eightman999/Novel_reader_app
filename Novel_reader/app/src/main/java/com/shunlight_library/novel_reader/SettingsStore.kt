@@ -98,6 +98,10 @@ class SettingsStore(private val context: Context) {
         private const val CUSTOM_FONT_NAME_PREFIX = "custom_font_name_"
         private const val CUSTOM_FONT_PATH_PREFIX = "custom_font_path_"
         private const val CUSTOM_FONT_TYPE_PREFIX = "custom_font_type_"
+
+        // 自動更新の最終実行時刻・最終プロンプト時刻
+        val LAST_AUTO_UPDATE_RUN_AT = longPreferencesKey("last_auto_update_run_at")
+        val LAST_BACKLOG_PROMPT_AT = longPreferencesKey("last_backlog_prompt_at")
         
         // 小説リストフィルター設定のキー
         val NOVEL_LIST_SORT_FIELD = stringPreferencesKey("novel_list_sort_field")
@@ -141,6 +145,8 @@ class SettingsStore(private val context: Context) {
     val defaultCustomFontPath = ""
     val defaultCustomFonts = emptySet<String>()
     val defaultLastNotifiedRelease = ""
+    val defaultLastAutoUpdateRunAt = 0L
+    val defaultLastBacklogPromptAt = 0L
     
     // 小説リストフィルター設定のデフォルト値
     val defaultNovelListSortField = "UPDATED_AT"
@@ -340,6 +346,45 @@ class SettingsStore(private val context: Context) {
         .map { preferences: Preferences ->
             preferences[LAST_NOTIFIED_RELEASE] ?: defaultLastNotifiedRelease
         }
+
+    // 自動更新: 最終実行時刻
+    val lastAutoUpdateRunAt: Flow<Long> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[LAST_AUTO_UPDATE_RUN_AT] ?: defaultLastAutoUpdateRunAt
+        }
+
+    // 自動更新: 最終バックログ確認プロンプト時刻
+    val lastBacklogPromptAt: Flow<Long> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[LAST_BACKLOG_PROMPT_AT] ?: defaultLastBacklogPromptAt
+        }
+
+    // 設定: 時刻の保存
+    suspend fun setLastAutoUpdateRunAt(ts: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_AUTO_UPDATE_RUN_AT] = ts
+        }
+    }
+
+    suspend fun setLastBacklogPromptAt(ts: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_BACKLOG_PROMPT_AT] = ts
+        }
+    }
 
     // カスタムフォントIDのリストを取得するFlow
     val customFontIds: Flow<Set<String>> = context.dataStore.data

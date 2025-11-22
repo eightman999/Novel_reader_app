@@ -74,6 +74,13 @@ class AutoUpdateWorker(
             // 次回のスケジュールを再設定
             reschedule()
 
+            // 成功実行時刻を記録
+            try {
+                SettingsStore(applicationContext).setLastAutoUpdateRunAt(System.currentTimeMillis())
+            } catch (e: Exception) {
+                Log.w(TAG, "最終自動更新実行時刻の保存に失敗", e)
+            }
+
             Log.d(TAG, "自動更新処理完了")
             Result.success()
         } catch (e: Exception) {
