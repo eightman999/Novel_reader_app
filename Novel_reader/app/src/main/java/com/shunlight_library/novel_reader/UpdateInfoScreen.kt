@@ -557,6 +557,9 @@ fun UpdateInfoScreen(
                                                                 val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                                                                 val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
+                                                                // カクヨムのエピソード一覧再取得フラグ（小説ごとに1回のみ再取得）
+                                                                var mappingRefreshed = false
+
                                                                 for (episodeNo in episodesList) {
                                                                     if (session.isCancelled()) {
                                                                         cancelledForNovel = true
@@ -568,8 +571,55 @@ fun UpdateInfoScreen(
 
                                                                     try {
                                                                         // データベースから既存のエピソード情報を取得（メタデータ取得時に保存されている）
-                                                                        val existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
-                                                                        val existingEpisode = existingEpisodes.find { it.episode_no == episodeNoStr }
+                                                                        var existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                                                                        var existingEpisode = existingEpisodes.find { it.episode_no == episodeNoStr }
+
+                                                                        // エピソード情報が見つからない場合、mapping情報が古い可能性があるため再取得
+                                                                        if (existingEpisode == null && !mappingRefreshed) {
+                                                                            Log.w(
+                                                                                "UpdateInfo",
+                                                                                "カクヨムエピソード情報が見つかりません（mapping再取得を試行）: ${queueItem.ncode}-$episodeNoStr"
+                                                                            )
+
+                                                                            try {
+                                                                                // エピソード一覧とマッピング情報を再取得
+                                                                                syncMessage = "「${novel.title}」のエピソード一覧を更新中..."
+                                                                                val (_, refreshedEpisodes) = adapter.fetchNovelMetadataWithEpisodeList(novel.ncode)
+
+                                                                                // エピソード情報をデータベースに保存
+                                                                                repository.insertEpisodes(refreshedEpisodes)
+
+                                                                                // マッピング情報をデータベースに保存
+                                                                                val mappings = adapter.getCachedMappings().map { (episodeNoInt, kakuyomuEpisodeId) ->
+                                                                                    com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                                                                        ncode = novel.ncode,
+                                                                                        episode_no = episodeNoInt,
+                                                                                        kakuyomu_episode_id = kakuyomuEpisodeId
+                                                                                    )
+                                                                                }
+                                                                                repository.insertEpisodeMappings(mappings)
+
+                                                                                Log.d(
+                                                                                    "UpdateInfo",
+                                                                                    "カクヨムエピソード一覧とマッピング情報を再取得完了: ${novel.ncode}, ${refreshedEpisodes.size}話, mapping: ${mappings.size}件"
+                                                                                )
+
+                                                                                // 再取得フラグを立てる（小説ごとに1回のみ）
+                                                                                mappingRefreshed = true
+
+                                                                                // 再度エピソード情報を取得
+                                                                                existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
+                                                                                existingEpisode = existingEpisodes.find { it.episode_no == episodeNoStr }
+
+                                                                                syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
+                                                                            } catch (refreshError: Exception) {
+                                                                                Log.e(
+                                                                                    "UpdateInfo",
+                                                                                    "カクヨムエピソード一覧の再取得エラー: ${novel.ncode}",
+                                                                                    refreshError
+                                                                                )
+                                                                            }
+                                                                        }
 
                                                                         if (existingEpisode != null) {
                                                                             // カクヨムエピソードIDをマッピングから取得
@@ -590,7 +640,7 @@ fun UpdateInfoScreen(
                                                                         } else {
                                                                             Log.e(
                                                                                 "UpdateInfo",
-                                                                                "カクヨムエピソード情報が見つかりません: ${queueItem.ncode}-$episodeNoStr"
+                                                                                "カクヨムエピソード情報が見つかりません（再取得後も見つからず）: ${queueItem.ncode}-$episodeNoStr"
                                                                             )
                                                                         }
                                                                     } catch (e: Exception) {
