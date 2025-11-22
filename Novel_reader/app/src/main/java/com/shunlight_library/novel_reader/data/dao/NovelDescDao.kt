@@ -34,7 +34,7 @@ interface NovelDescDao {
 
     @Query("SELECT * FROM novels_descs ORDER BY last_update_date DESC LIMIT :limit")
     fun getRecentlyUpdatedNovels(limit: Int): Flow<List<NovelDescEntity>>
-    @Query("SELECT * FROM novels_descs WHERE rating IN (1, 2, 3) OR rating IS NULL")
+    @Query("SELECT * FROM novels_descs")
     suspend fun getNovelsForUpdate(): List<NovelDescEntity>
 
     @Query("UPDATE novels_descs SET is_favorite = :isFavorite WHERE ncode = :ncode")

@@ -125,17 +125,11 @@ class AutoUpdateWorker(
                         }
 
                         try {
-                            // 新しいRepository APIを使用して更新チェック（マルチサイト対応）
-                            val hasUpdate = repository.checkNovelForUpdates(novel.ncode)
-
-                        if (hasUpdate) {
-                            // 更新がある場合、最新情報を取得するためにアダプター経由で詳細取得
+                            // サイト種別に応じて最新エピソード数を取得（API情報を1回だけ取得）
                             val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapter(novel.site_type)
-
-                            // サイト種別に応じて処理
                             val latestEpisodeCount = when (adapter.getSiteType()) {
                                 com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
-                                    // 小説家になろうの場合、APIから最新情報を取得
+                                    // 小説家になろうの場合、APIから最新情報を直接取得（1回のみ）
                                     val isR18 = novel.rating == 1
                                     val apiInfo = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelInfo(
                                         ncode = novel.ncode,
@@ -144,16 +138,23 @@ class AutoUpdateWorker(
                                     apiInfo?.generalAllNo ?: novel.total_ep
                                 }
                                 com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
-                                    // カクヨムの場合、HTMLスクレイピングで取得
+                                    // カクヨムの場合、checkForUpdatesを使用してHTMLから取得
                                     val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
-                                    val (updatedNovel, _) = adapter.fetchNovelWithEpisodes(workId)
-                                    updatedNovel.total_ep
+                                    val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
+
+                                    if (hasUpdate) {
+                                        // 更新がある場合のみ詳細を取得
+                                        val (updatedNovel, _) = adapter.fetchNovelWithEpisodes(workId)
+                                        updatedNovel.total_ep
+                                    } else {
+                                        novel.total_ep
+                                    }
                                 }
                                 else -> novel.total_ep
                             }
 
+                            // エピソード数を比較して更新キューに追加
                             if (latestEpisodeCount > novel.total_ep) {
-                                // 更新キューに追加
                                 val updateQueue = UpdateQueueEntity(
                                     ncode = novel.ncode,
                                     total_ep = latestEpisodeCount,
@@ -170,7 +171,6 @@ class AutoUpdateWorker(
 
                                 Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)")
                             }
-                        }
                         } finally {
                             // ロックを解放
                             com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishUpdate(session)
