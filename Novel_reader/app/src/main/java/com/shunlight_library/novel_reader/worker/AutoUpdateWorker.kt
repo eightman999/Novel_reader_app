@@ -152,11 +152,7 @@ class AutoUpdateWorker(
                                 else -> novel.total_ep
                             }
 
-                            var hasNewEpisodes = false
-                            var hasRevisedEpisodes = false
-                            
                             if (latestEpisodeCount > novel.total_ep) {
-                                hasNewEpisodes = true
                                 // 更新キューに追加
                                 val updateQueue = UpdateQueueEntity(
                                     ncode = novel.ncode,
@@ -165,57 +161,14 @@ class AutoUpdateWorker(
                                     update_time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
                                 )
                                 repository.insertUpdateQueue(updateQueue)
-                            }
 
-                            // 改稿チェック（小説家になろうのみ、短編を除く）
-                            if (adapter.getSiteType() == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU && novel.noveltype != 2) {
-                                try {
-                                    val revisionInfos = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisodeRevisionsFromToc(
-                                        ncode = novel.ncode,
-                                        isR18 = novel.rating == 1,
-                                        noveltype = novel.noveltype
-                                    )
-
-                                    if (revisionInfos.isNotEmpty()) {
-                                        val existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
-                                        val episodeMap = existingEpisodes.associateBy { it.episode_no.toIntOrNull() ?: 0 }
-
-                                        for (revisionInfo in revisionInfos) {
-                                            val existingEpisode = episodeMap[revisionInfo.episodeNo]
-                                            if (existingEpisode != null && revisionInfo.updateTime > existingEpisode.update_time) {
-                                                val updatedEpisode = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisodeWithRetry(
-                                                    ncode = novel.ncode,
-                                                    episodeNo = revisionInfo.episodeNo.toString(),
-                                                    isR18 = novel.rating == 1,
-                                                    noveltype = novel.noveltype
-                                                )
-
-                                                if (updatedEpisode != null) {
-                                                    val episodeWithRevisionTime = updatedEpisode.copy(
-                                                        update_time = revisionInfo.updateTime
-                                                    )
-                                                    repository.insertEpisode(episodeWithRevisionTime)
-                                                    hasRevisedEpisodes = true
-                                                }
-
-                                                kotlinx.coroutines.delay(200)
-                                            }
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "改稿チェックエラー: ${novel.ncode}", e)
-                                }
-                            }
-
-                            if (hasNewEpisodes || hasRevisedEpisodes) {
                                 if (novel.total_ep == 0) {
                                     newNovelsCount++
                                 } else {
                                     updatedNovelsCount++
                                 }
 
-                                val revisionMsg = if (hasRevisedEpisodes) " (改稿有)" else ""
-                                Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)$revisionMsg")
+                                Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)")
                             }
                         }
                         } finally {
