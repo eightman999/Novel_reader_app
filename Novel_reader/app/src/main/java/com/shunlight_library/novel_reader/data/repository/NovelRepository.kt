@@ -409,22 +409,40 @@ class NovelRepository(
                 }
 
                 // 小説情報とエピソード一覧を取得
-                val (novel, episodes) = when (adapter.getSiteType()) {
+                when (adapter.getSiteType()) {
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
                         // 小説家になろうの場合、URLからR18判定を取得してから小説データを取得
                         val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
                         val (ncode, isR18) = syosetuAdapter.extractNcodeWithR18FromUrl(url)
-                        syosetuAdapter.fetchNovelWithEpisodesR18(novelId, isR18)
+                        val (novel, episodes) = syosetuAdapter.fetchNovelWithEpisodesR18(novelId, isR18)
+
+                        // DBに保存
+                        insertNovel(novel)
+                        insertEpisodes(episodes)
+                    }
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                        // カクヨムの場合、マッピング情報も含めて取得
+                        val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(novelId)
+
+                        // DBに保存（マッピング情報も含む）
+                        insertNovel(result.novelDesc)
+                        insertKakuyomuEpisodesWithMappings(result.episodes, result.episodeMappings)
+                        AppLogger.d("NovelRepository", "カクヨム小説登録: ${result.novelDesc.title}, エピソード: ${result.episodes.size}話, マッピング: ${result.episodeMappings.size}件")
                     }
                     else -> {
                         // その他のサイトは通常の取得方法
-                        adapter.fetchNovelWithEpisodes(novelId)
+                        val (novel, episodes) = adapter.fetchNovelWithEpisodes(novelId)
+
+                        // DBに保存
+                        insertNovel(novel)
+                        insertEpisodes(episodes)
                     }
                 }
 
-                // DBに保存
-                insertNovel(novel)
-                insertEpisodes(episodes)
+                // 登録した小説情報を取得して返す
+                val novel = getNovelByNcode(novelId)
+                    ?: throw Exception("小説情報の取得に失敗しました")
 
                 // URL情報を保存（小説家になろうの場合）
                 if (adapter.getSiteType() == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU) {
@@ -479,22 +497,40 @@ class NovelRepository(
                 val adapter = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByNcode(ncode)
 
                 // 小説情報とエピソード一覧を取得
-                val (novel, episodes) = when (adapter.getSiteType()) {
+                when (adapter.getSiteType()) {
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
                         // 小説家になろうの場合、R18判定を渡す
                         val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
-                        syosetuAdapter.fetchNovelWithEpisodesR18(ncode, isR18)
+                        val (novel, episodes) = syosetuAdapter.fetchNovelWithEpisodesR18(ncode, isR18)
+
+                        // DBに保存
+                        insertNovel(novel)
+                        insertEpisodes(episodes)
+                    }
+                    com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                        // カクヨムの場合、Pseudo-NcodeからworkIdを抽出してマッピング情報も含めて取得
+                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                        val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(workId)
+
+                        // DBに保存（マッピング情報も含む）
+                        insertNovel(result.novelDesc)
+                        insertKakuyomuEpisodesWithMappings(result.episodes, result.episodeMappings)
+                        AppLogger.d("NovelRepository", "カクヨム小説登録: ${result.novelDesc.title}, エピソード: ${result.episodes.size}話, マッピング: ${result.episodeMappings.size}件")
                     }
                     else -> {
-                        // カクヨムの場合、Pseudo-NcodeからworkIdを抽出
-                        val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
-                        adapter.fetchNovelWithEpisodes(workId)
+                        // その他のサイト
+                        val (novel, episodes) = adapter.fetchNovelWithEpisodes(ncode)
+
+                        // DBに保存
+                        insertNovel(novel)
+                        insertEpisodes(episodes)
                     }
                 }
 
-                // DBに保存
-                insertNovel(novel)
-                insertEpisodes(episodes)
+                // 登録した小説情報を取得して返す
+                val novel = getNovelByNcode(ncode)
+                    ?: throw Exception("小説情報の取得に失敗しました")
 
                 // URL情報を保存（小説家になろうの場合）
                 if (adapter.getSiteType() == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU) {
@@ -601,8 +637,17 @@ class NovelRepository(
                         syosetuAdapter.generateEpisodeUrlR18(ncode, episodeNo, isR18)
                     }
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                        // カクヨムの場合、マッピングテーブルから実際のエピソードIDを取得
                         val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
-                        adapter.generateEpisodeUrl(workId, episodeNo)
+                        val kakuyomuEpisodeId = episodeMappingDao.getKakuyomuEpisodeId(ncode, episodeNo.toInt())
+
+                        if (kakuyomuEpisodeId != null) {
+                            adapter.generateEpisodeUrl(workId, kakuyomuEpisodeId)
+                        } else {
+                            // マッピングが見つからない場合は、episodeNoをそのまま使用（フォールバック）
+                            AppLogger.w("NovelRepository", "カクヨムエピソードマッピングが見つかりません: ncode=$ncode, episodeNo=$episodeNo")
+                            adapter.generateEpisodeUrl(workId, episodeNo)
+                        }
                     }
                     else -> null
                 }
