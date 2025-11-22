@@ -631,6 +631,9 @@ fun UpdateInfoScreen(
 
                                                                             // エピソード情報を更新（本文を追加）
                                                                             val updatedEpisode = existingEpisode.copy(body = episodeBody)
+
+                                                                            // 1話ずつデータベースに保存
+                                                                            repository.insertEpisode(updatedEpisode)
                                                                             episodes.add(updatedEpisode)
 
                                                                             Log.d(
@@ -680,6 +683,8 @@ fun UpdateInfoScreen(
                                                                         )
 
                                                                         if (episode != null) {
+                                                                            // 1話ずつデータベースに保存
+                                                                            repository.insertEpisode(episode)
                                                                             episodes.add(episode)
                                                                             Log.d(
                                                                                 "UpdateInfo",
@@ -728,8 +733,7 @@ fun UpdateInfoScreen(
                                                             }
 
                                                             if (episodes.isNotEmpty()) {
-                                                                repository.insertEpisodes(episodes)
-
+                                                                // エピソードは既に1話ずつ保存済みのため、ここでは総数更新のみ行う
                                                                 val updatedNovel = novel.copy(total_ep = endEpisode)
                                                                 repository.updateNovel(updatedNovel)
 

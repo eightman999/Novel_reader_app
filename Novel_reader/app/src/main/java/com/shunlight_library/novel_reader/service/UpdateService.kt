@@ -431,18 +431,22 @@ class UpdateService : Service() {
                 val newUpdatedAt: String
 
                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                    // カクヨムの場合、HTMLスクレイピングで全エピソードを取得
-                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                    // カクヨムの場合、HTMLスクレイピングでメタデータとエピソード一覧（本文なし）を取得
+                    val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                    val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
+                    // メタデータとエピソードリスト（本文なし）のみ取得
+                    val (updatedNovelDesc, episodeListWithoutBody) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
 
                     if (!isRunning || session.isCancelled()) {
                         updateComplete(false, "更新処理が中断されました")
                         return@launch
                     }
 
-                    generalAllNoValue = allEpisodes.size
+                    // マッピング情報を取得（fetchNovelMetadataWithEpisodeList内でキャッシュに保存されている）
+                    val mappings = kakuyomuAdapter.getCachedMappings()
+
+                    generalAllNoValue = episodeListWithoutBody.size
                     newUpdatedAt = updatedNovelDesc.updated_at
 
                     // 小説情報を更新
@@ -468,7 +472,7 @@ class UpdateService : Service() {
                     val existingEpisodeNos = existingEpisodes.map { it.episode_no }.toSet()
 
                     // 新規エピソードのみをフィルター
-                    val newEpisodes = allEpisodes.filter { it.episode_no !in existingEpisodeNos }
+                    val newEpisodes = episodeListWithoutBody.filter { it.episode_no !in existingEpisodeNos }
 
                     if (newEpisodes.isEmpty()) {
                         updateComplete(true, "ダウンロードするエピソードがありません")
@@ -479,18 +483,30 @@ class UpdateService : Service() {
 
                     var successCount = 0
 
-                    // カクヨムのエピソード本文を個別に取得（目次ページには本文がないため）
+                    // カクヨムのエピソード本文を1話ずつ取得→保存
                     newEpisodes.forEachIndexed { index, episode ->
                         if (!isRunning || session.isCancelled()) {
                             updateComplete(false, "更新処理が中断されました")
                             return@launch
                         }
 
-                        // エピソードIDを取得してエピソードページから本文を取得
-                        // 注: 現在のKakuyomuAdapterはエピソード本文の取得に対応していないため、
-                        // まずは本文なしでエピソードを挿入する
-                        repository.insertEpisode(episode)
-                        successCount++
+                        try {
+                            // エピソード番号からカクヨムの実際のエピソードIDを取得
+                            val episodeNoInt = episode.episode_no.toIntOrNull() ?: (index + novel.total_ep + 1)
+                            val kakuyomuEpisodeId = mappings[episodeNoInt] ?: episode.episode_no
+
+                            // エピソード本文を取得
+                            val episodeBody = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+
+                            // 本文を含めてエピソードを保存（1話ずつ）
+                            val episodeWithBody = episode.copy(body = episodeBody)
+                            repository.insertEpisode(episodeWithBody)
+                            successCount++
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to fetch episode ${episode.episode_no}: ${e.message}")
+                            // エラーでも処理を継続（本文なしで保存）
+                            repository.insertEpisode(episode)
+                        }
 
                         val progress = (index + 1).toFloat() / newEpisodes.size
                         updateProgress(0.3f + (0.7f * progress), "エピソードを取得中... (${index + 1}/${newEpisodes.size})")
@@ -511,6 +527,18 @@ class UpdateService : Service() {
                             updated_at = newUpdatedAt
                         )
                         repository.updateNovel(updatedNovelAfterDownload)
+
+                        // マッピング情報も保存（カクヨム用）
+                        if (mappings.isNotEmpty()) {
+                            val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                                com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                    ncode = ncode,
+                                    episode_no = episodeNo,
+                                    kakuyomu_episode_id = kakuyomuId
+                                )
+                            }
+                            repository.insertEpisodeMappings(mappingEntities)
+                        }
 
                         // 更新キューから削除（全エピソードダウンロード完了時）
                         if (updatedNovelAfterDownload.total_ep >= generalAllNoValue) {
@@ -679,18 +707,22 @@ class UpdateService : Service() {
                 val generalAllNoValue: Int
 
                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                    // カクヨムの場合、HTMLスクレイピングで全エピソードを再取得
-                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                    // カクヨムの場合、HTMLスクレイピングでメタデータとエピソード一覧（本文なし）を取得
+                    val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                    val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
+                    // メタデータとエピソードリスト（本文なし）のみ取得
+                    val (updatedNovelDesc, episodeListWithoutBody) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
 
                     if (!isRunning || session.isCancelled()) {
                         updateComplete(false, "更新処理が中断されました")
                         return@launch
                     }
 
-                    generalAllNoValue = allEpisodes.size
+                    // マッピング情報を取得
+                    val mappings = kakuyomuAdapter.getCachedMappings()
+
+                    generalAllNoValue = episodeListWithoutBody.size
 
                     // 小説情報を更新
                     val updatedNovel = novel.copy(
@@ -736,19 +768,32 @@ class UpdateService : Service() {
 
                     var successCount = 0
 
-                    // 再取得対象のエピソードを挿入
+                    // 再取得対象のエピソードを1話ずつ取得→保存
                     redownloadTargetNos.forEachIndexed { index, episodeNoInt ->
                         if (!isRunning || session.isCancelled()) {
                             updateComplete(false, "更新処理が中断されました")
                             return@launch
                         }
 
-                        // allEpisodesから該当するエピソードを探す
-                        val episodeToInsert = allEpisodes.find { it.episode_no == episodeNoInt.toString() }
+                        try {
+                            // エピソードリストから該当するエピソード情報（本文なし）を探す
+                            val episodeInfo = episodeListWithoutBody.find { it.episode_no == episodeNoInt.toString() }
 
-                        if (episodeToInsert != null) {
-                            repository.insertEpisode(episodeToInsert)
-                            successCount++
+                            if (episodeInfo != null) {
+                                // カクヨムの実際のエピソードIDを取得
+                                val kakuyomuEpisodeId = mappings[episodeNoInt] ?: episodeInfo.episode_no
+
+                                // エピソード本文を取得
+                                val episodeBody = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+
+                                // 本文を含めてエピソードを保存（1話ずつ）
+                                val episodeWithBody = episodeInfo.copy(body = episodeBody)
+                                repository.insertEpisode(episodeWithBody)
+                                successCount++
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to fetch episode $episodeNoInt: ${e.message}")
+                            // エラーでも処理を継続
                         }
 
                         val progress = (index + 1).toFloat() / redownloadTargetNos.size
@@ -760,6 +805,18 @@ class UpdateService : Service() {
                     if (!isRunning || session.isCancelled()) {
                         updateComplete(false, "更新処理が中断されました")
                         return@launch
+                    }
+
+                    // マッピング情報も保存（カクヨム用）
+                    if (mappings.isNotEmpty()) {
+                        val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                            com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                ncode = ncode,
+                                episode_no = episodeNo,
+                                kakuyomu_episode_id = kakuyomuId
+                            )
+                        }
+                        repository.insertEpisodeMappings(mappingEntities)
                     }
 
                     // 小説のtotal_ep値を更新
