@@ -495,8 +495,29 @@ class UpdateService : Service() {
                             val episodeNoInt = episode.episode_no.toIntOrNull() ?: (index + novel.total_ep + 1)
                             val kakuyomuEpisodeId = mappings[episodeNoInt] ?: episode.episode_no
 
-                            // エピソード本文を取得
-                            val episodeBody = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+                            // エピソード本文を取得（再試行あり）
+                            var episodeBody = ""
+                            var retryCount = 0
+                            val maxRetries = 3
+
+                            while (retryCount < maxRetries) {
+                                episodeBody = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+
+                                // 本文が空、またはエラーメッセージの場合は再試行
+                                if (episodeBody.isNotEmpty() && !episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                    break
+                                }
+
+                                retryCount++
+                                if (retryCount < maxRetries) {
+                                    Log.w(TAG, "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): ${episode.episode_no}")
+                                    delay(1000) // 1秒待機してから再試行
+                                }
+                            }
+
+                            if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                Log.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: ${episode.episode_no}")
+                            }
 
                             // 本文を含めてエピソードを保存（1話ずつ）
                             val episodeWithBody = episode.copy(body = episodeBody)
@@ -783,8 +804,29 @@ class UpdateService : Service() {
                                 // カクヨムの実際のエピソードIDを取得
                                 val kakuyomuEpisodeId = mappings[episodeNoInt] ?: episodeInfo.episode_no
 
-                                // エピソード本文を取得
-                                val episodeBody = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+                                // エピソード本文を取得（再試行あり）
+                                var episodeBody = ""
+                                var retryCount = 0
+                                val maxRetries = 3
+
+                                while (retryCount < maxRetries) {
+                                    episodeBody = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+
+                                    // 本文が空、またはエラーメッセージの場合は再試行
+                                    if (episodeBody.isNotEmpty() && !episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                        break
+                                    }
+
+                                    retryCount++
+                                    if (retryCount < maxRetries) {
+                                        Log.w(TAG, "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): $episodeNoInt")
+                                        delay(1000) // 1秒待機してから再試行
+                                    }
+                                }
+
+                                if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                    Log.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: $episodeNoInt")
+                                }
 
                                 // 本文を含めてエピソードを保存（1話ずつ）
                                 val episodeWithBody = episodeInfo.copy(body = episodeBody)
