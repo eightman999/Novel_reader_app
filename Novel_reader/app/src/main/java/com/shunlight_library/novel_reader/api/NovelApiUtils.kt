@@ -834,16 +834,17 @@ object NovelApiUtils {
                 }
 
                 // エピソードリストを解析
-                // なろう小説の目次構造:
-                // <div class="index_box">
-                //   <dl class="novel_sublist2">
-                //     <dd class="subtitle">
-                //       <a href="/ncode/1/">第1話 タイトル</a>
-                //     </dd>
-                //     <dt class="long_update">2024/01/01 12:00<span class="long_update">（改稿）</span></dt>
-                //   </dl>
+                // なろう小説の目次構造（2025年版）:
+                // <div class="p-eplist">
+                //   <div class="p-eplist__sublist">
+                //     <a href="/ncode/1/" class="p-eplist__subtitle">第1話 タイトル</a>
+                //     <div class="p-eplist__update">
+                //       2024/01/01 12:00
+                //       <span title="2024/01/02 15:00 改稿">（<u>改</u>）</span>
+                //     </div>
+                //   </div>
                 // </div>
-                val episodeElements = doc.select("div.index_box dl.novel_sublist2")
+                val episodeElements = doc.select("div.p-eplist div.p-eplist__sublist")
 
                 if (episodeElements.isEmpty()) {
                     Log.d(TAG, "エピソードが見つかりません。最終ページに到達: page=$currentPage")
@@ -854,7 +855,7 @@ object NovelApiUtils {
                 for (element in episodeElements) {
                     try {
                         // エピソード番号を取得（URLから抽出）
-                        val episodeLink = element.select("dd.subtitle a").attr("href")
+                        val episodeLink = element.select("a.p-eplist__subtitle").attr("href")
                         val episodeNoMatch = Regex("/(\\d+)/?$").find(episodeLink)
                         val episodeNo = episodeNoMatch?.groupValues?.get(1)?.toIntOrNull()
 
@@ -864,13 +865,14 @@ object NovelApiUtils {
                         }
 
                         // エピソードタイトルを取得
-                        val title = element.select("dd.subtitle a").text()
+                        val title = element.select("a.p-eplist__subtitle").text()
 
                         // 更新日時を取得
-                        val updateElement = element.select("dt.long_update")
+                        val updateElement = element.select("div.p-eplist__update")
                         var updateTimeStr = updateElement.text()
                             .replace("（改）", "")
                             .replace("（改稿）", "")
+                            .replace(Regex("\\(\\s*<u>改</u>\\s*\\)"), "")  // HTMLタグ付き改稿マークを除去
                             .trim()
 
                         // 日時フォーマットを変換: "2024/01/01 12:00" -> "2024-01-01 12:00:00"
