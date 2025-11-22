@@ -52,6 +52,7 @@ class UpdateService : Service() {
         const val UPDATE_TYPE_DOWNLOAD = 2
         const val UPDATE_TYPE_FIX_ERRORS = 3
         const val UPDATE_TYPE_BULK_UPDATE = 4
+        const val UPDATE_TYPE_CHECK_REVISION = 5
     }
 
     // Service binding
@@ -119,6 +120,7 @@ class UpdateService : Service() {
                         UPDATE_TYPE_DOWNLOAD -> downloadEpisodes(ncode)
                         UPDATE_TYPE_FIX_ERRORS -> fixEpisodeErrors(ncode)
                         UPDATE_TYPE_BULK_UPDATE -> performBulkUpdate()
+                        UPDATE_TYPE_CHECK_REVISION -> checkRevision(ncode)
                     }
                 }
             }
@@ -363,13 +365,8 @@ class UpdateService : Service() {
                     return@launch
                 }
 
-                var hasNewEpisodes = false
-                var hasRevisedEpisodes = false
-                var revisedCount = 0
-
                 // Check for new episodes
                 if (generalAllNo > novel.general_all_no) {
-                    hasNewEpisodes = true
                     // Add to update queue
                     val updateQueue = UpdateQueueEntity(
                         ncode = novel.ncode,
@@ -378,86 +375,10 @@ class UpdateService : Service() {
                         update_time = updatedAt
                     )
                     repository.insertUpdateQueue(updateQueue)
-                }
 
-                // Check for episode revisions (小説家になろうのみ、短編を除く)
-                if (novel.site_type != NovelSiteAdapter.SITE_TYPE_KAKUYOMU && novel.noveltype != 2) {
-                    updateProgress(0.5f, "改稿情報を確認中...")
-
-                    if (!isRunning || session.isCancelled()) {
-                        updateComplete(false, "更新処理が中断されました")
-                        return@launch
-                    }
-
-                    try {
-                        // 目次から改稿情報を取得
-                        val revisionInfos = NovelApiUtils.fetchEpisodeRevisionsFromToc(
-                            ncode = ncode,
-                            isR18 = novel.rating == 1,
-                            noveltype = novel.noveltype
-                        )
-
-                        if (revisionInfos.isNotEmpty()) {
-                            // 既存のエピソードを取得
-                            val existingEpisodes = repository.getEpisodesByNcode(ncode).first()
-                            val episodeMap = existingEpisodes.associateBy { it.episode_no.toIntOrNull() ?: 0 }
-
-                            // 改稿されたエピソードをチェック
-                            for (revisionInfo in revisionInfos) {
-                                val existingEpisode = episodeMap[revisionInfo.episodeNo]
-                                if (existingEpisode != null) {
-                                    // 改稿日時を比較（目次の日時が新しい場合は改稿あり）
-                                    if (revisionInfo.updateTime > existingEpisode.update_time) {
-                                        // エピソードを再取得
-                                        val updatedEpisode = NovelApiUtils.fetchEpisodeWithRetry(
-                                            ncode = ncode,
-                                            episodeNo = revisionInfo.episodeNo.toString(),
-                                            isR18 = novel.rating == 1,
-                                            noveltype = novel.noveltype
-                                        )
-
-                                        if (updatedEpisode != null) {
-                                            // update_timeを目次から取得した改稿日時で更新
-                                            val episodeWithRevisionTime = updatedEpisode.copy(
-                                                update_time = revisionInfo.updateTime
-                                            )
-                                            repository.insertEpisode(episodeWithRevisionTime)
-                                            hasRevisedEpisodes = true
-                                            revisedCount++
-                                            Log.d(TAG, "改稿を検出: 第${revisionInfo.episodeNo}話 (${revisionInfo.updateTime})")
-                                        }
-
-                                        // サーバー負荷軽減
-                                        delay(200)
-
-                                        if (!isRunning || session.isCancelled()) {
-                                            updateComplete(false, "更新処理が中断されました")
-                                            return@launch
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "改稿チェックエラー", e)
-                        // 改稿チェック失敗は致命的エラーではないため、処理を継続
-                    }
-                }
-
-                // 結果を表示
-                when {
-                    hasNewEpisodes && hasRevisedEpisodes -> {
-                        updateComplete(true, "更新が見つかりました（新規エピソード有、改稿${revisedCount}話）。更新キューに追加しました。")
-                    }
-                    hasNewEpisodes -> {
-                        updateComplete(true, "更新が見つかりました。更新キューに追加しました。")
-                    }
-                    hasRevisedEpisodes -> {
-                        updateComplete(true, "改稿が見つかりました（${revisedCount}話を更新）。")
-                    }
-                    else -> {
-                        updateComplete(true, "この小説に更新はありません")
-                    }
+                    updateComplete(true, "更新が見つかりました。更新キューに追加しました。")
+                } else {
+                    updateComplete(true, "この小説に更新はありません")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update check error", e)
@@ -1143,6 +1064,144 @@ class UpdateService : Service() {
                 currentUpdateSession?.let {
                     NovelUpdateCoordinator.finishUpdate(it)
                     currentUpdateSession = null
+                }
+            }
+        }
+    }
+
+    private fun checkRevision(ncode: String) {
+        serviceScope.launch {
+            val session = NovelUpdateCoordinator.beginUpdate(ncode)
+            if (session == null) {
+                updateComplete(false, "この小説はすでに更新処理中です")
+                return@launch
+            }
+
+            currentUpdateSession = session
+            currentNcode = ncode
+
+            try {
+                updateProgress(0.1f, "小説情報を取得中...")
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
+                // Get current novel info
+                val novel = repository.getNovelByNcode(ncode)
+                if (novel == null) {
+                    updateComplete(false, "小説情報が見つかりませんでした")
+                    return@launch
+                }
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
+                // カクヨムまたは短編小説の場合は改稿チェックをスキップ
+                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    updateComplete(false, "カクヨムは改稿チェックに対応していません")
+                    return@launch
+                }
+
+                if (novel.noveltype == 2) {
+                    updateComplete(false, "短編小説は改稿チェックに対応していません")
+                    return@launch
+                }
+
+                updateProgress(0.2f, "改稿情報を確認中...")
+
+                if (!isRunning || session.isCancelled()) {
+                    updateComplete(false, "更新処理が中断されました")
+                    return@launch
+                }
+
+                var revisedCount = 0
+
+                try {
+                    // 目次から改稿情報を取得
+                    val revisionInfos = NovelApiUtils.fetchEpisodeRevisionsFromToc(
+                        ncode = ncode,
+                        isR18 = novel.rating == 1,
+                        noveltype = novel.noveltype
+                    )
+
+                    if (revisionInfos.isEmpty()) {
+                        updateComplete(true, "改稿は見つかりませんでした")
+                        return@launch
+                    }
+
+                    // 既存のエピソードを取得
+                    val existingEpisodes = repository.getEpisodesByNcode(ncode).first()
+                    val episodeMap = existingEpisodes.associateBy { it.episode_no.toIntOrNull() ?: 0 }
+
+                    if (!isRunning || session.isCancelled()) {
+                        updateComplete(false, "更新処理が中断されました")
+                        return@launch
+                    }
+
+                    updateProgress(0.3f, "改稿されたエピソードを確認中... (0/${revisionInfos.size})")
+
+                    // 改稿されたエピソードをチェック
+                    var processedCount = 0
+                    for (revisionInfo in revisionInfos) {
+                        val existingEpisode = episodeMap[revisionInfo.episodeNo]
+                        if (existingEpisode != null) {
+                            // 改稿日時を比較（目次の日時が新しい場合は改稿あり）
+                            if (revisionInfo.updateTime > existingEpisode.update_time) {
+                                // エピソードを再取得
+                                val updatedEpisode = NovelApiUtils.fetchEpisodeWithRetry(
+                                    ncode = ncode,
+                                    episodeNo = revisionInfo.episodeNo.toString(),
+                                    isR18 = novel.rating == 1,
+                                    noveltype = novel.noveltype
+                                )
+
+                                if (updatedEpisode != null) {
+                                    // update_timeを目次から取得した改稿日時で更新
+                                    val episodeWithRevisionTime = updatedEpisode.copy(
+                                        update_time = revisionInfo.updateTime
+                                    )
+                                    repository.insertEpisode(episodeWithRevisionTime)
+                                    revisedCount++
+                                    Log.d(TAG, "改稿を検出: 第${revisionInfo.episodeNo}話 (${revisionInfo.updateTime})")
+                                }
+
+                                // サーバー負荷軽減
+                                delay(200)
+
+                                if (!isRunning || session.isCancelled()) {
+                                    updateComplete(false, "更新処理が中断されました")
+                                    return@launch
+                                }
+                            }
+                        }
+
+                        processedCount++
+                        val progress = processedCount.toFloat() / revisionInfos.size
+                        updateProgress(0.3f + (0.7f * progress), "改稿されたエピソードを確認中... ($processedCount/${revisionInfos.size})")
+                    }
+
+                    if (revisedCount > 0) {
+                        updateComplete(true, "改稿が見つかりました（${revisedCount}話を更新）。")
+                    } else {
+                        updateComplete(true, "改稿は見つかりませんでした")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "改稿チェックエラー", e)
+                    updateComplete(false, "エラー: ${e.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Revision check error", e)
+                updateComplete(false, "エラー: ${e.message}")
+            } finally {
+                if (currentUpdateSession === session) {
+                    NovelUpdateCoordinator.finishUpdate(session)
+                    currentUpdateSession = null
+                } else {
+                    NovelUpdateCoordinator.finishUpdate(session)
                 }
             }
         }
