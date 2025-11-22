@@ -626,11 +626,35 @@ fun UpdateInfoScreen(
                                                                             val kakuyomuEpisodeId = repository.getKakuyomuEpisodeId(novel.ncode, episodeNo)
                                                                                 ?: existingEpisode.episode_no
 
-                                                                            // エピソード本文を取得
-                                                                            val episodeBody = adapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+                                                                            // エピソード本文を取得（再試行あり）
+                                                                            var episodeBody = ""
+                                                                            var retryCount = 0
+                                                                            val maxRetries = 3
+
+                                                                            while (retryCount < maxRetries) {
+                                                                                episodeBody = adapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
+
+                                                                                // 本文が空、またはエラーメッセージの場合は再試行
+                                                                                if (episodeBody.isNotEmpty() && !episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                                                                    break
+                                                                                }
+
+                                                                                retryCount++
+                                                                                if (retryCount < maxRetries) {
+                                                                                    Log.w("UpdateInfo", "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): ${queueItem.ncode}-$episodeNoStr")
+                                                                                    delay(1000) // 1秒待機してから再試行
+                                                                                }
+                                                                            }
+
+                                                                            if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                                                                Log.e("UpdateInfo", "Failed to fetch episode body after ${maxRetries} retries: ${queueItem.ncode}-$episodeNoStr")
+                                                                            }
 
                                                                             // エピソード情報を更新（本文を追加）
                                                                             val updatedEpisode = existingEpisode.copy(body = episodeBody)
+
+                                                                            // 1話ずつデータベースに保存
+                                                                            repository.insertEpisode(updatedEpisode)
                                                                             episodes.add(updatedEpisode)
 
                                                                             Log.d(
@@ -680,6 +704,8 @@ fun UpdateInfoScreen(
                                                                         )
 
                                                                         if (episode != null) {
+                                                                            // 1話ずつデータベースに保存
+                                                                            repository.insertEpisode(episode)
                                                                             episodes.add(episode)
                                                                             Log.d(
                                                                                 "UpdateInfo",
@@ -728,8 +754,7 @@ fun UpdateInfoScreen(
                                                             }
 
                                                             if (episodes.isNotEmpty()) {
-                                                                repository.insertEpisodes(episodes)
-
+                                                                // エピソードは既に1話ずつ保存済みのため、ここでは総数更新のみ行う
                                                                 val updatedNovel = novel.copy(total_ep = endEpisode)
                                                                 repository.updateNovel(updatedNovel)
 

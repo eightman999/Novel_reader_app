@@ -114,6 +114,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 6. Maintain reading progress and bookmark functionality in EpisodeViewScreen
 7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`
 8. **Commit Messages**: Always write commit messages in Japanese
+9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 
 #### Back Navigation Implementation
 **必須**: Android標準のナビゲーションバーのバックハンドラーを使用する
