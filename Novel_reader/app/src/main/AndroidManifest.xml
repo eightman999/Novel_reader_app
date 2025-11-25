@@ -55,7 +55,7 @@
 
         <!-- 通知アクション用のBroadcastReceiver -->
         <receiver
-                android:name=".receiver.DownloadActionReceiver"
+                android:name=".receiver.DownloadAllReceiver"
                 android:exported="false">
             <intent-filter>
                 <action android:name="com.shunlight_library.novel_reader.ACTION_DOWNLOAD_ALL" />

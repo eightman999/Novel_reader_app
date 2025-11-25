@@ -47,9 +47,10 @@ import android.content.Intent
 import com.shunlight_library.novel_reader.service.UpdateService
 
 enum class UpdateType {
-    UPDATE,      // 更新（新しいエピソードのみチェック）
-    REDOWNLOAD,  // 再取得（すべて削除して再取得）
-    FIX_ERRORS   // エラー修正（エラーや欠番のあるエピソードのみ修正）
+    UPDATE,         // 更新（新しいエピソードのみチェック）
+    REDOWNLOAD,     // 再取得（すべて削除して再取得）
+    FIX_ERRORS,     // エラー修正（エラーや欠番のあるエピソードのみ修正）
+    CHECK_REVISION  // 改稿チェック（既存エピソードの改稿を確認）
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,6 +159,39 @@ fun EpisodeListScreen(
         // ダイアログを閉じて通知を表示
         showUpdateDialog = false
         Toast.makeText(context, "バックグラウンドで更新処理を開始しました", Toast.LENGTH_SHORT).show()
+    }
+
+    // 「改稿チェック」実行関数（UpdateService経由でバックグラウンド実行）
+    fun performCheckRevision() {
+        val targetNovel = novel
+        if (targetNovel == null) {
+            Toast.makeText(context, "小説情報が読み込まれていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // カクヨムは非対応
+        if (targetNovel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+            Toast.makeText(context, "カクヨムは改稿チェックに対応していません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 短編も非対応
+        if (targetNovel.noveltype == 2) {
+            Toast.makeText(context, "短編小説は改稿チェックに対応していません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // UpdateServiceを起動して改稿チェックを実行
+        val intent = Intent(context, UpdateService::class.java).apply {
+            action = UpdateService.ACTION_START_UPDATE
+            putExtra(UpdateService.EXTRA_NCODE, targetNovel.ncode)
+            putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_CHECK_REVISION)
+        }
+        context.startService(intent)
+
+        // ダイアログを閉じて通知を表示
+        showUpdateDialog = false
+        Toast.makeText(context, "バックグラウンドで改稿チェックを開始しました", Toast.LENGTH_SHORT).show()
     }
 
     // 旧実装（UI処理版、参考用にコメントアウト）
@@ -1146,6 +1180,31 @@ fun EpisodeListScreen(
                                 )
                             }
                         }
+
+                        // 改稿チェック
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = selectedUpdateType == UpdateType.CHECK_REVISION,
+                                    onClick = { selectedUpdateType = UpdateType.CHECK_REVISION }
+                                )
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedUpdateType == UpdateType.CHECK_REVISION,
+                                onClick = { selectedUpdateType = UpdateType.CHECK_REVISION }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("改稿チェック", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "既存エピソードの改稿を確認して再取得します（小説家になろうのみ）",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
                     }
                 }
             },
@@ -1157,6 +1216,7 @@ fun EpisodeListScreen(
                             UpdateType.UPDATE -> performUpdate()
                             UpdateType.REDOWNLOAD -> performRedownload()
                             UpdateType.FIX_ERRORS -> performErrorFix()
+                            UpdateType.CHECK_REVISION -> performCheckRevision()
                         }
                     },
                     enabled = !isUpdating
@@ -1345,51 +1405,6 @@ fun EpisodeListScreen(
                             expanded = isMenuExpanded,
                             onDismissRequest = { isMenuExpanded = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("改稿チェック") },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                onClick = {
-                                    isMenuExpanded = false
-                                    // 改稿チェックを実行
-                                    scope.launch {
-                                        novel?.let { targetNovel ->
-                                            // カクヨムまたは短編小説の場合はスキップ
-                                            if (targetNovel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "カクヨムは改稿チェックに対応していません",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                return@launch
-                                            }
-
-                                            if (targetNovel.noveltype == 2) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "短編小説は改稿チェックに対応していません",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                return@launch
-                                            }
-
-                                            // UpdateService を起動して改稿チェックを実行
-                                            val intent = Intent(context, UpdateService::class.java).apply {
-                                                action = UpdateService.ACTION_START_UPDATE
-                                                putExtra(UpdateService.EXTRA_NCODE, targetNovel.ncode)
-                                                putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_CHECK_REVISION)
-                                            }
-                                            context.startService(intent)
-
-                                            Toast.makeText(
-                                                context,
-                                                "改稿チェックを開始しました",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
-                                },
-                                enabled = novel != null && !isUpdating
-                            )
                             DropdownMenuItem(
                                 text = { Text("小説を削除") },
                                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },

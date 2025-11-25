@@ -94,34 +94,74 @@ class SyosetuAdapter : NovelSiteAdapter {
     }
 
     /**
-     * R18判定付きで小説情報とエピソード一覧を取得
+     * R18判定付きで小説情報とエピソード一覧を取得（1話ずつ保存）
      * Repository層から呼び出される際に使用
+     * メモリリーク防止のため、1話取得→保存→次の話、という方式で処理する。
+     *
+     * @param novelId 小説のNcode
+     * @param isR18 R18作品かどうか
+     * @param repository 保存先リポジトリ（nullの場合は旧方式でメモリに保持）
+     * @param onProgress 進捗コールバック (current, total) -> Unit
+     * @return Pair<NovelDescEntity, List<EpisodeEntity>>
      */
-    suspend fun fetchNovelWithEpisodesR18(novelId: String, isR18: Boolean): Pair<NovelDescEntity, List<EpisodeEntity>> = withContext(Dispatchers.IO) {
+    suspend fun fetchNovelWithEpisodesR18(
+        novelId: String,
+        isR18: Boolean,
+        repository: com.shunlight_library.novel_reader.data.repository.NovelRepository? = null,
+        onProgress: ((Int, Int) -> Unit)? = null
+    ): Pair<NovelDescEntity, List<EpisodeEntity>> = withContext(Dispatchers.IO) {
         // 小説情報を取得
         val novelDesc = NovelApiUtils.fetchNovelDetails(novelId, isR18)
             ?: throw Exception("Failed to fetch novel details for ncode: $novelId")
 
-        // エピソード一覧を取得
-        val episodes = mutableListOf<EpisodeEntity>()
-        for (episodeNo in 1..novelDesc.general_all_no) {
-            val episode = NovelApiUtils.fetchEpisodeWithRetry(
-                ncode = novelId,
-                episodeNo = episodeNo.toString(),
-                isR18 = isR18,
-                noveltype = novelDesc.noveltype
-            )
-            if (episode != null) {
-                episodes.add(episode)
-            } else {
-                AppLogger.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
-            }
-        }
-
         // NovelDescEntityにsite_typeを設定
         val updatedNovelDesc = novelDesc.copy(site_type = NovelSiteAdapter.SITE_TYPE_SYOSETU)
 
-        Pair(updatedNovelDesc, episodes)
+        // repositoryが指定されている場合は1話ずつ保存
+        if (repository != null) {
+            // 1話ずつ取得→保存（メモリリーク防止）
+            for (episodeNo in 1..novelDesc.general_all_no) {
+                val episode = NovelApiUtils.fetchEpisodeWithRetry(
+                    ncode = novelId,
+                    episodeNo = episodeNo.toString(),
+                    isR18 = isR18,
+                    noveltype = novelDesc.noveltype
+                )
+
+                if (episode != null) {
+                    // 1話ずつ保存
+                    repository.insertEpisode(episode)
+                } else {
+                    AppLogger.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
+                }
+
+                // 進捗通知
+                onProgress?.invoke(episodeNo, novelDesc.general_all_no)
+            }
+
+            AppLogger.d("SyosetuAdapter", "小説とエピソード取得完了（1話ずつ保存）: ${novelDesc.title}, ${novelDesc.general_all_no}話")
+
+            // 空リストを返す（すでに保存済み）
+            return@withContext Pair(updatedNovelDesc, emptyList())
+        } else {
+            // 旧方式：全話をメモリに保持（後方互換性のため残す）
+            val episodes = mutableListOf<EpisodeEntity>()
+            for (episodeNo in 1..novelDesc.general_all_no) {
+                val episode = NovelApiUtils.fetchEpisodeWithRetry(
+                    ncode = novelId,
+                    episodeNo = episodeNo.toString(),
+                    isR18 = isR18,
+                    noveltype = novelDesc.noveltype
+                )
+                if (episode != null) {
+                    episodes.add(episode)
+                } else {
+                    AppLogger.w("SyosetuAdapter", "Failed to fetch episode $episodeNo for ncode: $novelId")
+                }
+            }
+
+            return@withContext Pair(updatedNovelDesc, episodes)
+        }
     }
 
     /**
