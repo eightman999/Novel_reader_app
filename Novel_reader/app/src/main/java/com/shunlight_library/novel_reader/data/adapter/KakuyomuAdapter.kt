@@ -1552,7 +1552,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * HTMLエスケープ文字をデコード
      * Pascalコードの Restore2RealChar 関数を参考
      */
-    private fun decodeHtmlEntities(text: String): String {
+    internal fun decodeHtmlEntities(text: String): String {
         var decoded = text
         // 基本的なHTMLエスケープ文字（Jsoupで処理されない場合に備えて）
         decoded = decoded.replace("&lt;", "<")
@@ -1573,7 +1573,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * 16進数: &#x4E00;
      * Pascalコードの Restore2RealChar 関数を参考
      */
-    private fun decodeNumericEntities(text: String): String {
+    internal fun decodeNumericEntities(text: String): String {
         var decoded = text
 
         // 16進数形式: &#x????;
@@ -1605,7 +1605,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * Unicodeエスケープ文字をデコード（\uxxxx 形式）
      * Pascalコードの Restore2RealChar 関数を参考
      */
-    private fun decodeUnicodeEscapes(text: String): String {
+    internal fun decodeUnicodeEscapes(text: String): String {
         val pattern = Regex("\\\\u([0-9A-Fa-f]{4})")
         return pattern.replace(text) { matchResult ->
             try {
