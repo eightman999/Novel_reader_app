@@ -419,7 +419,7 @@ class NovelRepository(
                         val (novelDesc, _) = syosetuAdapter.fetchNovelWithEpisodesR18(
                             novelId = novelId,
                             isR18 = isR18,
-                            repository = this,  // 自身を渡す
+                            repository = this@NovelRepository,  // 自身を渡す
                             onProgress = { current, total ->
                                 AppLogger.d("NovelRepository", "[$novelId] エピソード取得中: $current/$total")
                             }
@@ -434,7 +434,7 @@ class NovelRepository(
                         val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                         val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(
                             novelId = novelId,
-                            repository = this,  // 自身を渡す
+                            repository = this@NovelRepository,  // 自身を渡す
                             onProgress = { current, total ->
                                 AppLogger.d("NovelRepository", "[$novelId] エピソード取得中: $current/$total")
                             }
@@ -529,7 +529,7 @@ class NovelRepository(
                         val (novelDesc, _) = syosetuAdapter.fetchNovelWithEpisodesR18(
                             novelId = ncode,
                             isR18 = isR18,
-                            repository = this,  // 自身を渡す
+                            repository = this@NovelRepository,  // 自身を渡す
                             onProgress = { current, total ->
                                 AppLogger.d("NovelRepository", "[$ncode] エピソード取得中: $current/$total")
                             }
@@ -545,7 +545,7 @@ class NovelRepository(
                         val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                         val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(
                             novelId = workId,
-                            repository = this,  // 自身を渡す
+                            repository = this@NovelRepository,  // 自身を渡す
                             onProgress = { current, total ->
                                 AppLogger.d("NovelRepository", "[$ncode] エピソード取得中: $current/$total")
                             }
