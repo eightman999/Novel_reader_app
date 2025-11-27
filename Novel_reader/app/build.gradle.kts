@@ -21,8 +21,8 @@ android {
 
     buildTypes {
         debug {
-            // 開発環境: バージョン名に δ を追加
-            versionNameSuffix = "δ"
+            // 開発環境: バージョン名に@δ を追加
+            versionNameSuffix = "@δ"
             // ログ出力を許可
             buildConfigField("boolean", "ENABLE_LOGGING", "true")
         }
