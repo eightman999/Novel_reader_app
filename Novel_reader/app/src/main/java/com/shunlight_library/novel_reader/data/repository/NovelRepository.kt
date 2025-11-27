@@ -414,21 +414,46 @@ class NovelRepository(
                         // 小説家になろうの場合、URLからR18判定を取得してから小説データを取得
                         val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
                         val (ncode, isR18) = syosetuAdapter.extractNcodeWithR18FromUrl(url)
-                        val (novel, episodes) = syosetuAdapter.fetchNovelWithEpisodesR18(novelId, isR18)
 
-                        // DBに保存
-                        insertNovel(novel)
-                        insertEpisodes(episodes)
+                        // 1話ずつ保存する新方式
+                        val (novelDesc, _) = syosetuAdapter.fetchNovelWithEpisodesR18(
+                            novelId = novelId,
+                            isR18 = isR18,
+                            repository = this,  // 自身を渡す
+                            onProgress = { current, total ->
+                                AppLogger.d("NovelRepository", "[$novelId] エピソード取得中: $current/$total")
+                            }
+                        )
+
+                        // 小説情報を保存
+                        insertNovel(novelDesc)
+                        AppLogger.d("NovelRepository", "小説家になろう小説登録（1話ずつ保存）: ${novelDesc.title}, ${novelDesc.general_all_no}話")
                     }
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
-                        // カクヨムの場合、マッピング情報も含めて取得
+                        // カクヨムの場合、マッピング情報も含めて1話ずつ保存
                         val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
-                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(novelId)
+                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(
+                            novelId = novelId,
+                            repository = this,  // 自身を渡す
+                            onProgress = { current, total ->
+                                AppLogger.d("NovelRepository", "[$novelId] エピソード取得中: $current/$total")
+                            }
+                        )
 
-                        // DBに保存（マッピング情報も含む）
+                        // 小説情報を保存
                         insertNovel(result.novelDesc)
-                        insertKakuyomuEpisodesWithMappings(result.episodes, result.episodeMappings)
-                        AppLogger.d("NovelRepository", "カクヨム小説登録: ${result.novelDesc.title}, エピソード: ${result.episodes.size}話, マッピング: ${result.episodeMappings.size}件")
+
+                        // マッピング情報を保存
+                        val mappingEntities = result.episodeMappings.map { (episodeNo, kakuyomuId) ->
+                            com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                ncode = result.novelDesc.ncode,
+                                episode_no = episodeNo,
+                                kakuyomu_episode_id = kakuyomuId
+                            )
+                        }
+                        insertEpisodeMappings(mappingEntities)
+
+                        AppLogger.d("NovelRepository", "カクヨム小説登録（1話ずつ保存）: ${result.novelDesc.title}, マッピング: ${result.episodeMappings.size}件")
                     }
                     else -> {
                         // その他のサイトは通常の取得方法
@@ -499,24 +524,47 @@ class NovelRepository(
                 // 小説情報とエピソード一覧を取得
                 when (adapter.getSiteType()) {
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
-                        // 小説家になろうの場合、R18判定を渡す
+                        // 小説家になろうの場合、R18判定を渡して1話ずつ保存
                         val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
-                        val (novel, episodes) = syosetuAdapter.fetchNovelWithEpisodesR18(ncode, isR18)
+                        val (novelDesc, _) = syosetuAdapter.fetchNovelWithEpisodesR18(
+                            novelId = ncode,
+                            isR18 = isR18,
+                            repository = this,  // 自身を渡す
+                            onProgress = { current, total ->
+                                AppLogger.d("NovelRepository", "[$ncode] エピソード取得中: $current/$total")
+                            }
+                        )
 
-                        // DBに保存
-                        insertNovel(novel)
-                        insertEpisodes(episodes)
+                        // 小説情報を保存
+                        insertNovel(novelDesc)
+                        AppLogger.d("NovelRepository", "小説家になろう小説登録（1話ずつ保存）: ${novelDesc.title}, ${novelDesc.general_all_no}話")
                     }
                     com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
-                        // カクヨムの場合、Pseudo-NcodeからworkIdを抽出してマッピング情報も含めて取得
+                        // カクヨムの場合、Pseudo-NcodeからworkIdを抽出してマッピング情報も含めて1話ずつ保存
                         val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
                         val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
-                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(workId)
+                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(
+                            novelId = workId,
+                            repository = this,  // 自身を渡す
+                            onProgress = { current, total ->
+                                AppLogger.d("NovelRepository", "[$ncode] エピソード取得中: $current/$total")
+                            }
+                        )
 
-                        // DBに保存（マッピング情報も含む）
+                        // 小説情報を保存
                         insertNovel(result.novelDesc)
-                        insertKakuyomuEpisodesWithMappings(result.episodes, result.episodeMappings)
-                        AppLogger.d("NovelRepository", "カクヨム小説登録: ${result.novelDesc.title}, エピソード: ${result.episodes.size}話, マッピング: ${result.episodeMappings.size}件")
+
+                        // マッピング情報を保存
+                        val mappingEntities = result.episodeMappings.map { (episodeNo, kakuyomuId) ->
+                            com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                ncode = result.novelDesc.ncode,
+                                episode_no = episodeNo,
+                                kakuyomu_episode_id = kakuyomuId
+                            )
+                        }
+                        insertEpisodeMappings(mappingEntities)
+
+                        AppLogger.d("NovelRepository", "カクヨム小説登録（1話ずつ保存）: ${result.novelDesc.title}, マッピング: ${result.episodeMappings.size}件")
                     }
                     else -> {
                         // その他のサイト

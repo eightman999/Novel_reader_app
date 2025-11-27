@@ -244,7 +244,7 @@ class AutoUpdateWorker(
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(content)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)  // プッシュ通知として表示
             .setContentIntent(pendingIntent)
             .addAction(
                 android.R.drawable.stat_sys_download_done,
@@ -311,7 +311,7 @@ class AutoUpdateWorker(
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("自動更新エラー")
             .setContentText("更新処理中にエラーが発生しました: $message")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)  // プッシュ通知として表示
             .setAutoCancel(true)
             .build()
         notificationManager.notify(NOTIFICATION_ID + 1, notification)
@@ -330,11 +330,13 @@ class AutoUpdateWorker(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "小説更新通知"
             val descriptionText = "小説の更新を通知します"
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val importance = NotificationManager.IMPORTANCE_HIGH  // プッシュ通知として表示
             val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
                 description = descriptionText
+                enableVibration(true)  // バイブレーション有効化
+                enableLights(true)     // LED通知有効化
             }
-            
+
             val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }

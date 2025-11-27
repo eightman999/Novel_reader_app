@@ -143,15 +143,22 @@ class KakuyomuAdapter : NovelSiteAdapter {
     }
 
     /**
-     * 小説情報とエピソードをマッピング情報付きで取得
+     * 小説情報とエピソードをマッピング情報付きで取得（1話ずつ保存）
      *
      * このメソッドは再取得・更新処理で使用され、エピソードマッピング情報を
      * 確実に保存できるようにする。
+     * メモリリーク防止のため、1話取得→保存→次の話、という方式で処理する。
      *
      * @param novelId カクヨムの作品IDまたはPseudo-Ncode
+     * @param repository 保存先リポジトリ（nullの場合は旧方式でメモリに保持）
+     * @param onProgress 進捗コールバック (current, total) -> Unit
      * @return NovelWithEpisodesAndMappings（小説情報、エピソード、マッピング情報）
      */
-    suspend fun fetchNovelWithEpisodesIncludingMappings(novelId: String): NovelWithEpisodesAndMappings = withContext(Dispatchers.IO) {
+    suspend fun fetchNovelWithEpisodesIncludingMappings(
+        novelId: String,
+        repository: com.shunlight_library.novel_reader.data.repository.NovelRepository? = null,
+        onProgress: ((Int, Int) -> Unit)? = null
+    ): NovelWithEpisodesAndMappings = withContext(Dispatchers.IO) {
         val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
             PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)
         } else {
@@ -170,39 +177,79 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // エピソード一覧を抽出（本文なし）
         val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
 
-        // 各エピソードの本文を取得
         android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
-        val episodesWithBody = episodesWithoutBody.map { episode ->
-            // episode.episode_no は連番（1, 2, 3...）なので、キャッシュから実際のIDを取得
-            val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
-            val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
-            episode.copy(body = episodeBody)
-        }
 
-        // エピソード数の不一致をチェック
-        val expectedCount = novelDesc.total_ep
-        val actualCount = episodesWithBody.size
+        // repositoryが指定されている場合は1話ずつ保存
+        if (repository != null) {
+            // 1話ずつ取得→保存（メモリリーク防止）
+            episodesWithoutBody.forEachIndexed { index, episode ->
+                val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+                val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
+                val episodeWithBody = episode.copy(body = episodeBody)
 
-        if (expectedCount != actualCount) {
-            android.util.Log.e("KakuyomuAdapter", """
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                エピソード数の不一致を検出しました！
-                - 期待されるエピソード数: ${expectedCount}話
-                - 実際に取得したエピソード数: ${actualCount}話
-                - 不足: ${expectedCount - actualCount}話
-                - 作品ID: $workId
-                - タイトル: ${novelDesc.title}
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            """.trimIndent())
+                // 1話ずつ保存
+                repository.insertEpisode(episodeWithBody)
+
+                // 進捗通知
+                onProgress?.invoke(index + 1, episodesWithoutBody.size)
+            }
+
+            // エピソード数の不一致をチェック
+            val expectedCount = novelDesc.total_ep
+            val actualCount = episodesWithoutBody.size
+
+            if (expectedCount != actualCount) {
+                android.util.Log.e("KakuyomuAdapter", """
+                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    エピソード数の不一致を検出しました！
+                    - 期待されるエピソード数: ${expectedCount}話
+                    - 実際に取得したエピソード数: ${actualCount}話
+                    - 不足: ${expectedCount - actualCount}話
+                    - 作品ID: $workId
+                    - タイトル: ${novelDesc.title}
+                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                """.trimIndent())
+            } else {
+                android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了（1話ずつ保存）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
+            }
+
+            // マッピング情報をコピー
+            val mappingsCopy = cachedMappings.toMap()
+            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappingsCopy.size}件 (例: ${mappingsCopy.entries.take(3)})")
+
+            // 空リストを返す（すでに保存済み）
+            return@withContext NovelWithEpisodesAndMappings(novelDesc, emptyList(), mappingsCopy)
         } else {
-            android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+            // 旧方式：全話をメモリに保持（後方互換性のため残す）
+            val episodesWithBody = episodesWithoutBody.map { episode ->
+                val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+                val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
+                episode.copy(body = episodeBody)
+            }
+
+            val expectedCount = novelDesc.total_ep
+            val actualCount = episodesWithBody.size
+
+            if (expectedCount != actualCount) {
+                android.util.Log.e("KakuyomuAdapter", """
+                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    エピソード数の不一致を検出しました！
+                    - 期待されるエピソード数: ${expectedCount}話
+                    - 実際に取得したエピソード数: ${actualCount}話
+                    - 不足: ${expectedCount - actualCount}話
+                    - 作品ID: $workId
+                    - タイトル: ${novelDesc.title}
+                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                """.trimIndent())
+            } else {
+                android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+            }
+
+            val mappingsCopy = cachedMappings.toMap()
+            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappingsCopy.size}件 (例: ${mappingsCopy.entries.take(3)})")
+
+            return@withContext NovelWithEpisodesAndMappings(novelDesc, episodesWithBody, mappingsCopy)
         }
-
-        // マッピング情報をコピー（内部状態を外部に渡す）
-        val mappingsCopy = cachedMappings.toMap()
-        android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappingsCopy.size}件 (例: ${mappingsCopy.entries.take(3)})")
-
-        NovelWithEpisodesAndMappings(novelDesc, episodesWithBody, mappingsCopy)
     }
 
     /**
