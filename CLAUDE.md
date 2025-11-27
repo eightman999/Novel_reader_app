@@ -2,6 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📖 Quick Reference
+
+### Current State (2025-11-27)
+- **Version**: 1.5.31 (versionCode: 154)
+- **Database**: Version 11 with 7 tables
+- **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
+- **Architecture**: Clean + MVVM + Repository + Adapter Pattern
+- **Testing**: Unit tests + Instrumented tests available
+
+### Key Numbers
+- **Entities**: 7 (NovelDesc, Episode, LastReadNovel, UpdateQueue, URL, ImageCache, EpisodeMapping)
+- **DAOs**: 7 (matching entities)
+- **Screens**: 8 main screens + 1 sync activity
+- **Adapters**: 2 (SyosetuAdapter, KakuyomuAdapter)
+- **Migrations**: v1→v11 (10 migrations)
+
+### Common Tasks
+- **Add new feature**: Update version in build.gradle.kts, write Japanese commit message
+- **Database change**: Create new migration, update version to v12
+- **Add new site**: Implement NovelSiteAdapter interface, add to factory
+- **Fetching episodes**: Always use incremental saving (fetch 1 → save → fetch 2 → save)
+- **Site detection**: Check `novel.site_type` (1=Syosetu, 2=Kakuyomu)
+- **Logging**: Use `AppLogger` (respects BuildConfig.ENABLE_LOGGING)
+
+### Quick Links to Documentation
+- Architecture details → [Architecture Overview](#architecture-overview)
+- Database schema → [Database Schema (Version 11)](#database-schema-version-11)
+- Multi-site support → [Multi-Site Architecture](#multi-site-architecture)
+- API specifications → [なろう小説API仕様](#なろう小説api仕様), [カクヨムダウンロードプロトコル](#カクヨムダウンロードプロトコル)
+
+---
+
 ## 🔨 最重要ルール - 新しいルールの追加プロセス
 
 ユーザーから今回限りではなく常に対応が必要だと思われる指示を受けた場合：
@@ -35,17 +67,94 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Working Directory
 All Gradle commands should be run from the `Novel_reader/` directory.
 
+## Project Structure
+
+### Directory Layout
+```
+Novel_reader_app/
+├── Novel_reader/                    # Main Android project
+│   ├── app/
+│   │   ├── build.gradle.kts        # App build config (version: 1.5.31, code: 154)
+│   │   └── src/
+│   │       ├── main/java/com/shunlight_library/novel_reader/
+│   │       │   ├── *.kt            # Top-level screens and application
+│   │       │   ├── data/
+│   │       │   │   ├── adapter/    # Site-specific adapters (Syosetu, Kakuyomu)
+│   │       │   │   ├── dao/        # Room DAOs (7 total)
+│   │       │   │   ├── database/   # NovelDatabase.kt (v11)
+│   │       │   │   ├── entity/     # Room entities (7 total)
+│   │       │   │   ├── repository/ # NovelRepository.kt
+│   │       │   │   └── sync/       # Database sync utilities
+│   │       │   ├── api/            # API utilities (NovelApiUtils)
+│   │       │   ├── navigation/     # NavigationManager
+│   │       │   ├── ui/             # UI components and screens
+│   │       │   │   ├── components/ # Reusable UI components
+│   │       │   │   └── theme/      # App theme
+│   │       │   ├── utils/          # Utility classes
+│   │       │   ├── worker/         # WorkManager workers (AutoUpdate)
+│   │       │   ├── service/        # Background services
+│   │       │   ├── receiver/       # Broadcast receivers
+│   │       │   └── metadata/       # Metadata management
+│   │       ├── test/               # Unit tests
+│   │       └── androidTest/        # Instrumented tests
+│   └── build.gradle.kts            # Project build config
+├── CLAUDE.md                       # This file - AI assistant guide
+├── AGENTS.md                       # Additional AI agent guidelines
+├── README.md                       # Project documentation
+├── STRUCTURE.md                    # Project structure summary
+├── FUTURE_IMPROVEMENTS.md          # Planned improvements
+├── WORK_LOG.md                     # Development work log
+├── 統合テスト方法.md                # Integration testing guide
+└── release/                        # Release APKs
+```
+
+### Key Files by Function
+
+#### Application Core
+- `NovelReaderApplication.kt` - Application class, singleton repository/database access
+- `MainActivity.kt` - Single Activity with Compose, navigation, back handling
+- `AppInfo.kt` - Application information
+
+#### Data Layer (7 Entities, 7 DAOs, 1 Repository)
+- **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity
+- **DAOs**: Matching DAOs for each entity
+- **Database**: NovelDatabase.kt (v11 with full migration chain)
+- **Repository**: NovelRepository.kt (single source of data access)
+
+#### Adapters (Multi-Site Support)
+- `NovelSiteAdapter.kt` - Interface
+- `SyosetuAdapter.kt` - Syosetu implementation (YAML API)
+- `KakuyomuAdapter.kt` - Kakuyomu implementation (HTML scraping)
+- `NovelSiteAdapterFactory.kt` - Factory pattern
+
+#### Screens (8 total)
+- NovelListScreen, EpisodeListScreen, EpisodeViewScreen, WebViewScreen
+- RecentlyReadNovelsScreen, RecentlyUpdatedNovelsScreen
+- UpdateInfoScreen, SettingsScreen
+- DatabaseSyncActivity (Activity for sync UI)
+
+#### Utilities
+- Base62Converter, PseudoNcodeGenerator, AppLogger
+- FontUtils, ImageCacheUtils, NovelUpdateCoordinator
+- DatabaseSync*, MetadataUpdateManager, NotificationStore
+
+#### Background Work
+- `AutoUpdateWorker.kt` - WorkManager worker for scheduled updates
+- `AutoUpdateScheduler.kt` - Update scheduling logic
+- `UpdateService.kt` - Update service
+
 ## Architecture Overview
 
 This is an Android novel reader application built with modern Android architecture patterns:
 
 ### Core Architecture
-- **Pattern**: Clean Architecture + MVVM + Repository Pattern
+- **Pattern**: Clean Architecture + MVVM + Repository Pattern + Adapter Pattern (for multi-site support)
 - **UI**: Jetpack Compose with single Activity pattern
-- **Database**: Room with migration support (currently v5)
-- **Navigation**: Custom NavigationManager with screen stack
+- **Database**: Room with migration support (currently v11)
+- **Navigation**: Custom NavigationManager with screen stack and scroll position preservation
 - **Background Work**: WorkManager for scheduled updates
 - **State**: Flow-based reactive programming
+- **Multi-Site Support**: Adapter pattern for site-specific implementations (Syosetu, Kakuyomu)
 
 ### Key Components
 
@@ -54,18 +163,37 @@ This is an Android novel reader application built with modern Android architectu
 - `MainActivity.kt` - Single Activity hosting all Compose screens
 
 #### Data Layer
-- `NovelDatabase.kt` - Room database with 5 tables and proper migrations
+- `NovelDatabase.kt` - Room database with 7 tables and proper migrations (v11)
 - `NovelRepository.kt` - Single repository managing all data access via DAOs
-- Entities: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity
+- **Entities** (7 total):
+  - `NovelDescEntity` - Novel metadata with R18 support, favorite flag, site type, registration date
+  - `EpisodeEntity` - Episode content with reading progress, bookmarks, and reading rate
+  - `LastReadNovelEntity` - Reading history tracking
+  - `UpdateQueueEntity` - Update notifications queue
+  - `URLEntity` - API/Web URLs with R18 site support
+  - `ImageCacheEntity` - Image caching for novel covers (v7+)
+  - `EpisodeMappingEntity` - Episode ID mapping for Kakuyomu (v10+)
+- **DAOs** (7 total): NovelDescDao, EpisodeDao, LastReadNovelDao, UpdateQueueDao, URLEntityDao, ImageCacheDao, EpisodeMappingDao
+- **Adapter Pattern** for multi-site support:
+  - `NovelSiteAdapter` - Interface for site-specific implementations
+  - `SyosetuAdapter` - なろう小説 (Syosetu) implementation
+  - `KakuyomuAdapter` - カクヨム (Kakuyomu) implementation
+  - `NovelSiteAdapterFactory` - Factory for creating appropriate adapters
 
 #### Navigation
 - `NavigationManager.kt` - Custom navigation with sealed class hierarchy and back stack management
 - Main flow: Main → NovelList → EpisodeList → EpisodeView
 
 #### Key Screens
-- `NovelListScreen.kt` - Advanced filtering/sorting with enum-based configuration
-- `EpisodeViewScreen.kt` - WebView-based reading with JavaScript interface for progress tracking
+- `NovelListScreen.kt` - Advanced filtering/sorting with enum-based configuration and persistent settings
+- `EpisodeListScreen.kt` - Episode list with reading progress and bookmark management
+- `EpisodeViewScreen.kt` - WebView-based reading with JavaScript interface for progress tracking and reading rate
 - `WebViewScreen.kt` - Novel site browsing with R18 content support
+- `RecentlyReadNovelsScreen.kt` - Recently read novels history
+- `RecentlyUpdatedNovelsScreen.kt` - Recently updated novels with update notifications
+- `UpdateInfoScreen.kt` - Update information and notification management
+- `SettingsScreen.kt` - Application settings with DataStore persistence
+- `DatabaseSyncActivity.kt` - External SQLite database synchronization
 
 ### Important Patterns
 
@@ -90,31 +218,163 @@ navigationManager.navigateTo(NavigationScreen.EpisodeList(novelId))
 #### Settings Management
 Use `SettingsStore` for persistent configuration with DataStore.
 
-### Database Schema
-- `novels_descs` - Novel metadata with R18 support
-- `episodes` - Episode content with reading progress and bookmarks
-- `last_read_novels` - Reading history tracking
-- `update_queue` - Update notifications
-- `url_entity` - API/Web URLs with R18 site support
+### Database Schema (Version 11)
+
+#### Migration History
+- v1→v2: Added `update_queue` table
+- v2→v3: Added `is_read` and `is_bookmark` to episodes
+- v3→v4: Added `url_entity` table
+- v4→v5: Added `reading_rate` to episodes
+- v5→v6: Added `is_favorite` to novels_descs
+- v6→v7: Added `image_cache` table
+- v7→v8: Added `userid`, `noveltype`, `length` to novels_descs
+- v8→v9: Added `site_type` to novels_descs (multi-site support)
+- v9→v10: Added `episode_mapping` table (Kakuyomu episode ID mapping)
+- v10→v11: Added `registered_at` to novels_descs (download date tracking)
+
+#### Tables (7 total)
+1. **`novels_descs`** - Novel metadata
+   - Basic info: ncode, title, author, synopsis, tags, rating
+   - Stats: total_ep, general_all_no, length, noveltype
+   - Dates: last_update_date, updated_at, registered_at
+   - Flags: is_favorite, site_type (1=Syosetu, 2=Kakuyomu)
+   - Indices: last_update_date, update_check composite, favorite, length, type, site, registered
+
+2. **`episodes`** - Episode content
+   - Content: ncode, e_no, e_title, e_body, chapter_title
+   - Progress: is_read, is_bookmark, reading_rate
+   - Date: last_update_date
+
+3. **`last_read_novels`** - Reading history
+   - Tracking: ncode, last_read_episode, last_read_time
+
+4. **`update_queue`** - Update notifications
+   - Updates: ncode, total_ep, general_all_no, update_time
+   - Index: update_time
+
+5. **`url_entity`** - Site URLs
+   - URLs: ncode, api_url, url, is_r18
+   - Index: ncode
+
+6. **`image_cache`** - Image caching (v7+)
+   - Cache: hash (PK), original_url, local_path, mime_type
+   - Index: hash
+
+7. **`episode_mapping`** - Kakuyomu episode mapping (v10+)
+   - Mapping: ncode, episode_no, kakuyomu_episode_id
+   - Composite PK: (ncode, episode_no)
+   - Indices: (ncode, episode_no), (ncode, kakuyomu_episode_id)
 
 ### Special Features
 - Custom font loading and CSS generation for WebView
 - Ruby text (furigana) support for Japanese novels
-- Reading progress tracking via JavaScript bridge
+- Reading progress tracking via JavaScript bridge with reading rate calculation
 - Background update scheduling with WorkManager
 - Database synchronization with external SQLite files
 - R18 content handling with separate site configurations
+- Multi-site support (Syosetu + Kakuyomu) via adapter pattern
+- Image caching for novel covers
+- Favorite novels management
+- Episode ID mapping for Kakuyomu integration
+- Download date tracking with registered_at field
+
+### Multi-Site Architecture
+
+#### Adapter Pattern Implementation
+The application uses the Adapter pattern to support multiple novel sites with site-specific implementations:
+
+**Core Interface**: `NovelSiteAdapter`
+- Defines common operations: `getSiteType()`, `getSiteName()`, `generateWebUrl()`, `fetchNovelMetadata()`, `fetchEpisodeList()`, `fetchEpisodeContent()`
+- Site type constants: `SITE_TYPE_SYOSETU = 1`, `SITE_TYPE_KAKUYOMU = 2`
+
+**Implementations**:
+1. **`SyosetuAdapter`** - なろう小説 (Syosetu)
+   - Uses official YAML API with gzip compression
+   - Supports both general (ncode.syosetu.com) and R18 (novel18.syosetu.com) sites
+   - Standard ncode format (e.g., "n1234ab")
+
+2. **`KakuyomuAdapter`** - カクヨム (Kakuyomu)
+   - HTML scraping (no official API)
+   - 1-second rate limiting between requests
+   - Pseudo-ncode format: "KK-{Base62(workId)}" for compatibility
+   - Episode ID mapping table for internal episode numbering
+   - Multiple fallback patterns for robust HTML parsing
+
+**Factory Pattern**: `NovelSiteAdapterFactory`
+- Creates appropriate adapter based on site type
+- Centralizes adapter instantiation logic
+
+#### Site Type Detection
+```kotlin
+// In NovelDescEntity
+val site_type: Int = 1  // 1=Syosetu, 2=Kakuyomu
+
+// Usage
+val adapter = NovelSiteAdapterFactory.createAdapter(novel.site_type)
+val episodes = adapter.fetchEpisodeList(novel.ncode)
+```
+
+### Utilities and Helpers
+
+#### Core Utilities
+- **`Base62Converter`** - Base62 encoding/decoding for Kakuyomu work IDs
+- **`PseudoNcodeGenerator`** - Generates pseudo-ncodes for Kakuyomu (KK-{Base62})
+- **`AppLogger`** - Centralized logging with BuildConfig-based enable/disable
+- **`FontUtils`** - Custom font loading and CSS generation for WebView
+- **`ImageCacheUtils`** - Image caching management for novel covers
+- **`NovelUpdateCoordinator`** - Coordinates novel update operations
+- **`ReleaseUtils`** - Release-related utilities
+
+#### Synchronization and Database
+- **`DatabaseSyncManager`** - SQLite database synchronization
+- **`ImprovedDatabaseSyncManager`** - Enhanced sync with better error handling
+- **`DatabaseExportManager`** - Database export functionality
+- **`DatabaseSchemaAnalyzer`** - Schema analysis for sync operations
+- **`ExternalSQLiteHelper`** - External SQLite database operations
+
+#### Metadata and Updates
+- **`MetadataUpdateManager`** - Novel metadata update management
+- **`NotificationStore`** - App notification persistence and management
+- **`NotificationData`** - Notification data models
+
+### Testing Infrastructure
+
+#### Unit Tests (`test/`)
+- **`Base62ConverterTest`** - Base62 encoding/decoding tests
+- **`PseudoNcodeGeneratorTest`** - Pseudo-ncode generation tests
+- **`KakuyomuTextCleanupTest`** - Text cleanup function tests
+
+#### Instrumented Tests (`androidTest/`)
+- **DAO Tests**:
+  - `NovelDescDaoTest` - Novel metadata DAO tests
+  - `EpisodeDaoTest` - Episode DAO tests
+- **Repository Tests**:
+  - `NovelRepositoryTest` - Repository layer integration tests
+- **Database Tests**:
+  - `MigrationTest` - Database migration validation tests
+
+**Test Libraries**:
+- JUnit 4 for test framework
+- Coroutines Test for async testing
+- Google Truth for assertions
+- Room Testing for database tests
+- Work Testing for WorkManager tests
 
 ### Development Guidelines
-1. Always create Room migrations for schema changes
-2. Use proper Compose state management with state hoisting
-3. Follow the Repository pattern for all data operations
-4. Use NavigationManager for navigation to maintain proper back stack
-5. Handle R18 content appropriately with dialog-based site selection
-6. Maintain reading progress and bookmark functionality in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`
+1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 11.
+2. **Compose State**: Use proper Compose state management with state hoisting
+3. **Repository Pattern**: Follow the Repository pattern for all data operations. Never access DAOs directly.
+4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
+5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
+6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 1.5.31 (versionCode 154).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
+10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.
+11. **Logging**: Use `AppLogger` for all logging, which respects `BuildConfig.ENABLE_LOGGING` flag (true in debug, false in release)
+12. **Testing**: Write unit tests for utilities and instrumented tests for DAOs/Repository. Run tests before major changes.
+13. **Image Caching**: Use `ImageCacheUtils` and the `image_cache` table for novel cover caching
+14. **Episode Mapping**: For Kakuyomu novels, always maintain the `episode_mapping` table to map internal episode numbers to Kakuyomu episode IDs
 
 #### Back Navigation Implementation
 **必須**: Android標準のナビゲーションバーのバックハンドラーを使用する
