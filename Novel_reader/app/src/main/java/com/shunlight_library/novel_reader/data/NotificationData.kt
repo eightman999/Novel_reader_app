@@ -24,7 +24,13 @@ data class AppNotification(
     val content: String,
     val timestamp: Long,
     val isRead: Boolean = false,
-    val type: NotificationType = NotificationType.UPDATE
+    val type: NotificationType = NotificationType.UPDATE,
+    // リリース情報用フィールド（リリース通知の場合のみ使用）
+    val releaseTagName: String? = null,
+    val releaseName: String? = null,
+    val releaseBody: String? = null,
+    val releasePublishedAt: String? = null,
+    val releaseUrl: String? = null
 )
 
 enum class NotificationType {
@@ -43,6 +49,12 @@ class NotificationStore(private val context: Context) {
         private const val NOTIFICATION_TIMESTAMP_PREFIX = "notification_timestamp_"
         private const val NOTIFICATION_TYPE_PREFIX = "notification_type_"
         private const val NOTIFICATION_READ_PREFIX = "notification_read_"
+        // リリース情報用キー
+        private const val NOTIFICATION_RELEASE_TAG_PREFIX = "notification_release_tag_"
+        private const val NOTIFICATION_RELEASE_NAME_PREFIX = "notification_release_name_"
+        private const val NOTIFICATION_RELEASE_BODY_PREFIX = "notification_release_body_"
+        private const val NOTIFICATION_RELEASE_PUBLISHED_PREFIX = "notification_release_published_"
+        private const val NOTIFICATION_RELEASE_URL_PREFIX = "notification_release_url_"
     }
 
     suspend fun addNotification(notification: AppNotification) {
@@ -57,6 +69,23 @@ class NotificationStore(private val context: Context) {
             preferences[longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${notification.id}")] = notification.timestamp
             preferences[stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${notification.id}")] = notification.type.name
             preferences[booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${notification.id}")] = notification.isRead
+
+            // リリース情報を保存（nullでない場合のみ）
+            notification.releaseTagName?.let {
+                preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_TAG_PREFIX}${notification.id}")] = it
+            }
+            notification.releaseName?.let {
+                preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_NAME_PREFIX}${notification.id}")] = it
+            }
+            notification.releaseBody?.let {
+                preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${notification.id}")] = it
+            }
+            notification.releasePublishedAt?.let {
+                preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${notification.id}")] = it
+            }
+            notification.releaseUrl?.let {
+                preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${notification.id}")] = it
+            }
 
             enforceNotificationLimit(preferences)
         }
@@ -89,6 +118,12 @@ class NotificationStore(private val context: Context) {
             preferences.remove(longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${id}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${id}"))
             preferences.remove(booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${id}"))
+            // リリース情報も削除
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_TAG_PREFIX}${id}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_NAME_PREFIX}${id}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${id}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${id}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${id}"))
         }
     }
 
@@ -102,7 +137,14 @@ class NotificationStore(private val context: Context) {
             val timestamp = preferences[longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${id}")]
             val typeString = preferences[stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${id}")]
             val isRead = preferences[booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${id}")] ?: false
-            
+
+            // リリース情報を読み込み（nullableなので存在しない場合はnull）
+            val releaseTagName = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_TAG_PREFIX}${id}")]
+            val releaseName = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_NAME_PREFIX}${id}")]
+            val releaseBody = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${id}")]
+            val releasePublishedAt = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${id}")]
+            val releaseUrl = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${id}")]
+
             if (title != null && content != null && timestamp != null && typeString != null) {
                 AppNotification(
                     id = id,
@@ -110,7 +152,12 @@ class NotificationStore(private val context: Context) {
                     content = content,
                     timestamp = timestamp,
                     isRead = isRead,
-                    type = try { NotificationType.valueOf(typeString) } catch (e: Exception) { NotificationType.INFO }
+                    type = try { NotificationType.valueOf(typeString) } catch (e: Exception) { NotificationType.INFO },
+                    releaseTagName = releaseTagName,
+                    releaseName = releaseName,
+                    releaseBody = releaseBody,
+                    releasePublishedAt = releasePublishedAt,
+                    releaseUrl = releaseUrl
                 )
             } else null
         }.sortedByDescending { it.timestamp }
@@ -140,13 +187,19 @@ class NotificationStore(private val context: Context) {
             // IDリストから削除
             val currentNotifications = preferences[PENDING_NOTIFICATIONS] ?: emptySet()
             preferences[PENDING_NOTIFICATIONS] = currentNotifications - notificationId
-            
+
             // 関連データも削除
             preferences.remove(stringPreferencesKey("${NOTIFICATION_TITLE_PREFIX}${notificationId}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_CONTENT_PREFIX}${notificationId}"))
             preferences.remove(longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${notificationId}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${notificationId}"))
             preferences.remove(booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${notificationId}"))
+            // リリース情報も削除
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_TAG_PREFIX}${notificationId}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_NAME_PREFIX}${notificationId}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${notificationId}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${notificationId}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${notificationId}"))
         }
     }
 
@@ -155,7 +208,7 @@ class NotificationStore(private val context: Context) {
         context.notificationDataStore.edit { preferences ->
             // IDリストをクリア
             preferences[PENDING_NOTIFICATIONS] = emptySet()
-            
+
             // 全ての関連データを削除
             notifications.forEach { notification ->
                 preferences.remove(stringPreferencesKey("${NOTIFICATION_TITLE_PREFIX}${notification.id}"))
@@ -163,6 +216,12 @@ class NotificationStore(private val context: Context) {
                 preferences.remove(longPreferencesKey("${NOTIFICATION_TIMESTAMP_PREFIX}${notification.id}"))
                 preferences.remove(stringPreferencesKey("${NOTIFICATION_TYPE_PREFIX}${notification.id}"))
                 preferences.remove(booleanPreferencesKey("${NOTIFICATION_READ_PREFIX}${notification.id}"))
+                // リリース情報も削除
+                preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_TAG_PREFIX}${notification.id}"))
+                preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_NAME_PREFIX}${notification.id}"))
+                preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${notification.id}"))
+                preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${notification.id}"))
+                preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${notification.id}"))
             }
         }
     }
