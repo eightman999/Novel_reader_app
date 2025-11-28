@@ -138,17 +138,13 @@ class AutoUpdateWorker(
                                     apiInfo?.generalAllNo ?: novel.total_ep
                                 }
                                 com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
-                                    // カクヨムの場合、checkForUpdatesを使用してHTMLから取得
+                                    // カクヨムの場合、軽量なメタデータ取得メソッドを使用（本文は取得しない）
+                                    val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                                     val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
-                                    val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
 
-                                    if (hasUpdate) {
-                                        // 更新がある場合のみ詳細を取得
-                                        val (updatedNovel, _) = adapter.fetchNovelWithEpisodes(workId)
-                                        updatedNovel.total_ep
-                                    } else {
-                                        novel.total_ep
-                                    }
+                                    // メタデータのみ取得（本文は含まない）
+                                    val (updatedNovel, _) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
+                                    updatedNovel.total_ep
                                 }
                                 else -> novel.total_ep
                             }
