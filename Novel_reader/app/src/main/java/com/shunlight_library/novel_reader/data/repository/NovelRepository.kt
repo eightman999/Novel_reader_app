@@ -78,10 +78,56 @@ class NovelRepository(
     }
 
     /**
+     * エピソードを保存（既読情報を保持）
+     *
+     * 既存のエピソードがある場合、既読情報（is_read、is_bookmark、reading_rate）を保持してマージする。
+     * これにより、小説の再取得や更新時に既読情報が失われるのを防ぐ。
+     *
+     * @param episodes 保存するエピソードリスト
+     */
+    suspend fun insertEpisodesPreservingReadStatus(episodes: List<EpisodeEntity>) {
+        withContext(Dispatchers.IO) {
+            if (episodes.isEmpty()) {
+                android.util.Log.w("NovelRepository", "エピソードリストが空です")
+                return@withContext
+            }
+
+            val ncode = episodes.first().ncode
+
+            // 既存のエピソードを取得（既読情報を保持するため）
+            val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
+            val existingEpisodesSnapshot = kotlinx.coroutines.flow.first(existingEpisodes)
+            val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
+
+            // 新しいエピソードと既存のエピソードをマージ（既読情報を保持）
+            val mergedEpisodes = episodes.map { newEpisode ->
+                val existing = existingMap[newEpisode.episode_no]
+                if (existing != null) {
+                    // 既存のエピソードがある場合、既読情報を保持
+                    newEpisode.copy(
+                        is_read = existing.is_read,
+                        is_bookmark = existing.is_bookmark,
+                        reading_rate = existing.reading_rate
+                    )
+                } else {
+                    // 新しいエピソード（既読情報はデフォルト値）
+                    newEpisode
+                }
+            }
+
+            // マージしたエピソードを保存
+            episodeDao.insertEpisodes(mergedEpisodes)
+            android.util.Log.d("NovelRepository", "エピソード保存（既読情報保持）: ${mergedEpisodes.size}件 (ncode=$ncode, 既存: ${existingMap.size}件, 新規: ${mergedEpisodes.size - existingMap.size}件)")
+        }
+    }
+
+    /**
      * カクヨム小説のエピソードとマッピングを一括保存
      *
      * このメソッドは再取得・更新処理でエピソードマッピング情報を確実に保存する。
      * エピソード番号（連番）とカクヨムの実際のエピソードIDの対応を保持する。
+     *
+     * **重要**: 既存のエピソードの既読情報（is_read、is_bookmark、reading_rate）を保持する。
      *
      * @param episodes エピソードリスト（episode_noは連番）
      * @param mappings エピソード番号（連番）→カクヨムEpisodeIDのマッピング
@@ -98,9 +144,30 @@ class NovelRepository(
 
             val ncode = episodes.first().ncode
 
-            // エピソードを保存
-            episodeDao.insertEpisodes(episodes)
-            android.util.Log.d("NovelRepository", "カクヨムエピソード保存: ${episodes.size}件 (ncode=$ncode)")
+            // 既存のエピソードを取得（既読情報を保持するため）
+            val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
+            val existingEpisodesSnapshot = kotlinx.coroutines.flow.first(existingEpisodes)
+            val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
+
+            // 新しいエピソードと既存のエピソードをマージ（既読情報を保持）
+            val mergedEpisodes = episodes.map { newEpisode ->
+                val existing = existingMap[newEpisode.episode_no]
+                if (existing != null) {
+                    // 既存のエピソードがある場合、既読情報を保持
+                    newEpisode.copy(
+                        is_read = existing.is_read,
+                        is_bookmark = existing.is_bookmark,
+                        reading_rate = existing.reading_rate
+                    )
+                } else {
+                    // 新しいエピソード（既読情報はデフォルト値）
+                    newEpisode
+                }
+            }
+
+            // マージしたエピソードを保存
+            episodeDao.insertEpisodes(mergedEpisodes)
+            android.util.Log.d("NovelRepository", "カクヨムエピソード保存: ${mergedEpisodes.size}件 (ncode=$ncode, 既存: ${existingMap.size}件, 新規: ${mergedEpisodes.size - existingMap.size}件)")
 
             // マッピング情報を保存
             val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->

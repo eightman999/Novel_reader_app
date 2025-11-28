@@ -586,8 +586,8 @@ fun UpdateInfoScreen(
                                                                                 syncMessage = "「${novel.title}」のエピソード一覧を更新中..."
                                                                                 val (_, refreshedEpisodes) = adapter.fetchNovelMetadataWithEpisodeList(novel.ncode)
 
-                                                                                // エピソード情報をデータベースに保存
-                                                                                repository.insertEpisodes(refreshedEpisodes)
+                                                                                // エピソード情報をデータベースに保存（既読情報を保持）
+                                                                                repository.insertEpisodesPreservingReadStatus(refreshedEpisodes)
 
                                                                                 // マッピング情報をデータベースに保存
                                                                                 val mappings = adapter.getCachedMappings().map { (episodeNoInt, kakuyomuEpisodeId) ->
@@ -601,7 +601,7 @@ fun UpdateInfoScreen(
 
                                                                                 Log.d(
                                                                                     "UpdateInfo",
-                                                                                    "カクヨムエピソード一覧とマッピング情報を再取得完了: ${novel.ncode}, ${refreshedEpisodes.size}話, mapping: ${mappings.size}件"
+                                                                                    "カクヨムエピソード一覧とマッピング情報を再取得完了（既読情報保持）: ${novel.ncode}, ${refreshedEpisodes.size}話, mapping: ${mappings.size}件"
                                                                                 )
 
                                                                                 // 再取得フラグを立てる（小説ごとに1回のみ）
