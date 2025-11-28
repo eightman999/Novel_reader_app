@@ -68,21 +68,37 @@ object ReleaseUtils {
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
                     val json = JSONObject(response)
-                    val tag = json.getString("tag_name")
+
+                    // リリース情報を取得
+                    val tagName = json.getString("tag_name")
+                    val name = json.optString("name", tagName)
+                    val body = json.optString("body", "")
+                    val publishedAt = json.optString("published_at", "")
+                    val htmlUrl = json.optString("html_url", RELEASE_PAGE)
+
                     val store = SettingsStore(context)
                     val last = store.getLastNotifiedRelease()
-                    if (isNewerVersion(tag, AppInfo.VERSION_NAME) && last != tag) {
-                        sendSystemNotification(context, tag)
+                    if (isNewerVersion(tagName, AppInfo.VERSION_NAME) && last != tagName) {
+                        sendSystemNotification(context, tagName, name, publishedAt)
                         NotificationStore(context).addNotification(
                             AppNotification(
                                 id = "release_${System.currentTimeMillis()}",
-                                title = "新しいバージョン $tag",
-                                content = "GitHubに新しいリリースがあります",
+                                title = "新しいバージョン $tagName",
+                                content = if (name.isNotEmpty() && name != tagName) {
+                                    "$name\n公開日時: ${formatPublishedDate(publishedAt)}"
+                                } else {
+                                    "公開日時: ${formatPublishedDate(publishedAt)}"
+                                },
                                 timestamp = System.currentTimeMillis(),
-                                type = NotificationType.INFO
+                                type = NotificationType.INFO,
+                                releaseTagName = tagName,
+                                releaseName = name,
+                                releaseBody = body,
+                                releasePublishedAt = publishedAt,
+                                releaseUrl = htmlUrl
                             )
                         )
-                        store.saveLastNotifiedRelease(tag)
+                        store.saveLastNotifiedRelease(tagName)
                     }
                 }
             } catch (e: Exception) {
@@ -96,9 +112,11 @@ object ReleaseUtils {
     /**
      * 新しいバージョンをシステム通知で知らせる
      * @param context コンテキスト
-     * @param version 新しいバージョン名
+     * @param tagName バージョンタグ名
+     * @param name リリース名
+     * @param publishedAt 公開日時（ISO 8601形式）
      */
-    private fun sendSystemNotification(context: Context, version: String) {
+    private fun sendSystemNotification(context: Context, tagName: String, name: String, publishedAt: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channel = NotificationChannel(CHANNEL_ID, "Updates", NotificationManager.IMPORTANCE_DEFAULT)
@@ -111,15 +129,43 @@ object ReleaseUtils {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        // 通知のタイトルと内容を構築
+        val title = if (name.isNotEmpty() && name != tagName) {
+            "新しいバージョン $tagName - $name"
+        } else {
+            "新しいバージョン $tagName"
+        }
+        val content = "公開日時: ${formatPublishedDate(publishedAt)}"
+
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("新しいバージョン $version")
-            .setContentText("GitHubで新しいリリースが公開されています")
+            .setContentTitle(title)
+            .setContentText(content)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .build()
         manager.notify(NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * ISO 8601形式の日時を読みやすい形式に変換
+     * @param isoDate ISO 8601形式の日時（例: "2025-11-28T12:00:00Z"）
+     * @return フォーマット済みの日時文字列（例: "2025-11-28 12:00"）
+     */
+    private fun formatPublishedDate(isoDate: String): String {
+        if (isoDate.isEmpty()) return "不明"
+        return try {
+            // ISO 8601形式をパース（例: 2025-11-28T12:00:00Z）
+            val instant = java.time.Instant.parse(isoDate)
+            val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .withZone(java.time.ZoneId.systemDefault())
+            formatter.format(instant)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse date: $isoDate", e)
+            isoDate
+        }
     }
 }

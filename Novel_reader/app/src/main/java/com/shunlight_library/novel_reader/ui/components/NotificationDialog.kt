@@ -5,15 +5,21 @@
  */
 package com.shunlight_library.novel_reader.ui.components
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -21,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.shunlight_library.novel_reader.data.AppNotification
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.data.NotificationType
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -32,6 +39,7 @@ fun NotificationDialog(
     onDismiss: () -> Unit
 ) {
     var notifications by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
+    var selectedRelease by remember { mutableStateOf<AppNotification?>(null) }
     val scope = rememberCoroutineScope()
 
     // 通知データを読み込み
@@ -39,6 +47,14 @@ fun NotificationDialog(
         scope.launch {
             notifications = notificationStore.getAllNotifications()
         }
+    }
+
+    // リリース詳細ダイアログ
+    selectedRelease?.let { release ->
+        ReleaseDetailDialog(
+            release = release,
+            onDismiss = { selectedRelease = null }
+        )
     }
 
     AlertDialog(
@@ -99,6 +115,12 @@ fun NotificationDialog(
                     items(notifications) { notification ->
                         NotificationItem(
                             notification = notification,
+                            onClick = {
+                                // リリース通知の場合、詳細ダイアログを表示
+                                if (notification.releaseBody != null) {
+                                    selectedRelease = notification
+                                }
+                            },
                             onMarkAsRead = {
                                 if (!notification.isRead) {
                                     scope.launch {
@@ -143,6 +165,7 @@ fun NotificationDialog(
 @Composable
 fun NotificationItem(
     notification: AppNotification,
+    onClick: () -> Unit,
     onMarkAsRead: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -150,7 +173,9 @@ fun NotificationItem(
     val formattedDate = dateFormat.format(Date(notification.timestamp))
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = notification.releaseBody != null) { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = if (notification.isRead) {
                 MaterialTheme.colorScheme.surface
@@ -240,5 +265,103 @@ fun NotificationItem(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReleaseDetailDialog(
+    release: AppNotification,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = release.releaseName ?: release.releaseTagName ?: "リリース詳細",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                if (!release.releaseTagName.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = release.releaseTagName!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+                if (!release.releasePublishedAt.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "公開日時: ${formatPublishedDate(release.releasePublishedAt!!)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 500.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                if (!release.releaseBody.isNullOrEmpty()) {
+                    MarkdownText(
+                        markdown = release.releaseBody!!,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    Text(
+                        text = "リリースノートはありません",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (!release.releaseUrl.isNullOrEmpty()) {
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(release.releaseUrl))
+                        context.startActivity(intent)
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("GitHubで開く")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("閉じる")
+            }
+        }
+    )
+}
+
+/**
+ * ISO 8601形式の日時を読みやすい形式に変換
+ */
+private fun formatPublishedDate(isoDate: String): String {
+    if (isoDate.isEmpty()) return "不明"
+    return try {
+        val instant = java.time.Instant.parse(isoDate)
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withZone(java.time.ZoneId.systemDefault())
+        formatter.format(instant)
+    } catch (e: Exception) {
+        isoDate
     }
 }

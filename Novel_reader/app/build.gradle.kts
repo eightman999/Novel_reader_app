@@ -13,8 +13,8 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 154
-        versionName = "1.5.31"
+        versionCode = 155
+        versionName = "1.5.32"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -57,6 +57,9 @@ dependencies {
 
 // Jsoup for HTML parsing
     implementation("org.jsoup:jsoup:1.16.1")
+
+// Markdown rendering for Compose
+    implementation("com.github.jeziellago:compose-markdown:0.5.4")
 
 // DataStore for preferences
     implementation ("androidx.compose.material:material-icons-extended:1.7.0")
