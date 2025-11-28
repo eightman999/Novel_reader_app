@@ -34,7 +34,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🔨 最重要ルール - 新しいルールの追加プロセス
+## 🔨 最重要ルール - ドキュメント更新プロセス
+
+### 新しいルールの追加プロセス
 
 ユーザーから今回限りではなく常に対応が必要だと思われる指示を受けた場合：
 
@@ -43,6 +45,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. 以降は標準ルールとして常に適用する
 
 このプロセスにより、プロジェクトのルールを継続的に改善していきます。
+
+### 仕様変更時のCLAUDE.md更新ルール
+
+**必須**: コードベースに仕様変更を加えた場合、必ずCLAUDE.mdを最新状態に更新する
+
+#### 更新が必要な変更
+
+以下のような変更を行った場合、CLAUDE.mdを即座に更新すること：
+
+1. **データベーススキーマの変更**
+   - テーブル追加/削除/変更時は「Database Schema」セクションを更新
+   - マイグレーション追加時は「Migration History」と「Current State」のバージョン番号を更新
+   - エンティティ/DAO数の変更時は「Key Numbers」セクションを更新
+
+2. **アーキテクチャの変更**
+   - 新しいデザインパターン導入時は「Architecture Overview」を更新
+   - 新しい画面追加時は「Screens」と「Key Numbers」セクションを更新
+   - 新しいAdapterやサービス追加時は該当セクションを更新
+
+3. **API仕様の変更**
+   - なろう小説API仕様変更時は「なろう小説API仕様」セクションを更新
+   - カクヨムスクレイピング仕様変更時は「カクヨムダウンロードプロトコル」セクションを更新
+   - 新しいサイト対応追加時は新セクションを追加
+
+4. **バージョンアップ**
+   - build.gradle.ktsでバージョン変更時は「Current State」の**Version**を更新
+   - 例：1.5.31 (versionCode: 154) → 1.5.32 (versionCode: 155)
+
+5. **新機能の追加**
+   - 重要な新機能追加時は「Special Features」セクションに追記
+   - 新しいUtilityクラス追加時は「Utilities and Helpers」セクションを更新
+   - 新しい実装パターン確立時は「Development Guidelines」に追記
+
+6. **プロジェクト構造の変更**
+   - ディレクトリ構造変更時は「Directory Layout」を更新
+   - ファイル移動/名前変更時は「Key Files by Function」を更新
+
+#### 更新時の注意事項
+
+- **Quick Reference**セクションの情報は常に最新に保つこと（特にCurrent StateとKey Numbers）
+- バージョン番号、テーブル数、エンティティ数などの**数値は正確に**記載する
+- 新しいルールやパターンを追加する際は、**コード例を含める**こと
+- 古くなった情報は削除し、**履歴として残すべき情報はMigration History等に移動**する
+- 更新日時がある場合は「Current State」の日付を更新する
+
+#### 更新のタイミング
+
+- コード変更と**同じコミット**でCLAUDE.mdを更新することを推奨
+- 複数の小さな変更がある場合は、機能完成時にまとめて更新してもよい
+- データベースマイグレーションやAPI仕様変更など**重要な変更は即座に更新**すること
+
+このルールにより、CLAUDE.mdは常にコードベースの最新状態を正確に反映し、AIアシスタントが適切な支援を提供できるようになります。
 
 ## Development Commands
 
