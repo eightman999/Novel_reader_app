@@ -1143,6 +1143,33 @@ fun SettingsScreenUpdated(
                 }
             }
 
+            HorizontalDivider()
+
+            // 開発者向けオプション
+            SettingSection(title = "開発者向けオプション") {
+                // すべての更新スケジュールを削除
+                Button(
+                    onClick = {
+                        scope.launch {
+                            autoUpdateScheduler.pruneAllWork()
+                            Toast.makeText(context, "すべての更新スケジュールを削除しました", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text("すべての更新スケジュールを削除")
+                }
+                Text(
+                    text = "注意: 実行中のタスクもすべてキャンセル・削除されます。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }

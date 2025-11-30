@@ -71,9 +71,6 @@ class AutoUpdateWorker(
             // GitHubの最新リリースを確認
             ReleaseUtils.checkForNewRelease(applicationContext)
 
-            // 次回のスケジュールを再設定
-            reschedule()
-
             // 成功実行時刻を記録
             try {
                 SettingsStore(applicationContext).setLastAutoUpdateRunAt(System.currentTimeMillis())
@@ -87,20 +84,10 @@ class AutoUpdateWorker(
             Log.e(TAG, "自動更新処理中にエラーが発生", e)
             // エラー発生時に通知
             sendErrorNotification(e.message ?: "不明なエラー")
-            reschedule()
             Result.failure()
         } finally {
             // 自動更新の終了を通知
             com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.setAutoUpdateRunning(false)
-        }
-    }
-
-    private suspend fun reschedule() {
-        if (!tags.contains("manual_update")) {
-            val store = SettingsStore(applicationContext)
-            val enabled = store.autoUpdateEnabled.first()
-            val time = store.autoUpdateTime.first()
-            AutoUpdateScheduler(applicationContext).scheduleAutoUpdate(enabled, time)
         }
     }
 

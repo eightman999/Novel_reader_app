@@ -22,6 +22,7 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -96,7 +97,7 @@ class NovelRepository(
 
             // 既存のエピソードを取得（既読情報を保持するため）
             val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
-            val existingEpisodesSnapshot = kotlinx.coroutines.flow.first(existingEpisodes)
+            val existingEpisodesSnapshot = existingEpisodes.first()
             val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
 
             // 新しいエピソードと既存のエピソードをマージ（既読情報を保持）
@@ -146,7 +147,7 @@ class NovelRepository(
 
             // 既存のエピソードを取得（既読情報を保持するため）
             val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
-            val existingEpisodesSnapshot = kotlinx.coroutines.flow.first(existingEpisodes)
+            val existingEpisodesSnapshot = existingEpisodes.first()
             val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
 
             // 新しいエピソードと既存のエピソードをマージ（既読情報を保持）

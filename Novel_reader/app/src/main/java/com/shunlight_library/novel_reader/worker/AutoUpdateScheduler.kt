@@ -71,6 +71,17 @@ class AutoUpdateScheduler(private val context: Context) {
     }
 
     /**
+     * すべてのワークをキャンセルし、完了済みのワークを削除
+     */
+    fun pruneAllWork() {
+        // すべてのワークをキャンセル
+        workManager.cancelAllWork()
+        // 完了済み・キャンセル済みのワークをDBから削除
+        workManager.pruneWork()
+        Log.d(TAG, "すべての更新スケジュールを削除しました")
+    }
+
+    /**
      * 手動で更新チェックを即座に実行
      */
     fun runManualUpdate() {
