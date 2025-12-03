@@ -49,6 +49,8 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.shunlight_library.novel_reader.metadata.MetadataUpdateManager
 import com.shunlight_library.novel_reader.metadata.MetadataUpdateResult
+import com.shunlight_library.novel_reader.ui.components.IndicatorLampGroup
+import com.shunlight_library.novel_reader.ui.components.IndicatorLampStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -173,6 +175,18 @@ fun NovelReaderApp(
     // リポジトリを取得
     val repository = NovelReaderApplication.getRepository()
 
+    // インジケーターランプの設定を取得
+    val settingsStore = remember { SettingsStore(context) }
+    val indicatorEnabled by settingsStore.indicatorLampEnabled.collectAsState(initial = true)
+    val indicatorStyleStr by settingsStore.indicatorLampStyle.collectAsState(initial = "SOLID")
+    val indicatorStyle = when (indicatorStyleStr) {
+        "BLINKING" -> IndicatorLampStyle.BLINKING
+        else -> IndicatorLampStyle.SOLID
+    }
+
+    // 処理状態を監視
+    val processingStates by repository.processingStates.collectAsState()
+
     // 最後に読んだ小説の情報を取得
     var lastReadNovel by remember { mutableStateOf<LastReadNovelEntity?>(null) }
     var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
@@ -258,7 +272,10 @@ fun NovelReaderApp(
         }
     }
 
-when (val currentScreen = navigationManager.currentScreen) {
+    // インジケーターランプとコンテンツを重ねて表示
+    Box(modifier = Modifier.fillMaxSize()) {
+        // メインコンテンツ
+        when (val currentScreen = navigationManager.currentScreen) {
         is Screen.Main -> {
             MainScreen(
                 onNavigate = { screen -> navigationManager.navigateTo(screen) },
@@ -382,8 +399,21 @@ when (val currentScreen = navigationManager.currentScreen) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }
+        }
 
-
+        // インジケーターランプを左下に表示
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(16.dp)
+                .navigationBarsPadding()
+        ) {
+            IndicatorLampGroup(
+                states = processingStates,
+                style = indicatorStyle,
+                enabled = indicatorEnabled
+            )
+        }
     }
 }
 

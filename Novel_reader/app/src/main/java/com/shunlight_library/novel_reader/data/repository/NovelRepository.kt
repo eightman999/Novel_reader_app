@@ -22,12 +22,16 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
+import com.shunlight_library.novel_reader.data.ProcessingState
 
 class NovelRepository(
     private val episodeDao: EpisodeDao,
@@ -38,6 +42,40 @@ class NovelRepository(
     private val imageCacheDao: ImageCacheDao,
     private val episodeMappingDao: EpisodeMappingDao
 ) {
+    // 処理状態管理（インジケーターランプ用）
+    private val _processingStates = MutableStateFlow<List<ProcessingState>>(emptyList())
+    val processingStates: StateFlow<List<ProcessingState>> = _processingStates.asStateFlow()
+
+    /**
+     * 処理状態を追加
+     */
+    fun addProcessingState(state: ProcessingState) {
+        _processingStates.value = _processingStates.value + state
+    }
+
+    /**
+     * 処理状態を更新
+     */
+    fun updateProcessingState(id: String, updater: (ProcessingState) -> ProcessingState) {
+        _processingStates.value = _processingStates.value.map { state ->
+            if (state.id == id) updater(state) else state
+        }
+    }
+
+    /**
+     * 処理状態を削除
+     */
+    fun removeProcessingState(id: String) {
+        _processingStates.value = _processingStates.value.filter { it.id != id }
+    }
+
+    /**
+     * すべての処理状態をクリア
+     */
+    fun clearAllProcessingStates() {
+        _processingStates.value = emptyList()
+    }
+
     // Novel Description関連メソッド
     val allNovels: Flow<List<NovelDescEntity>> = novelDescDao.getAllNovels()
 
@@ -461,6 +499,15 @@ class NovelRepository(
                 val (adapter, novelId) = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByUrl(url)
                     ?: return@withContext null
 
+                // 処理状態を追加（仮のタイトル）
+                addProcessingState(
+                    ProcessingState(
+                        id = novelId,
+                        novelTitle = "取得中...",
+                        statusType = ProcessingStatusType.FETCHING
+                    )
+                )
+
                 // 登録を開始（制限チェック）
                 when (val result = com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.beginRegistration(novelId)) {
                     is com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.RegistrationResult.Success -> {
@@ -490,8 +537,21 @@ class NovelRepository(
                             repository = this@NovelRepository,  // 自身を渡す
                             onProgress = { current, total ->
                                 AppLogger.d("NovelRepository", "[$novelId] エピソード取得中: $current/$total")
+                                // インジケーター状態を更新
+                                updateProcessingState(novelId) { state ->
+                                    state.copy(
+                                        currentEpisode = current,
+                                        totalEpisodes = total,
+                                        progress = if (total > 0) current.toFloat() / total.toFloat() else 0f
+                                    )
+                                }
                             }
                         )
+
+                        // タイトルを更新
+                        updateProcessingState(novelId) { state ->
+                            state.copy(novelTitle = novelDesc.title)
+                        }
 
                         // 小説情報を保存
                         insertNovel(novelDesc)
@@ -505,8 +565,21 @@ class NovelRepository(
                             repository = this@NovelRepository,  // 自身を渡す
                             onProgress = { current, total ->
                                 AppLogger.d("NovelRepository", "[$novelId] エピソード取得中: $current/$total")
+                                // インジケーター状態を更新
+                                updateProcessingState(novelId) { state ->
+                                    state.copy(
+                                        currentEpisode = current,
+                                        totalEpisodes = total,
+                                        progress = if (total > 0) current.toFloat() / total.toFloat() else 0f
+                                    )
+                                }
                             }
                         )
+
+                        // タイトルを更新
+                        updateProcessingState(novelId) { state ->
+                            state.copy(novelTitle = result.novelDesc.title)
+                        }
 
                         // 小説情報を保存
                         insertNovel(result.novelDesc)
@@ -546,9 +619,28 @@ class NovelRepository(
                     }
                 }
 
+                // 処理完了後、少し待ってから状態を削除
+                kotlinx.coroutines.delay(2000)  // 2秒間表示
+                removeProcessingState(novelId)
+
                 novel
             } catch (e: Exception) {
                 AppLogger.e("NovelRepository", "Failed to add novel from URL: $url", e)
+
+                // エラー状態に更新
+                val (adapter, novelId) = com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory.getAdapterByUrl(url)
+                    ?: return@withContext null
+                updateProcessingState(novelId) { state ->
+                    state.copy(
+                        statusType = ProcessingStatusType.ERROR,
+                        errorMessage = e.message
+                    )
+                }
+
+                // エラー状態を5秒間表示してから削除
+                kotlinx.coroutines.delay(5000)
+                removeProcessingState(novelId)
+
                 throw e  // エラーメッセージを呼び出し元に伝える
             } finally {
                 // 登録セッションを終了
