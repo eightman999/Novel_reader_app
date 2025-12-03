@@ -69,6 +69,9 @@ fun EpisodeListScreen(
     var episodes by remember { mutableStateOf<List<EpisodeEntity>>(emptyList()) }
     var lastRead by remember { mutableStateOf<LastReadNovelEntity?>(null) }
 
+    // 更新中チェック用の状態変数
+    var isNovelUpdating by remember { mutableStateOf(false) }
+
     // 折りたたみ状態の追加
     var isDescriptionExpanded by remember { mutableStateOf(true) }
 
@@ -128,6 +131,14 @@ fun EpisodeListScreen(
             episodes = episodeList.sortedWith(compareBy {
                 it.episode_no.toIntOrNull() ?: Int.MAX_VALUE
             })
+        }
+    }
+
+    // 更新中状態を定期的にチェック
+    LaunchedEffect(ncode) {
+        while (true) {
+            isNovelUpdating = NovelUpdateCoordinator.isUpdating(ncode)
+            delay(1000) // 1秒ごとにチェック
         }
     }
 
@@ -1430,8 +1441,8 @@ fun EpisodeListScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable(enabled = lastRead != null) {
-                                if (lastRead != null) {
+                            .clickable(enabled = lastRead != null && !isNovelUpdating) {
+                                if (lastRead != null && !isNovelUpdating) {
                                     onEpisodeClick(ncode, lastRead!!.episode_no.toString())
                                 }
                             }
@@ -1440,12 +1451,12 @@ fun EpisodeListScreen(
                         Icon(
                             Icons.Default.Bookmark,
                             contentDescription = "しおりから読む",
-                            tint = if (lastRead != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            tint = if (lastRead != null && !isNovelUpdating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         )
                         Text(
                             "しおりから読む",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (lastRead != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            color = if (lastRead != null && !isNovelUpdating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         )
                     }
 
@@ -1454,8 +1465,8 @@ fun EpisodeListScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable(enabled = lastRead != null) {
-                                if (lastRead != null) {
+                            .clickable(enabled = lastRead != null && !isNovelUpdating) {
+                                if (lastRead != null && !isNovelUpdating) {
                                     scope.launch {
                                         try {
                                             repository.deleteLastRead(ncode)
@@ -1473,12 +1484,12 @@ fun EpisodeListScreen(
                         Icon(
                             Icons.Default.BookmarkRemove,
                             contentDescription = "しおりを削除",
-                            tint = if (lastRead != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            tint = if (lastRead != null && !isNovelUpdating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         )
                         Text(
                             "しおりを削除",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (lastRead != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            color = if (lastRead != null && !isNovelUpdating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         )
                     }
 
@@ -1487,14 +1498,24 @@ fun EpisodeListScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable {
-                                // 更新処理開始
-                                startUpdateProcess()
+                            .clickable(enabled = !isNovelUpdating) {
+                                if (!isNovelUpdating) {
+                                    // 更新処理開始
+                                    startUpdateProcess()
+                                }
                             }
                             .padding(vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "小説を更新")
-                        Text("小説を更新", style = MaterialTheme.typography.labelSmall)
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "小説を更新",
+                            tint = if (!isNovelUpdating) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                        Text(
+                            "小説を更新",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (!isNovelUpdating) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
                     }
 
                     // タグを編集
@@ -1502,13 +1523,23 @@ fun EpisodeListScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable {
-                                showTagEditDialog = true
+                            .clickable(enabled = !isNovelUpdating) {
+                                if (!isNovelUpdating) {
+                                    showTagEditDialog = true
+                                }
                             }
                             .padding(vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = "タグを編集")
-                        Text("タグを編集", style = MaterialTheme.typography.labelSmall)
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "タグを編集",
+                            tint = if (!isNovelUpdating) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                        Text(
+                            "タグを編集",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (!isNovelUpdating) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
                     }
 
                     // 作者ページを開く
@@ -1516,45 +1547,92 @@ fun EpisodeListScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .weight(1f)
-                            .clickable(enabled = novel != null) {
-                                novel?.let { novelEntity ->
-                                    val userId = novelEntity.userid
-                                    if (userId != null) {
-                                        val url = if (novelEntity.rating == 1) {
-                                            "https://xmypage.syosetu.com/$userId/"
+                            .clickable(enabled = novel != null && !isNovelUpdating) {
+                                if (!isNovelUpdating) {
+                                    novel?.let { novelEntity ->
+                                        val userId = novelEntity.userid
+                                        if (userId != null) {
+                                            val url = if (novelEntity.rating == 1) {
+                                                "https://xmypage.syosetu.com/$userId/"
+                                            } else {
+                                                "https://mypage.syosetu.com/$userId/"
+                                            }
+                                            onAuthorClick(url)
                                         } else {
-                                            "https://mypage.syosetu.com/$userId/"
+                                            Toast.makeText(context, "すでになろうにいません", Toast.LENGTH_SHORT).show()
                                         }
-                                        onAuthorClick(url)
-                                    } else {
-                                        Toast.makeText(context, "すでになろうにいません", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
                             .padding(vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Person, contentDescription = "作者")
-                        Text("作者", style = MaterialTheme.typography.labelSmall)
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = "作者",
+                            tint = if (novel != null && !isNovelUpdating) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                        Text(
+                            "作者",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (novel != null && !isNovelUpdating) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
                     }
                 }
             }
         }
     ) { innerPadding ->
-        // 小説の基本情報表示
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // 小説情報のヘッダー部分 - 折りたたみ機能追加
-            novel?.let { novel ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .clickable { isDescriptionExpanded = !isDescriptionExpanded },
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        // 更新中の場合はブロック画面を表示
+        if (isNovelUpdating) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
                 ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "目次を更新中です",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "しばらくお待ちください",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "エピソードの取得・更新処理が完了するまで\n目次にはアクセスできません",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            // 通常の画面表示（更新中でない場合）
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // 小説情報のヘッダー部分 - 折りたたみ機能追加
+                novel?.let { novel ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .clickable { isDescriptionExpanded = !isDescriptionExpanded },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1678,6 +1756,8 @@ fun EpisodeListScreen(
                         HorizontalDivider()
                     }
                 }
+            }
+        }
             }
         }
     }

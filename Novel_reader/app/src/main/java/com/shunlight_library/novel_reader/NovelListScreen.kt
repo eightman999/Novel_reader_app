@@ -877,6 +877,8 @@ fun NovelListScreen(
                     items = displayedNovels,
                     key = { it.novel.ncode }
                 ) { novelWithReadInfo ->
+                    val isUpdating = com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.isUpdating(novelWithReadInfo.novel.ncode)
+
                     NovelListItem(
                         novel = novelWithReadInfo.novel,
                         unreadCount = novelWithReadInfo.unreadCount,
@@ -887,6 +889,7 @@ fun NovelListScreen(
                         showRating = showRating,
                         showUpdateDate = showUpdateDate,
                         showEpisodeCount = showEpisodeCount,
+                        isUpdating = isUpdating,
                         onClick = { onNovelClick(novelWithReadInfo.novel.ncode) },
                         onFavoriteClick = { isFavorite ->
                             scope.launch {
@@ -919,6 +922,7 @@ fun NovelListItem(
     showRating: Boolean,
     showUpdateDate: Boolean,
     showEpisodeCount: Boolean,
+    isUpdating: Boolean = false,
     onClick: () -> Unit,
     onFavoriteClick: (Boolean) -> Unit
 ) {
@@ -940,11 +944,30 @@ fun NovelListItem(
                     .clickable(onClick = onClick)
             ) {
                 if (showTitle) {
-                    Text(
-                        text = novel.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = novel.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (isUpdating) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "更新中",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
