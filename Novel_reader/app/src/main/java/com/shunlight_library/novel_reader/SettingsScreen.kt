@@ -92,6 +92,10 @@ fun SettingsScreenUpdated(
     var autoUpdateEnabled by remember { mutableStateOf(false) }
     var autoUpdateTime by remember { mutableStateOf("03:00") }
 
+    // インジケーターランプ設定の状態変数
+    var indicatorLampEnabled by remember { mutableStateOf(true) }
+    var indicatorLampStyle by remember { mutableStateOf("SOLID") }
+
     // カスタムフォント関連の状態変数
     var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
     var showCustomFontDialog by remember { mutableStateOf(false) }
@@ -222,6 +226,10 @@ fun SettingsScreenUpdated(
             // 自動更新設定の読み込み
             autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
             autoUpdateTime = settingsStore.autoUpdateTime.first()
+
+            // インジケーターランプ設定の読み込み
+            indicatorLampEnabled = settingsStore.indicatorLampEnabled.first()
+            indicatorLampStyle = settingsStore.indicatorLampStyle.first()
 
             // カスタムフォント情報の読み込み
             customFonts = settingsStore.getAllCustomFontInfo()
@@ -516,6 +524,9 @@ fun SettingsScreenUpdated(
 
                                 // 自動更新設定を保存
                                 settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
+
+                                // インジケーターランプ設定を保存
+                                settingsStore.saveIndicatorLampSettings(indicatorLampEnabled, indicatorLampStyle)
 
                                 if (imageSaveLocation.isNotBlank()) {
                                     settingsStore.saveImageSaveLocation(imageSaveLocation)
@@ -1103,6 +1114,59 @@ fun SettingsScreenUpdated(
                     // 説明文
                     Text(
                         text = "指定した時間に小説の更新をチェックします。\n更新があれば通知が表示されます。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            HorizontalDivider()
+
+            // インジケーターランプ設定セクション
+            SettingSection(title = "インジケーターランプ設定") {
+                // インジケーターランプの有効/無効
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("インジケーターランプを表示")
+                    Spacer(modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = indicatorLampEnabled,
+                        onCheckedChange = { indicatorLampEnabled = it }
+                    )
+                }
+
+                // インジケーターランプが有効な場合のみスタイル設定を表示
+                if (indicatorLampEnabled) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "表示スタイル",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        RadioButtonOption(
+                            text = "点灯（常時表示）",
+                            selected = indicatorLampStyle == "SOLID",
+                            onClick = { indicatorLampStyle = "SOLID" }
+                        )
+                        RadioButtonOption(
+                            text = "点滅",
+                            selected = indicatorLampStyle == "BLINKING",
+                            onClick = { indicatorLampStyle = "BLINKING" }
+                        )
+                    }
+
+                    // 説明文
+                    Text(
+                        text = "画面左下に更新・取得処理の状態を表示します。\nインジケーターをタップすると詳細を確認できます。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
