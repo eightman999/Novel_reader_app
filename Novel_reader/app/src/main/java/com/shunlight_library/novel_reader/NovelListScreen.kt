@@ -95,6 +95,13 @@ fun NovelListScreen(
     val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    // 処理中状態の監視
+    val processingStates by repository.processingStates.collectAsState()
+
+    // 処理中ダイアログ用の状態
+    var showProcessingDialog by remember { mutableStateOf(false) }
+    var processingMessage by remember { mutableStateOf("") }
+
     // 表示設定の状態変数
     var showTitle by remember { mutableStateOf(true) }
     var showAuthor by remember { mutableStateOf(true) }
@@ -877,9 +884,13 @@ fun NovelListScreen(
                     items = displayedNovels,
                     key = { it.novel.ncode }
                 ) { novelWithReadInfo ->
+                    // 処理中状態を取得
+                    val processingState = processingStates.find { it.id == novelWithReadInfo.novel.ncode }
+
                     NovelListItem(
                         novel = novelWithReadInfo.novel,
                         unreadCount = novelWithReadInfo.unreadCount,
+                        processingState = processingState,
                         showTitle = showTitle,
                         showAuthor = showAuthor,
                         showSynopsis = showSynopsis,
@@ -887,7 +898,26 @@ fun NovelListScreen(
                         showRating = showRating,
                         showUpdateDate = showUpdateDate,
                         showEpisodeCount = showEpisodeCount,
-                        onClick = { onNovelClick(novelWithReadInfo.novel.ncode) },
+                        onClick = {
+                            // 処理中の場合はアクセスを拒否
+                            if (processingState != null) {
+                                processingMessage = when (processingState.statusType) {
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.FETCHING ->
+                                        "この小説は現在取得中です。\n完了までお待ちください。"
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.CHECK ->
+                                        "この小説は現在更新確認中です。\n完了までお待ちください。"
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.RETRY ->
+                                        "この小説は現在再試行中です。\n完了までお待ちください。"
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.ERROR ->
+                                        "この小説の処理中にエラーが発生しました。\nエラー状態が解消されるまでお待ちください。"
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.IDLE ->
+                                        "この小説は現在処理中です。\n完了までお待ちください。"
+                                }
+                                showProcessingDialog = true
+                            } else {
+                                onNovelClick(novelWithReadInfo.novel.ncode)
+                            }
+                        },
                         onFavoriteClick = { isFavorite ->
                             scope.launch {
                                 repository.updateFavoriteStatus(novelWithReadInfo.novel.ncode, isFavorite)
@@ -906,12 +936,34 @@ fun NovelListScreen(
             }
         }
     }
+
+    // 処理中ダイアログ
+    if (showProcessingDialog) {
+        AlertDialog(
+            onDismissRequest = { showProcessingDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "アクセス拒否",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("アクセスできません") },
+            text = { Text(processingMessage) },
+            confirmButton = {
+                Button(onClick = { showProcessingDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun NovelListItem(
     novel: NovelDescEntity,
     unreadCount: Int,
+    processingState: com.shunlight_library.novel_reader.data.ProcessingState? = null,
     showTitle: Boolean,
     showAuthor: Boolean,
     showSynopsis: Boolean,
@@ -940,12 +992,62 @@ fun NovelListItem(
                     .clickable(onClick = onClick)
             ) {
                 if (showTitle) {
-                    Text(
-                        text = novel.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = novel.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // 処理中インジケーターランプ
+                        if (processingState != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                // ランプアイコン（色付き円）
+                                androidx.compose.foundation.Canvas(
+                                    modifier = Modifier.size(12.dp)
+                                ) {
+                                    drawCircle(color = processingState.statusType.color)
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                // 処理状態テキスト
+                                Text(
+                                    text = processingState.statusType.displayName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = processingState.statusType.color,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
+
+                    // 進捗バーの表示（取得中の場合）
+                    if (processingState != null &&
+                        processingState.statusType == com.shunlight_library.novel_reader.data.ProcessingStatusType.FETCHING &&
+                        processingState.totalEpisodes > 0
+                    ) {
+                        Column {
+                            LinearProgressIndicator(
+                                progress = { processingState.progress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${processingState.currentEpisode}/${processingState.totalEpisodes} 話",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
                 }
 
                 if (showAuthor) {
