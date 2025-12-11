@@ -115,6 +115,10 @@ class SettingsStore(private val context: Context) {
         val NOVEL_LIST_SHOW_LONG = booleanPreferencesKey("novel_list_show_long")
         val NOVEL_LIST_SHOW_SHORT = booleanPreferencesKey("novel_list_show_short")
         val NOVEL_LIST_SITE_FILTER = stringPreferencesKey("novel_list_site_filter")
+
+        // インジケーターランプ設定のキー
+        val INDICATOR_LAMP_ENABLED = booleanPreferencesKey("indicator_lamp_enabled")
+        val INDICATOR_LAMP_STYLE = stringPreferencesKey("indicator_lamp_style")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -160,6 +164,10 @@ class SettingsStore(private val context: Context) {
     val defaultNovelListShowLong = true
     val defaultNovelListShowShort = true
     val defaultNovelListSiteFilter = "ALL"
+
+    // インジケーターランプ設定のデフォルト値
+    val defaultIndicatorLampEnabled = true
+    val defaultIndicatorLampStyle = "SOLID"
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -614,7 +622,33 @@ class SettingsStore(private val context: Context) {
         val preferences = context.dataStore.data.first()
         return preferences[LAST_NOTIFIED_RELEASE] ?: defaultLastNotifiedRelease
     }
-    
+
+    // インジケーターランプ有効/無効の設定値を取得
+    val indicatorLampEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[INDICATOR_LAMP_ENABLED] ?: defaultIndicatorLampEnabled
+        }
+
+    // インジケーターランプスタイルの設定値を取得
+    val indicatorLampStyle: Flow<String> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[INDICATOR_LAMP_STYLE] ?: defaultIndicatorLampStyle
+        }
+
     // 小説リストフィルター設定の取得
     suspend fun getNovelListFilterSettings(): NovelListFilterSettings {
         val preferences = context.dataStore.data.first()
@@ -647,6 +681,14 @@ class SettingsStore(private val context: Context) {
             preferences[NOVEL_LIST_SHOW_LONG] = settings.showLongNovels
             preferences[NOVEL_LIST_SHOW_SHORT] = settings.showShortNovels
             preferences[NOVEL_LIST_SITE_FILTER] = settings.siteFilter
+        }
+    }
+
+    // インジケーターランプ設定を保存するメソッド
+    suspend fun saveIndicatorLampSettings(enabled: Boolean, style: String) {
+        context.dataStore.edit { preferences ->
+            preferences[INDICATOR_LAMP_ENABLED] = enabled
+            preferences[INDICATOR_LAMP_STYLE] = style
         }
     }
 }
