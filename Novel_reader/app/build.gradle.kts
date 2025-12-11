@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.shunlight_library.novel_reader"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.shunlight_library.novel_reader"
@@ -45,7 +45,7 @@ android {
         compose = true
         buildConfig = true
     }
-    buildToolsVersion = "36.0.0"
+    buildToolsVersion = "35.0.0"
 }
 
 dependencies {
@@ -56,18 +56,22 @@ dependencies {
     ksp("androidx.room:room-compiler:$room_version")
 
 // Jsoup for HTML parsing
-    implementation("org.jsoup:jsoup:1.16.1")
+    implementation("org.jsoup:jsoup:1.18.3")
 
 // Markdown rendering for Compose
-    implementation("com.github.jeziellago:compose-markdown:0.5.4")
+    implementation("com.github.jeziellago:compose-markdown:0.6.1")
 
 // DataStore for preferences
-    implementation ("androidx.compose.material:material-icons-extended:1.7.0")
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-    implementation("org.yaml:snakeyaml:1.33")
+    implementation ("androidx.compose.material:material-icons-extended:1.7.7")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("org.yaml:snakeyaml:2.3")
 // DocumentFile for content provider access
-    implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
+    implementation("androidx.documentfile:documentfile:1.1.0")
+
+// Kotlin Coroutines (Android 5.0+ compatible)
+    val coroutines_version = "2.0.0"
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:$coroutines_version")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -79,7 +83,7 @@ dependencies {
 
     // Unit Testing
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutines_version")
     testImplementation("com.google.truth:truth:1.1.5")
 
     // Android Instrumented Testing
@@ -88,14 +92,11 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation("androidx.room:room-testing:$room_version")
-    androidTestImplementation("androidx.work:work-testing:2.9.0")
+    androidTestImplementation("androidx.work:work-testing:2.10.1")
     androidTestImplementation("com.google.truth:truth:1.1.5")
-    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutines_version")
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation("androidx.work:work-runtime-ktx:2.8.1")
     implementation("androidx.compose.ui:ui-text-google-fonts:1.7.0")
-    // Non-blocking await for ListenableFuture
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.6.4")
 }
