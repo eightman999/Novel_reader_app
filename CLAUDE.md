@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2025-11-27)
-- **Version**: 1.5.31 (versionCode: 154)
+### Current State (2025-12-11)
+- **Version**: 1.6.1 (versionCode: 160)
 - **Database**: Version 11 with 7 tables
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -71,7 +71,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **バージョンアップ**
    - build.gradle.ktsでバージョン変更時は「Current State」の**Version**を更新
-   - 例：1.5.31 (versionCode: 154) → 1.5.32 (versionCode: 155)
+   - 例：1.6.1 (versionCode: 160) → 1.6.2 (versionCode: 161)
 
 5. **新機能の追加**
    - 重要な新機能追加時は「Special Features」セクションに追記
@@ -128,7 +128,7 @@ All Gradle commands should be run from the `Novel_reader/` directory.
 Novel_reader_app/
 ├── Novel_reader/                    # Main Android project
 │   ├── app/
-│   │   ├── build.gradle.kts        # App build config (version: 1.5.31, code: 154)
+│   │   ├── build.gradle.kts        # App build config (version: 1.6.1, code: 160)
 │   │   └── src/
 │   │       ├── main/java/com/shunlight_library/novel_reader/
 │   │       │   ├── *.kt            # Top-level screens and application
@@ -421,7 +421,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 1.5.31 (versionCode 154).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 1.6.1 (versionCode 160).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.
