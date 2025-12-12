@@ -195,6 +195,16 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
 }
 
 /**
+ * v12→v13のマイグレーション: スキーマ定義の整合性確認のみ（実際の変更なし）
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // v12で追加されたインデックスがエンティティ定義に追加されたため、
+        // スキーマ検証を通過させるためのマイグレーション（実際の変更なし）
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -207,7 +217,7 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
         ImageCacheEntity::class,
         EpisodeMappingEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -244,7 +254,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
-                        MIGRATION_11_12
+                        MIGRATION_11_12,
+                        MIGRATION_12_13
                     )
                     .build()
                 INSTANCE = instance
