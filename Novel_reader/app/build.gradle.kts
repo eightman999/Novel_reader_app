@@ -13,8 +13,8 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 164
-        versionName = "1.6.5"
+        versionCode = 165
+        versionName = "1.6.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -59,7 +59,7 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
 
 // Markdown rendering for Compose
-    implementation("com.github.jeziellago:compose-markdown:0.6.1")
+    implementation("com.github.jeziellago:compose-markdown:0.5.8")
 
 // DataStore for preferences
     implementation ("androidx.compose.material:material-icons-extended:1.7.7")
@@ -69,7 +69,7 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.1.0")
 
 // Kotlin Coroutines (Android 5.0+ compatible)
-    val coroutines_version = "2.0.0"
+    val coroutines_version = "1.10.2"
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:$coroutines_version")
     implementation(libs.androidx.core.ktx)
