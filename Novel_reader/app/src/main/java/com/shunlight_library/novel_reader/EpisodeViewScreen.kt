@@ -803,8 +803,11 @@ fun EnhancedHtmlRubyWebView(
     <style>
         $customFontCss
         html {
-            height: 100%;
-            width: 100%;
+            ${if (textOrientation == "Vertical") {
+                "height: 100%; width: 100%;"
+            } else {
+                "height: 100%; width: 100%;"
+            }}
         }
         body {
             font-family: $actualFontFamily;
@@ -816,7 +819,7 @@ fun EnhancedHtmlRubyWebView(
             color: $fontColor;
             writing-mode: $writingMode;
             ${if (textOrientation == "Vertical") {
-                "min-height: 100vh; width: auto; overflow-x: auto; overflow-y: hidden;"
+                "height: 100vh; width: auto; overflow-x: auto; overflow-y: hidden;"
             } else {
                 "min-height: 100vh; overflow-y: auto; word-wrap: break-word; overflow-wrap: break-word;"
             }}
@@ -824,7 +827,7 @@ fun EnhancedHtmlRubyWebView(
         }
         p {
             margin: 0.5em 0;
-            ${if (textOrientation == "Vertical") "height: auto;" else "word-wrap: break-word; overflow-wrap: break-word;"}
+            ${if (textOrientation == "Vertical") "" else "word-wrap: break-word; overflow-wrap: break-word;"}
         }
         ruby {
             display: ruby;
