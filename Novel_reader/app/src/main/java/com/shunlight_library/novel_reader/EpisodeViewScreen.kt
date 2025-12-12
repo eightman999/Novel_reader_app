@@ -803,11 +803,8 @@ fun EnhancedHtmlRubyWebView(
     <style>
         $customFontCss
         html {
-            ${if (textOrientation == "Vertical") {
-                "height: 100%; width: 100%;"
-            } else {
-                "height: 100%; width: 100%;"
-            }}
+            height: 100%;
+            width: 100%;
         }
         body {
             font-family: $actualFontFamily;
