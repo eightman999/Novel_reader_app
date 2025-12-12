@@ -884,8 +884,7 @@ fun NovelListScreen(
                     items = displayedNovels,
                     key = { it.novel.ncode }
                 ) { novelWithReadInfo ->
-                    val isUpdating = com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.isUpdating(novelWithReadInfo.novel.ncode)
-                    // 処理中状態を取得
+                    // 処理中状態を取得（パフォーマンス最適化：isUpdatingチェックは不要なので削除）
                     val processingState = processingStates.find { it.id == novelWithReadInfo.novel.ncode }
 
                     NovelListItem(

@@ -83,6 +83,10 @@ class NovelRepository(
         return novelDescDao.getNovelByNcode(ncode)
     }
 
+    suspend fun getNovelsByNcodes(ncodes: List<String>): List<NovelDescEntity> {
+        return novelDescDao.getNovelsByNcodes(ncodes)
+    }
+
     fun getNovelsByTag(tag: String): Flow<List<NovelDescEntity>> {
         return novelDescDao.getNovelsByTag(tag)
     }
@@ -102,6 +106,14 @@ class NovelRepository(
     // Episode関連メソッド
     fun getEpisodesByNcode(ncode: String): Flow<List<EpisodeEntity>> {
         return episodeDao.getEpisodesByNcode(ncode)
+    }
+
+    suspend fun getEpisodesByNcodeList(ncode: String): List<EpisodeEntity> {
+        return episodeDao.getEpisodesByNcodeList(ncode)
+    }
+
+    suspend fun getErrorEpisodes(ncode: String): List<EpisodeEntity> {
+        return episodeDao.getErrorEpisodes(ncode)
     }
 
     suspend fun getEpisode(ncode: String, episodeNo: String): EpisodeEntity? {

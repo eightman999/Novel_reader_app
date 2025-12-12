@@ -69,14 +69,10 @@ fun UpdateInfoScreen(
         repository.allUpdateQueue.collect { queueList ->
             updateQueue = queueList
 
-            // 関連する小説情報も取得
-            val novelMap = mutableMapOf<String, NovelDescEntity>()
-            queueList.forEach { queue ->
-                repository.getNovelByNcode(queue.ncode)?.let { novel ->
-                    novelMap[queue.ncode] = novel
-                }
-            }
-            novels = novelMap
+            // N+1クエリ対策：関連する小説情報を一括取得
+            val ncodes = queueList.map { it.ncode }
+            val novelsList = repository.getNovelsByNcodes(ncodes)
+            novels = novelsList.associateBy { it.ncode }
         }
     }
     if (showErrorFixConfirmDialog) {
@@ -385,14 +381,10 @@ fun UpdateInfoScreen(
                                         val latestQueueList = repository.getAllUpdateQueue()
                                         updateQueue = latestQueueList
 
-                                        // 関連する小説情報も取得
-                                        val novelMap = mutableMapOf<String, NovelDescEntity>()
-                                        latestQueueList.forEach { queue ->
-                                            repository.getNovelByNcode(queue.ncode)?.let { novel ->
-                                                novelMap[queue.ncode] = novel
-                                            }
-                                        }
-                                        novels = novelMap.values.toList()
+                                        // N+1クエリ対策：関連する小説情報を一括取得
+                                        val ncodes = latestQueueList.map { it.ncode }
+                                        val novelsList = repository.getNovelsByNcodes(ncodes)
+                                        novels = novelsList.associateBy { it.ncode }
                                     } catch (e: Exception) {
                                         Log.e("UpdateCheck", "更新情報再取得エラー: ${e.message}")
                                     }

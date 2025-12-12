@@ -69,6 +69,10 @@ interface EpisodeDao {
     @Query("SELECT COUNT(*) FROM episodes")
     suspend fun getEpisodeCount(): Int
 
+    @Query("SELECT * FROM episodes WHERE ncode = :ncode AND (body = '' OR e_title = '') ORDER BY CAST(episode_no AS INTEGER)")
+    suspend fun getErrorEpisodes(ncode: String): List<EpisodeEntity>
 
+    @Query("SELECT * FROM episodes WHERE ncode = :ncode ORDER BY CAST(episode_no AS INTEGER)")
+    suspend fun getEpisodesByNcodeList(ncode: String): List<EpisodeEntity>
 
 }

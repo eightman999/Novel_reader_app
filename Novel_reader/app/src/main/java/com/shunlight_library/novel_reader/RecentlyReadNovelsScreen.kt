@@ -46,9 +46,14 @@ fun RecentlyReadNovelsScreen(
         // 最後に読んだ履歴を日付順に取得
         val lastReadNovels = repository.allLastReadNovels.first()
 
-        // 各履歴に対応する小説情報を取得
+        // N+1クエリ対策：一括取得
+        val ncodes = lastReadNovels.map { it.ncode }
+        val novels = repository.getNovelsByNcodes(ncodes)
+        val novelMap = novels.associateBy { it.ncode }
+
+        // 各履歴に対応する小説情報をマップから取得
         val novelWithInfoList = lastReadNovels.map { lastRead ->
-            val novel = repository.getNovelByNcode(lastRead.ncode)
+            val novel = novelMap[lastRead.ncode]
             LastReadNovelWithInfo(lastRead, novel)
         }
 
