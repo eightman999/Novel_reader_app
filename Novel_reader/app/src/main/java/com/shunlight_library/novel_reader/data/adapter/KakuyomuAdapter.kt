@@ -705,7 +705,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             noveltype = if (totalEp == 1) 2 else 1,  // 1話のみなら短編、それ以外は連載
             length = null,  // HTMLから抽出困難
             updated_at = lastUpdateDate,  // サイト上の最終更新日時
-            is_favorite = false,
+            is_favorite = 0,
             site_type = NovelSiteAdapter.SITE_TYPE_KAKUYOMU,
             registered_at = getCurrentDateTime()  // データベース登録日時
         )
@@ -841,8 +841,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     body = "",  // TOCページには本文がないため空（後でfetchEpisodeContentで取得）
                     e_title = episodeTitle,
                     update_time = publishedDate,
-                    is_read = false,
-                    is_bookmark = false,
+                    is_read = 0,
+                    is_bookmark = 0,
                     reading_rate = 0.0f
                 )
             )
@@ -959,8 +959,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         body = "",  // 本文は後で個別に取得
                         e_title = title,
                         update_time = publishedDate,
-                        is_read = false,
-                        is_bookmark = false,
+                        is_read = 0,
+                        is_bookmark = 0,
                         reading_rate = 0.0f
                     )
 
@@ -1128,8 +1128,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
                         body = "",  // 本文は後で個別に取得
                         e_title = title,
                         update_time = publishedDate,
-                        is_read = false,
-                        is_bookmark = false,
+                        is_read = 0,
+                        is_bookmark = 0,
                         reading_rate = 0.0f
                     )
 
@@ -1230,8 +1230,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
                                                 body = "",  // 本文は後で個別に取得
                                                 e_title = title,
                                                 update_time = publishedDate,
-                                                is_read = false,
-                                                is_bookmark = false,
+                                                is_read = 0,
+                                                is_bookmark = 0,
                                                 reading_rate = 0.0f
                                             )
                                         )
@@ -1281,8 +1281,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
                                     body = "",
                                     e_title = title,
                                     update_time = publishedDate,
-                                    is_read = false,
-                                    is_bookmark = false,
+                                    is_read = 0,
+                                    is_bookmark = 0,
                                     reading_rate = 0.0f
                                 )
                             )

@@ -1391,7 +1391,7 @@ fun EpisodeListScreen(
                     IconButton(
                         onClick = {
                             novel?.let {
-                                val newValue = !it.is_favorite
+                                val newValue = if (it.is_favorite == 1) 0 else 1
                                 scope.launch {
                                     repository.updateFavoriteStatus(it.ncode, newValue)
                                     novel = it.copy(is_favorite = newValue)
@@ -1400,9 +1400,9 @@ fun EpisodeListScreen(
                         }
                     ) {
                         Icon(
-                            imageVector = if (novel?.is_favorite == true) Icons.Default.Star else Icons.Default.StarBorder,
-                            contentDescription = if (novel?.is_favorite == true) "お気に入りから削除" else "お気に入りに追加",
-                            tint = if (novel?.is_favorite == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            imageVector = if (novel?.is_favorite == 1) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = if (novel?.is_favorite == 1) "お気に入りから削除" else "お気に入りに追加",
+                            tint = if (novel?.is_favorite == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
                     Box {
@@ -1784,15 +1784,15 @@ fun EpisodeItem(
     ) {
         // 既読/未読アイコン - episode.is_read を使用
         Icon(
-            imageVector = if (episode.is_read) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-            contentDescription = if (episode.is_read) "既読" else "未読",
-            tint = if (episode.is_read) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            imageVector = if (episode.is_read == 1) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+            contentDescription = if (episode.is_read == 1) "既読" else "未読",
+            tint = if (episode.is_read == 1) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp)
         )
 
         // しおりアイコンを追加 - episode.is_bookmark を使用
-        if (episode.is_bookmark) {
+        if (episode.is_bookmark == 1) {
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
                 imageVector = Icons.Default.Bookmark,
@@ -1809,16 +1809,16 @@ fun EpisodeItem(
             Text(
                 text = "${episode.episode_no}. ${episode.e_title}",
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (episode.is_read) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                color = if (episode.is_read == 1) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (episode.is_read) FontWeight.Normal else FontWeight.Bold
+                fontWeight = if (episode.is_read == 1) FontWeight.Normal else FontWeight.Bold
             )
 
             if (episode.update_time.isNotEmpty()) {
                 Text(
                     text = "更新: ${episode.update_time}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (episode.is_read) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    color = if (episode.is_read == 1) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }

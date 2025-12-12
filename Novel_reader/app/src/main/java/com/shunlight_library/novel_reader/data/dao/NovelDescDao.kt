@@ -38,7 +38,7 @@ interface NovelDescDao {
     suspend fun getNovelsForUpdate(): List<NovelDescEntity>
 
     @Query("UPDATE novels_descs SET is_favorite = :isFavorite WHERE ncode = :ncode")
-    suspend fun updateFavoriteStatus(ncode: String, isFavorite: Boolean)
+    suspend fun updateFavoriteStatus(ncode: String, isFavorite: Int)
 
     @Query("SELECT * FROM novels_descs WHERE is_favorite = 1 ORDER BY last_update_date DESC")
     fun getFavoriteNovels(): Flow<List<NovelDescEntity>>

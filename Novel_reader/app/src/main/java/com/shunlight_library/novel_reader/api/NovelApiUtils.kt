@@ -451,8 +451,8 @@ object NovelApiUtils {
                             body = body,
                             e_title = title,
                             update_time = currentDate,
-                            is_read = false,
-                            is_bookmark = false
+                            is_read = 0,
+                            is_bookmark = 0
                         )
                     } else {
                         Log.e(TAG, "カクヨムエピソード本文が空です: workId=$workId, episodeId=$kakuyomuEpisodeId")
@@ -648,8 +648,8 @@ object NovelApiUtils {
                         body = bodyString,
                         e_title = title,
                         update_time = currentDate,
-                        is_read = false,
-                        is_bookmark = false
+                        is_read = 0,
+                        is_bookmark = 0
                     )
                 } else {
                     Log.e(TAG, "タイトルまたは本文が空です: title=${title.isNotEmpty()}, body=${bodyString.isNotEmpty()}")

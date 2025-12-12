@@ -19,11 +19,11 @@ import androidx.room.PrimaryKey
  * @property ncode 主キーとなる N コード
  * @property api_url 小説情報取得用 API の URL
  * @property url 閲覧用 Web ページの URL
- * @property is_r18 R18 作品かどうか
+ * @property is_r18 R18 作品かどうか (0=一般, 1=R18)
  */
 data class URLEntity(
     @PrimaryKey val ncode: String,
     val api_url: String,
     val url: String,
-    val is_r18: Boolean = false
+    val is_r18: Int = 0  // 0=一般, 1=R18
 )

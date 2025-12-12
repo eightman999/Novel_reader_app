@@ -208,7 +208,7 @@ fun NovelListScreen(
                     return@filter false
                 }
 
-                if (filterSettings.showFavoritesOnly && !novel.is_favorite) {
+                if (filterSettings.showFavoritesOnly && novel.is_favorite != 1) {
                     return@filter false
                 }
 
@@ -920,10 +920,10 @@ fun NovelListScreen(
                         },
                         onFavoriteClick = { isFavorite ->
                             scope.launch {
-                                repository.updateFavoriteStatus(novelWithReadInfo.novel.ncode, isFavorite)
+                                repository.updateFavoriteStatus(novelWithReadInfo.novel.ncode, if (isFavorite) 1 else 0)
                                 novelList = novelList.map { novel ->
                                     if (novel.ncode == novelWithReadInfo.novel.ncode) {
-                                        novel.copy(is_favorite = isFavorite)
+                                        novel.copy(is_favorite = if (isFavorite) 1 else 0)
                                     } else {
                                         novel
                                     }
@@ -1140,13 +1140,13 @@ fun NovelListItem(
             }
 
             IconButton(
-                onClick = { onFavoriteClick(!novel.is_favorite) },
+                onClick = { onFavoriteClick(novel.is_favorite != 1) },
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = if (novel.is_favorite) Icons.Default.Star else Icons.Default.StarBorder,
-                    contentDescription = if (novel.is_favorite) "お気に入りから削除" else "お気に入りに追加",
-                    tint = if (novel.is_favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    imageVector = if (novel.is_favorite == 1) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (novel.is_favorite == 1) "お気に入りから削除" else "お気に入りに追加",
+                    tint = if (novel.is_favorite == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
         }

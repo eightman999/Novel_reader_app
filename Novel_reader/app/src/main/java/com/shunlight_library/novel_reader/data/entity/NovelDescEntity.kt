@@ -57,7 +57,7 @@ data class NovelDescEntity(
     val noveltype: Int? = null,
     val length: Int? = null,
     val updated_at: String,
-    val is_favorite: Boolean = false,
+    val is_favorite: Int = 0,  // 0=未登録, 1=登録済み
     val site_type: Int = 1,  // 1=小説家になろう, 2=カクヨム
     val registered_at: String  // データベース登録日時
 )

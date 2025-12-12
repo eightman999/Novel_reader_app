@@ -37,13 +37,13 @@ interface EpisodeDao {
      * エピソードの既読状態を更新
      */
     @Query("UPDATE episodes SET is_read = :isRead WHERE ncode = :ncode AND episode_no = :episodeNo")
-    suspend fun updateReadStatus(ncode: String, episodeNo: String, isRead: Boolean)
+    suspend fun updateReadStatus(ncode: String, episodeNo: String, isRead: Int)
 
     /**
      * エピソードのしおり状態を更新
      */
     @Query("UPDATE episodes SET is_bookmark = :isBookmark WHERE ncode = :ncode AND episode_no = :episodeNo")
-    suspend fun updateBookmarkStatus(ncode: String, episodeNo: String, isBookmark: Boolean)
+    suspend fun updateBookmarkStatus(ncode: String, episodeNo: String, isBookmark: Int)
 
     /**
      * 指定されたエピソードまでを既読に設定
