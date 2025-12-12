@@ -46,4 +46,7 @@ interface NovelDescDao {
     @Query("SELECT COUNT(*) FROM novels_descs")
     suspend fun getNovelCount(): Int
 
+    @Query("SELECT * FROM novels_descs WHERE ncode IN (:ncodes)")
+    suspend fun getNovelsByNcodes(ncodes: List<String>): List<NovelDescEntity>
+
 }

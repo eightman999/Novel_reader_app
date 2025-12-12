@@ -174,6 +174,27 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
 }
 
 /**
+ * v11→v12のマイグレーション: パフォーマンス最適化のためのインデックス追加
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // novels_descsテーブルにソート・検索用インデックスを追加
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_total_ep ON novels_descs (total_ep)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_author ON novels_descs (author)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_title ON novels_descs (title)")
+
+        // episodesテーブルにフィルタリング用インデックスを追加
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_episodes_is_read ON episodes (is_read)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_episodes_is_bookmark ON episodes (is_bookmark)")
+
+        // 複合インデックス追加（パフォーマンス最適化）
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_site_favorite ON novels_descs (site_type, is_favorite)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_episodes_ncode_read ON episodes (ncode, is_read)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_episodes_ncode_bookmark ON episodes (ncode, is_bookmark)")
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -186,7 +207,7 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         ImageCacheEntity::class,
         EpisodeMappingEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -222,7 +243,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_7_8,
                         MIGRATION_8_9,
                         MIGRATION_9_10,
-                        MIGRATION_10_11
+                        MIGRATION_10_11,
+                        MIGRATION_11_12
                     )
                     .build()
                 INSTANCE = instance
