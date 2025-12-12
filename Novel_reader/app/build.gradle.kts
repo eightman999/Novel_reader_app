@@ -69,7 +69,7 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.1.0")
 
 // Kotlin Coroutines (Android 5.0+ compatible)
-    val coroutines_version = "2.0.0"
+    val coroutines_version = "1.10.2"
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:$coroutines_version")
     implementation(libs.androidx.core.ktx)
