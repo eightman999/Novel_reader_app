@@ -1003,21 +1003,20 @@ fun NovelListItem(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        if (isUpdating) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "更新中",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            modifier = Modifier.weight(1f)
-                        )
+                          if (isUpdating) {
+                              Spacer(modifier = Modifier.width(8.dp))
+                              CircularProgressIndicator(
+                                  modifier = Modifier.size(16.dp),
+                                  strokeWidth = 2.dp,
+                                  color = MaterialTheme.colorScheme.primary
+                              )
+                              Spacer(modifier = Modifier.width(4.dp))
+                              Text(
+                                  text = "更新中",
+                                  style = MaterialTheme.typography.bodySmall,
+                                  color = MaterialTheme.colorScheme.primary
+                              )
+                          }
 
                         // 処理中インジケーターランプ
                         if (processingState != null) {

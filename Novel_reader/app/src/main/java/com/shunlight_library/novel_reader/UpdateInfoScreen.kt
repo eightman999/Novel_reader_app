@@ -222,8 +222,8 @@ fun UpdateInfoScreen(
                         scope.launch {
                             try {
                                 // 更新対象の小説を取得
-                                var novels = repository.getNovelsForUpdate()
-                                totalCount = novels.size  // 総数を設定
+                                var novelsForUpdate = repository.getNovelsForUpdate()
+                                totalCount = novelsForUpdate.size  // 総数を設定
 
                                 // 進捗状態の更新関数
                                 val updateProgress = { count: Int, message: String ->
@@ -238,7 +238,7 @@ fun UpdateInfoScreen(
 
                                 // 高速化: バッチ処理のためのグループ化
                                 val batchSize = 5 // 一度に処理する小説の数
-                                val novelBatches = novels.chunked(batchSize)
+                                val novelBatches = novelsForUpdate.chunked(batchSize)
 
                                 var processedNovels = 0
                                 var workCount = 0  // 新着・更新された作品数

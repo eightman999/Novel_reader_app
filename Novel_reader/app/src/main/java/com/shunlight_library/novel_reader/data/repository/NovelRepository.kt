@@ -32,6 +32,7 @@ import java.util.Date
 import java.util.Locale
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import com.shunlight_library.novel_reader.data.ProcessingState
+import com.shunlight_library.novel_reader.data.ProcessingStatusType
 
 class NovelRepository(
     private val episodeDao: EpisodeDao,
