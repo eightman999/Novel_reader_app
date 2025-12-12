@@ -1633,137 +1633,142 @@ fun EpisodeListScreen(
                             .clickable { isDescriptionExpanded = !isDescriptionExpanded },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        // 折りたたみボタンとタイトル
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
                         ) {
-                            Text(
-                                text = "あらすじとタグ",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Icon(
-                                imageVector = if (isDescriptionExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = if (isDescriptionExpanded) "折りたたむ" else "展開する"
-                            )
-                        }
-
-                        // 折りたたみ部分の内容
-                        if (isDescriptionExpanded) {
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // あらすじ
-                            Text(
-                                text = "あらすじ",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = novel.Synopsis,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // タグ
-                            if (novel.main_tag.isNotEmpty() || novel.sub_tag.isNotEmpty()) {
+                            // 折りたたみボタンとタイトル
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Text(
-                                    text = "タグ",
+                                    text = "あらすじとタグ",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Icon(
+                                    imageVector = if (isDescriptionExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = if (isDescriptionExpanded) "折りたたむ" else "展開する"
+                                )
+                            }
+
+                            // 折りたたみ部分の内容
+                            if (isDescriptionExpanded) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "タイトル: ${novel.title}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // あらすじ
+                                Text(
+                                    text = "あらすじ",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = buildString {
-                                        append(novel.main_tag)
-                                        if (novel.sub_tag.isNotEmpty()) {
-                                            if (novel.main_tag.isNotEmpty()) {
-                                                append(", ")
+                                    text = novel.Synopsis,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // タグ
+                                if (novel.main_tag.isNotEmpty() || novel.sub_tag.isNotEmpty()) {
+                                    Text(
+                                        text = "タグ",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = buildString {
+                                            append(novel.main_tag)
+                                            if (novel.sub_tag.isNotEmpty()) {
+                                                if (novel.main_tag.isNotEmpty()) {
+                                                    append(", ")
+                                                }
+                                                append(novel.sub_tag)
                                             }
-                                            append(novel.sub_tag)
-                                        }
-                                    },
+                                        },
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+
+                            // 最終更新日と総話数（常に表示）
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "最終更新: ${novel.last_update_date}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "全${novel.total_ep}話",
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
-                        }
 
-                        // 最終更新日と総話数（常に表示）
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "最終更新: ${novel.last_update_date}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "全${novel.total_ep}話",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        // 最後に読んだ情報（常に表示）
-                        lastRead?.let {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "しおり: ${it.episode_no}話 (${it.date})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            // 最後に読んだ情報（常に表示）
+                            lastRead?.let {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "しおり: ${it.episode_no}話 (${it.date})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            // エピソード一覧のヘッダー
-            Text(
-                text = "エピソード一覧",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+                // エピソード一覧のヘッダー
+                Text(
+                    text = "エピソード一覧",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
 
-            // エピソード一覧
-            if (episodes.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(episodes) { episode ->
-                        val isRead = lastRead != null &&
-                                episode.episode_no.toIntOrNull()?.let { it <= lastRead!!.episode_no } ?: false
+                // エピソード一覧
+                if (episodes.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(episodes) { episode ->
+                            val isRead = lastRead != null &&
+                                    episode.episode_no.toIntOrNull()?.let { it <= lastRead!!.episode_no } ?: false
 
-                        EpisodeItem(
-                            episode = episode,
+                            EpisodeItem(
+                                episode = episode,
 //                            isRead = isRead,
-                            onClick = { onEpisodeClick(ncode, episode.episode_no) }
-                        )
-                        HorizontalDivider()
+                                onClick = { onEpisodeClick(ncode, episode.episode_no) }
+                            )
+                            HorizontalDivider()
+                        }
                     }
                 }
             }
         }
-            }
-        }
+
     }
 }
-
-// EpisodeListScreen.kt - EpisodeItem の修正
 
 @Composable
 fun EpisodeItem(
