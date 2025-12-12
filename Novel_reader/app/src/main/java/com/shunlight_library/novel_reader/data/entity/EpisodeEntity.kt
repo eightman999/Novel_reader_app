@@ -11,7 +11,13 @@ import androidx.room.Index
 @Entity(
     tableName = "episodes",
     primaryKeys = ["ncode", "episode_no"],
-    indices = [Index(value = ["ncode", "episode_no"], name = "idx_episodes_ncode")]
+    indices = [
+        Index(value = ["ncode", "episode_no"], name = "idx_episodes_ncode"),
+        Index(value = ["is_read"], name = "idx_episodes_is_read"),
+        Index(value = ["is_bookmark"], name = "idx_episodes_is_bookmark"),
+        Index(value = ["ncode", "is_read"], name = "idx_episodes_ncode_read"),
+        Index(value = ["ncode", "is_bookmark"], name = "idx_episodes_ncode_bookmark")
+    ]
 )
 /**
  * 1 話分の情報を表すエンティティ。
