@@ -245,7 +245,7 @@ class DatabaseSyncManager(private val context: Context) {
                     ncode = novel.ncode,
                     api_url = apiUrl,
                     url = webUrl,
-                    is_r18 = isR18
+                    is_r18 = if (isR18) 1 else 0
                 )
 
                 urlEntities.add(urlEntity)
