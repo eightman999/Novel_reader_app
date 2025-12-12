@@ -18,7 +18,11 @@ import androidx.room.Index
         Index(value = ["length"], name = "idx_novels_length"),
         Index(value = ["noveltype"], name = "idx_novels_type"),
         Index(value = ["site_type"], name = "idx_novels_site"),
-        Index(value = ["registered_at"], name = "idx_novels_registered")
+        Index(value = ["registered_at"], name = "idx_novels_registered"),
+        Index(value = ["total_ep"], name = "idx_novels_total_ep"),
+        Index(value = ["author"], name = "idx_novels_author"),
+        Index(value = ["title"], name = "idx_novels_title"),
+        Index(value = ["site_type", "is_favorite"], name = "idx_novels_site_favorite")
     ]
 )
 /**
