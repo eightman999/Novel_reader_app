@@ -69,8 +69,8 @@ class EpisodeDaoTest {
             e_title = title,
             body = body,
             update_time = "2025-01-01 12:00:00",
-            is_read = isRead,
-            is_bookmark = isBookmark,
+            is_read = if (isRead) 1 else 0,
+            is_bookmark = if (isBookmark) 1 else 0,
             reading_rate = readingRate
         )
     }
@@ -237,11 +237,11 @@ class EpisodeDaoTest {
         episodeDao.insertEpisode(episode)
 
         // When: 既読に設定
-        episodeDao.updateReadStatus("n1234ab", "1", true)
+        episodeDao.updateReadStatus("n1234ab", "1", 1)
 
         // Then: 既読フラグが更新されていることを確認
         val retrieved = episodeDao.getEpisode("n1234ab", "1")
-        assertTrue(retrieved?.is_read == true)
+        assertTrue(retrieved?.is_read == 1)
     }
 
     @Test
@@ -257,11 +257,11 @@ class EpisodeDaoTest {
 
         // Then: 第1~3話が既読、第4~5話が未読
         val allEpisodes = episodeDao.getEpisodesByNcode("n1234ab").first()
-        assertTrue(allEpisodes[0].is_read)  // 第1話
-        assertTrue(allEpisodes[1].is_read)  // 第2話
-        assertTrue(allEpisodes[2].is_read)  // 第3話
-        assertFalse(allEpisodes[3].is_read) // 第4話
-        assertFalse(allEpisodes[4].is_read) // 第5話
+        assertTrue(allEpisodes[0].is_read == 1)  // 第1話
+        assertTrue(allEpisodes[1].is_read == 1)  // 第2話
+        assertTrue(allEpisodes[2].is_read == 1)  // 第3話
+        assertTrue(allEpisodes[3].is_read == 0) // 第4話
+        assertTrue(allEpisodes[4].is_read == 0) // 第5話
     }
 
     @Test
@@ -276,7 +276,7 @@ class EpisodeDaoTest {
 
         // Then: 既読エピソードのみ取得されることを確認
         assertEquals(2, readEpisodes.size)
-        assertTrue(readEpisodes.all { it.is_read })
+        assertTrue(readEpisodes.all { it.is_read == 1 })
         assertEquals("1", readEpisodes[0].episode_no)
         assertEquals("3", readEpisodes[1].episode_no)
     }
@@ -292,11 +292,11 @@ class EpisodeDaoTest {
         episodeDao.insertEpisode(episode)
 
         // When: しおりを設定
-        episodeDao.updateBookmarkStatus("n1234ab", "1", true)
+        episodeDao.updateBookmarkStatus("n1234ab", "1", 1)
 
         // Then: しおりフラグが更新されていることを確認
         val retrieved = episodeDao.getEpisode("n1234ab", "1")
-        assertTrue(retrieved?.is_bookmark == true)
+        assertTrue(retrieved?.is_bookmark == 1)
     }
 
     @Test
@@ -311,7 +311,7 @@ class EpisodeDaoTest {
 
         // Then: しおり付きエピソードのみ取得されることを確認
         assertEquals(2, bookmarked.size)
-        assertTrue(bookmarked.all { it.is_bookmark })
+        assertTrue(bookmarked.all { it.is_bookmark == 1 })
     }
 
     // ========================================

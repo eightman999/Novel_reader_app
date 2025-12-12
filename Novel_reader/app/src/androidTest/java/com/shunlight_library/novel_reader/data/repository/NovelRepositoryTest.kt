@@ -83,7 +83,7 @@ class NovelRepositoryTest {
             noveltype = 1,
             length = 100000,
             updated_at = "2025-01-01 12:00:00",
-            is_favorite = false,
+            is_favorite = 0,
             site_type = siteType,
             registered_at = "2025-01-01 10:00:00"
         )
@@ -100,8 +100,8 @@ class NovelRepositoryTest {
             e_title = title,
             body = "テスト本文",
             update_time = "2025-01-01 12:00:00",
-            is_read = false,
-            is_bookmark = false,
+            is_read = 0,
+            is_bookmark = 0,
             reading_rate = 0f
         )
     }
