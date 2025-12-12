@@ -378,14 +378,14 @@ class NovelRepository(
         }
     }
 
-    suspend fun updateEpisodeReadStatus(ncode: String, episodeNo: String, isRead: Boolean) {
+    suspend fun updateEpisodeReadStatus(ncode: String, episodeNo: String, isRead: Int) {
         episodeDao.updateReadStatus(ncode, episodeNo, isRead)
     }
 
     /**
      * エピソードのしおり状態を更新
      */
-    suspend fun updateEpisodeBookmarkStatus(ncode: String, episodeNo: String, isBookmark: Boolean) {
+    suspend fun updateEpisodeBookmarkStatus(ncode: String, episodeNo: String, isBookmark: Int) {
         episodeDao.updateBookmarkStatus(ncode, episodeNo, isBookmark)
     }
 
@@ -466,7 +466,7 @@ class NovelRepository(
             ncode = ncode,
             api_url = apiUrl,
             url = webUrl,
-            is_r18 = isR18
+            is_r18 = if (isR18) 1 else 0
         )
 
         urlEntityDao.insertURL(newURLEntity)
@@ -474,7 +474,7 @@ class NovelRepository(
     }
 
     // お気に入り関連メソッド
-    suspend fun updateFavoriteStatus(ncode: String, isFavorite: Boolean) {
+    suspend fun updateFavoriteStatus(ncode: String, isFavorite: Int) {
         withContext(Dispatchers.IO) {
             novelDescDao.updateFavoriteStatus(ncode, isFavorite)
         }

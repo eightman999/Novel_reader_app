@@ -141,8 +141,8 @@ fun EpisodeViewScreen(
 
                 // 既存のエピソードが取得できた場合は既読マークを設定
                 if (episode != null) {
-                    // EpisodeEntityに追加した is_read フラグを true に設定
-                    repository.updateEpisodeReadStatus(ncode, episodeNo, true)
+                    // EpisodeEntityに追加した is_read フラグを 1 (既読) に設定
+                    repository.updateEpisodeReadStatus(ncode, episodeNo, 1)
 
                     // それ以前のエピソードも全て既読に設定
                     repository.markEpisodesAsReadUpTo(ncode, episodeNumber)
@@ -237,14 +237,14 @@ fun EpisodeViewScreen(
                                 scope.launch {
                                     try {
                                         // しおりフラグを反転
-                                        val newBookmarkStatus = !it.is_bookmark
+                                        val newBookmarkStatus = if (it.is_bookmark == 1) 0 else 1
                                         repository.updateEpisodeBookmarkStatus(ncode, episodeNo, newBookmarkStatus)
 
                                         // 表示を更新するために再取得
                                         episode = repository.getEpisode(ncode, episodeNo)
 
                                         // ユーザーに通知
-                                        val message = if (newBookmarkStatus) "しおりを追加しました" else "しおりを削除しました"
+                                        val message = if (newBookmarkStatus == 1) "しおりを追加しました" else "しおりを削除しました"
                                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
                                         Log.e("EpisodeViewScreen", "しおり更新エラー: ${e.message}")
@@ -253,8 +253,8 @@ fun EpisodeViewScreen(
                             }
                         ) {
                             Icon(
-                                imageVector = if (it.is_bookmark) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = if (it.is_bookmark) "しおりを削除" else "しおりを追加",
+                                imageVector = if (it.is_bookmark == 1) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (it.is_bookmark == 1) "しおりを削除" else "しおりを追加",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }

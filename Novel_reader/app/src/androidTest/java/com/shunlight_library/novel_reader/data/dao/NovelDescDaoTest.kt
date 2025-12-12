@@ -78,7 +78,7 @@ class NovelDescDaoTest {
             noveltype = 1,
             length = 100000,
             updated_at = "2025-01-01 12:00:00",
-            is_favorite = isFavorite,
+            is_favorite = if (isFavorite) 1 else 0,
             site_type = siteType,
             registered_at = "2025-01-01 10:00:00"
         )
@@ -270,11 +270,11 @@ class NovelDescDaoTest {
         novelDescDao.insertNovel(novel)
 
         // When: お気に入りに設定
-        novelDescDao.updateFavoriteStatus("n1234ab", true)
+        novelDescDao.updateFavoriteStatus("n1234ab", 1)
 
         // Then: お気に入りフラグが更新されていることを確認
         val retrieved = novelDescDao.getNovelByNcode("n1234ab")
-        assertTrue(retrieved?.is_favorite == true)
+        assertTrue(retrieved?.is_favorite == 1)
     }
 
     @Test
@@ -291,7 +291,7 @@ class NovelDescDaoTest {
 
         // Then: お気に入りのみ取得されることを確認
         assertEquals(2, favorites.size)
-        assertTrue(favorites.all { it.is_favorite })
+        assertTrue(favorites.all { it.is_favorite == 1 })
     }
 
     // ========================================

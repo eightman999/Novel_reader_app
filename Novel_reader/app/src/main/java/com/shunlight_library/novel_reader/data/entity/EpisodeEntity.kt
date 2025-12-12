@@ -27,8 +27,8 @@ import androidx.room.Index
  * @property body 本文 HTML
  * @property e_title エピソードタイトル
  * @property update_time 最終更新日時（yyyy-MM-dd HH:mm:ss）
- * @property is_read 既読フラグ
- * @property is_bookmark しおり登録フラグ
+ * @property is_read 既読フラグ (0=未読, 1=既読)
+ * @property is_bookmark しおり登録フラグ (0=未登録, 1=登録済み)
  * @property reading_rate 読了率（0.0～1.0）
  */
 data class EpisodeEntity(
@@ -37,7 +37,7 @@ data class EpisodeEntity(
     val body: String,
     val e_title: String,
     val update_time: String,
-    val is_read: Boolean = false,
-    val is_bookmark: Boolean = false,
+    val is_read: Int = 0,  // 0=未読, 1=既読
+    val is_bookmark: Int = 0,  // 0=未登録, 1=登録済み
     val reading_rate: Float = 0f
 )
