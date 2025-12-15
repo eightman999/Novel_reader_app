@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📖 Quick Reference
 
 ### Current State (2025-12-15)
-- **Version**: 1.6.10 (versionCode: 169)
+- **Version**: 1.6.11 (versionCode: 170)
 - **Database**: Version 12 with 7 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -636,9 +636,14 @@ val apiUrl = if (isR18) {
     "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=$ncode&gzip=5"
 }
 
-// YAMLパース
+// YAMLパース（インデント修正を適用）
+// なろう小説APIから返されるYAMLには、折り畳みスカラー（>）や
+// リテラルスカラー（|）のインデントが不統一な場合があり、
+// SnakeYAMLがパースエラーを起こすことがある。
+// そのため、パース前にfixYamlFoldedScalarIndentation()でインデントを修正する。
+val fixedYaml = fixYamlFoldedScalarIndentation(responseContent)
 val yaml = Yaml()
-val yamlData = yaml.load<List<Map<String, Any>>>(responseContent)
+val yamlData = yaml.load<List<Map<String, Any>>>(fixedYaml)
 val novelData = yamlData[1]  // 0番目はメタデータ、1番目が小説情報
 
 // GZIP解凍判定
