@@ -62,6 +62,85 @@ object NovelApiUtils {
         lastApiAccessTime = System.currentTimeMillis()
     }
 
+    /**
+     * YAMLの折り畳みスカラー（>）とリテラルスカラー（|）のインデント不正を修正する
+     *
+     * なろう小説APIから返されるYAMLには、タイトルや本文の折り畳みスカラーで
+     * インデントが不統一な場合があり、SnakeYAMLがパースエラーを起こすことがある。
+     * この関数は、折り畳みスカラーブロック内の行のインデントを統一する。
+     *
+     * @param yaml 修正対象のYAML文字列
+     * @return インデントを修正したYAML文字列
+     */
+    private fun fixYamlFoldedScalarIndentation(yaml: String): String {
+        val lines = yaml.lines()
+        val result = mutableListOf<String>()
+        var i = 0
+
+        while (i < lines.size) {
+            val line = lines[i]
+
+            // 折り畳みスカラー（>）またはリテラルスカラー（|）を検出
+            // 例: "  title: >", "  story: |"
+            if (line.trimEnd().matches(Regex("^(\\s*)\\w+:\\s*[>|]\\s*$"))) {
+                val keyIndent = line.takeWhile { it == ' ' }.length
+                result.add(line)
+                i++
+
+                // ブロック内の行を収集
+                val blockLines = mutableListOf<String>()
+                while (i < lines.size) {
+                    val blockLine = lines[i]
+
+                    // 空行の場合はそのまま追加
+                    if (blockLine.isBlank()) {
+                        blockLines.add(blockLine)
+                        i++
+                        continue
+                    }
+
+                    val currentIndent = blockLine.takeWhile { it == ' ' }.length
+
+                    // インデントがキーのインデント以下の場合はブロック終了
+                    // または新しいキー（key:形式）が現れた場合もブロック終了
+                    if (currentIndent <= keyIndent || blockLine.trim().matches(Regex("^\\w+:\\s*.*$"))) {
+                        break
+                    }
+
+                    blockLines.add(blockLine)
+                    i++
+                }
+
+                // ブロック内の最小インデントを計算（空行を除く）
+                val minIndent = blockLines
+                    .filter { it.isNotBlank() }
+                    .minOfOrNull { it.takeWhile { c -> c == ' ' }.length }
+                    ?: (keyIndent + 2)
+
+                // ブロック内の全ての行を統一インデントに修正
+                // 基準インデント = キーのインデント + 2スペース
+                val targetIndent = keyIndent + 2
+                val indentAdjustment = targetIndent - minIndent
+
+                for (blockLine in blockLines) {
+                    if (blockLine.isBlank()) {
+                        result.add(blockLine)
+                    } else {
+                        // 元のインデントを削除し、統一インデントを追加
+                        val trimmedLine = blockLine.trimStart()
+                        val adjustedLine = " ".repeat(targetIndent) + trimmedLine
+                        result.add(adjustedLine)
+                    }
+                }
+            } else {
+                result.add(line)
+                i++
+            }
+        }
+
+        return result.joinToString("\n")
+    }
+
     data class NovelApiInfo(
         val generalAllNo: Int,
         val updatedAt: String,
@@ -239,8 +318,11 @@ object NovelApiUtils {
                     //
                     // SnakeYAMLは「|」と「>」の両方を自動処理
                     try {
+                        // YAMLの折り畳みスカラー（>）のインデント不正を修正
+                        val fixedYaml = fixYamlFoldedScalarIndentation(responseContent)
+
                         val yaml = Yaml()
-                        val yamlData = yaml.load<List<Map<String, Any>>>(responseContent)
+                        val yamlData = yaml.load<List<Map<String, Any>>>(fixedYaml)
 
                         Log.d(TAG, "YAML解析成功: ${yamlData?.size ?: 0} 要素")
 
@@ -329,8 +411,11 @@ object NovelApiUtils {
                         content.append(line).append("\n")
                     }
 
+                    // YAMLの折り畳みスカラー（>）のインデント不正を修正
+                    val fixedYaml = fixYamlFoldedScalarIndentation(content.toString())
+
                     val yaml = Yaml()
-                    val yamlData = yaml.load<List<Map<String, Any>>>(content.toString())
+                    val yamlData = yaml.load<List<Map<String, Any>>>(fixedYaml)
 
                     if (yamlData.size >= 2) {
                         val novelData = yamlData[1]
