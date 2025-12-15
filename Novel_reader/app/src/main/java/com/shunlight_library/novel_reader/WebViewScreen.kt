@@ -110,13 +110,13 @@ fun WebViewScreen(
 
             // 追加の設定
             allowContentAccess = true
-            allowFileAccess = true
+            allowFileAccess = false  // セキュリティ向上: ファイルシステムアクセスを無効化
             loadWithOverviewMode = true
             useWideViewPort = true
             setGeolocationEnabled(true)
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW  // セキュリティ向上: 混在コンテンツを禁止
         }
 
         // WebViewClientの設定
