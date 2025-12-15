@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2025-12-12)
-- **Version**: 1.6.2 (versionCode: 161)
+### Current State (2025-12-15)
+- **Version**: 1.6.10 (versionCode: 169)
 - **Database**: Version 12 with 7 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
