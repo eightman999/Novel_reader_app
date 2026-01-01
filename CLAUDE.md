@@ -721,7 +721,7 @@ val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
 ```kotlin
 // KakuyomuAdapter.kt での実装パターン
 companion object {
-    private const val RATE_LIMIT_DELAY_MS = 1000L  // 1秒（スクレイピング時の推奨間隔）
+    private const val RATE_LIMIT_DELAY_MS = 500L  // 0.5秒（スクレイピング時の推奨間隔）
     private var lastAccessTime = 0L
 }
 
@@ -735,7 +735,7 @@ private suspend fun applyRateLimit() {
 ```
 
 **重要なルール**:
-- レート制限は**1秒間隔**（0.5秒や他の値は使用しない）
+- レート制限は**0.5秒間隔**（500ms）
 - 全てのHTTPリクエスト前に`applyRateLimit()`を呼び出す
 - サーバー負荷軽減のため、この間隔を必ず守る
 
