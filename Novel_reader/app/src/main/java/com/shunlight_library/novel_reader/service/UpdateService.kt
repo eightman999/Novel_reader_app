@@ -471,20 +471,32 @@ class UpdateService : Service() {
                     val existingEpisodes = repository.getEpisodesByNcode(ncode).first()
                     val existingEpisodeNos = existingEpisodes.map { it.episode_no }.toSet()
 
-                    // 新規エピソードのみをフィルター
+                    // 本文が空の既存エピソードを特定
+                    val emptyBodyEpisodeNos = existingEpisodes
+                        .filter { it.body.isEmpty() || it.body.startsWith("★HTMLページ読み込みエラー") }
+                        .map { it.episode_no }
+                        .toSet()
+
+                    // 新規エピソードのみを取得（既存エピソードは除外）
                     val newEpisodes = episodeListWithoutBody.filter { it.episode_no !in existingEpisodeNos }
 
-                    if (newEpisodes.isEmpty()) {
+                    // 本文が空の既存エピソードのみを取得（本文がある既存エピソードは除外）
+                    val emptyBodyEpisodes = episodeListWithoutBody.filter { it.episode_no in emptyBodyEpisodeNos }
+
+                    // 両方を結合（重複除外）
+                    val episodesToDownload = (newEpisodes + emptyBodyEpisodes).distinctBy { it.episode_no }
+
+                    if (episodesToDownload.isEmpty()) {
                         updateComplete(true, "ダウンロードするエピソードがありません")
                         return@launch
                     }
 
-                    updateProgress(0.3f, "エピソードを取得中... (0/${newEpisodes.size})")
+                    updateProgress(0.3f, "エピソードを取得中... (0/${episodesToDownload.size})")
 
                     var successCount = 0
 
                     // カクヨムのエピソード本文を1話ずつ取得→保存
-                    newEpisodes.forEachIndexed { index, episode ->
+                    episodesToDownload.forEachIndexed { index, episode ->
                         if (!isRunning || session.isCancelled()) {
                             updateComplete(false, "更新処理が中断されました")
                             return@launch
@@ -529,8 +541,8 @@ class UpdateService : Service() {
                             repository.insertEpisode(episode)
                         }
 
-                        val progress = (index + 1).toFloat() / newEpisodes.size
-                        updateProgress(0.3f + (0.7f * progress), "エピソードを取得中... (${index + 1}/${newEpisodes.size})")
+                        val progress = (index + 1).toFloat() / episodesToDownload.size
+                        updateProgress(0.3f + (0.7f * progress), "エピソードを取得中... (${index + 1}/${episodesToDownload.size})")
 
                         delay(500) // カクヨムのレート制限を考慮
                     }
