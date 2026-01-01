@@ -53,6 +53,15 @@
                 android:foregroundServiceType="dataSync"
                 tools:ignore="ForegroundServicePermission" />
 
+        <!-- Firebase Cloud Messaging Service -->
+        <service
+                android:name=".service.MyFirebaseMessagingService"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- 通知アクション用のBroadcastReceiver -->
         <receiver
                 android:name=".receiver.DownloadAllReceiver"
