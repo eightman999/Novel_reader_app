@@ -60,18 +60,24 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         AppLogger.d(TAG, "FCMメッセージを受信しました from: ${remoteMessage.from}")
 
+        var notificationHandled = false
+
         // データペイロードがある場合
         if (remoteMessage.data.isNotEmpty()) {
             AppLogger.d(TAG, "メッセージデータペイロード: ${remoteMessage.data}")
-            handleDataPayload(remoteMessage.data)
+            notificationHandled = handleDataPayload(remoteMessage.data)
         }
 
-        // 通知ペイロードがある場合
-        remoteMessage.notification?.let {
-            AppLogger.d(TAG, "メッセージ通知本文: ${it.body}")
-            val title = it.title ?: "小説リーダー"
-            val body = it.body ?: ""
-            sendNotification(title, body, remoteMessage.data)
+        // 通知ペイロードがある場合（データペイロードで処理されていない場合のみ）
+        if (!notificationHandled) {
+            remoteMessage.notification?.let {
+                AppLogger.d(TAG, "メッセージ通知本文: ${it.body}")
+                val title = it.title ?: "小説リーダー"
+                val body = it.body ?: ""
+                sendNotification(title, body, remoteMessage.data)
+            }
+        } else {
+            AppLogger.d(TAG, "データペイロードで通知を処理済みのため、通知ペイロードをスキップします")
         }
     }
 
@@ -79,28 +85,32 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
      * データペイロードを処理する
      *
      * @param data メッセージに含まれるデータ
+     * @return 通知を表示した場合はtrue、そうでない場合はfalse
      */
-    private fun handleDataPayload(data: Map<String, String>) {
+    private fun handleDataPayload(data: Map<String, String>): Boolean {
         // データペイロードの種類に応じて処理を分岐
         when (data["type"]) {
             "novel_update" -> {
                 // 小説更新通知
-                val ncode = data["ncode"] ?: return
+                val ncode = data["ncode"] ?: return false
                 val title = data["title"] ?: "小説が更新されました"
                 val body = data["body"] ?: "新しいエピソードが公開されました"
                 sendNotification(title, body, data)
+                return true
             }
             "announcement" -> {
                 // お知らせ通知
                 val title = data["title"] ?: "お知らせ"
                 val body = data["body"] ?: ""
                 sendNotification(title, body, data)
+                return true
             }
             else -> {
                 // デフォルト処理
                 val title = data["title"] ?: "通知"
                 val body = data["body"] ?: ""
                 sendNotification(title, body, data)
+                return true
             }
         }
     }
