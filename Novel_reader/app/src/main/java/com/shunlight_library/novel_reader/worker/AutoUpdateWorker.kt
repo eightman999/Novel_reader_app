@@ -102,7 +102,11 @@ class AutoUpdateWorker(
             val errors = mutableListOf<String>()
 
             try {
-                // 更新対象の小説を取得
+                // 自動更新開始時にupdate_queueをリセット
+                repository.clearAllUpdateQueue()
+                Log.d(TAG, "update_queueをリセットしました")
+
+                // 更新対象の小説を取得（全ての小説）
                 val novels = repository.getNovelsForUpdate()
                 Log.d(TAG, "更新対象小説数: ${novels.size}")
 
