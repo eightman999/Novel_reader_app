@@ -477,10 +477,14 @@ class UpdateService : Service() {
                         .map { it.episode_no }
                         .toSet()
 
-                    // 新規エピソードまたは本文が空のエピソードを取得対象とする
-                    val episodesToDownload = episodeListWithoutBody.filter {
-                        it.episode_no !in existingEpisodeNos || it.episode_no in emptyBodyEpisodeNos
-                    }
+                    // 新規エピソードのみを取得（既存エピソードは除外）
+                    val newEpisodes = episodeListWithoutBody.filter { it.episode_no !in existingEpisodeNos }
+
+                    // 本文が空の既存エピソードのみを取得（本文がある既存エピソードは除外）
+                    val emptyBodyEpisodes = episodeListWithoutBody.filter { it.episode_no in emptyBodyEpisodeNos }
+
+                    // 両方を結合（重複除外）
+                    val episodesToDownload = (newEpisodes + emptyBodyEpisodes).distinctBy { it.episode_no }
 
                     if (episodesToDownload.isEmpty()) {
                         updateComplete(true, "ダウンロードするエピソードがありません")
