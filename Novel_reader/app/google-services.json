@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "741348843744",
+    "project_id": "novel-reader-e0e42",
+    "storage_bucket": "novel-reader-e0e42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:741348843744:android:7f5a7faadea4c0941d7085",
+        "android_client_info": {
+          "package_name": "com.shunlight_library.novel_reader"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4Kdky7hSXNWtJ4puIpkv8NkkU1sgzN4E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
