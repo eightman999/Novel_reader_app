@@ -88,6 +88,7 @@ class SettingsStore(private val context: Context) {
         // 自動更新設定のキー
         val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
         val AUTO_UPDATE_TIME = stringPreferencesKey("auto_update_time")
+        val AUTO_DOWNLOAD_ENABLED = booleanPreferencesKey("auto_download_enabled")
         val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
 
         // GitHubリリース通知用のキー
@@ -146,6 +147,7 @@ class SettingsStore(private val context: Context) {
     val defaultShowEpisodeCount = true
     val defaultAutoUpdateEnabled = false
     val defaultAutoUpdateTime = "03:00" // デフォルトは午前3時
+    val defaultAutoDownloadEnabled = true // デフォルトは有効
     val defaultCustomFontPath = ""
     val defaultCustomFonts = emptySet<String>()
     val defaultLastNotifiedRelease = ""
@@ -340,6 +342,19 @@ class SettingsStore(private val context: Context) {
         }
         .map { preferences: Preferences ->
             preferences[AUTO_UPDATE_TIME] ?: defaultAutoUpdateTime
+        }
+
+    // 自動ダウンロードの設定値を取得
+    val autoDownloadEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_DOWNLOAD_ENABLED] ?: defaultAutoDownloadEnabled
         }
 
     // 最後に通知したGitHubリリースバージョンを取得
@@ -587,10 +602,11 @@ class SettingsStore(private val context: Context) {
     }
 
     // 自動更新設定を保存するメソッド
-    suspend fun saveAutoUpdateSettings(enabled: Boolean, time: String) {
+    suspend fun saveAutoUpdateSettings(enabled: Boolean, time: String, autoDownloadEnabled: Boolean = true) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_UPDATE_ENABLED] = enabled
             preferences[AUTO_UPDATE_TIME] = time
+            preferences[AUTO_DOWNLOAD_ENABLED] = autoDownloadEnabled
         }
     }
 

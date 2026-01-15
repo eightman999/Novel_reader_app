@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
+import org.json.JSONArray
+import org.json.JSONObject
 
 // アプリ内通知用のDataStore
 val Context.notificationDataStore: DataStore<Preferences> by preferencesDataStore(name = "notifications")
@@ -30,7 +32,9 @@ data class AppNotification(
     val releaseName: String? = null,
     val releaseBody: String? = null,
     val releasePublishedAt: String? = null,
-    val releaseUrl: String? = null
+    val releaseUrl: String? = null,
+    // ダウンロード詳細情報（自動更新通知の場合のみ使用）
+    val downloadDetails: List<NovelDownloadInfo>? = null
 )
 
 enum class NotificationType {
@@ -38,6 +42,31 @@ enum class NotificationType {
     ERROR,  // エラー通知
     INFO    // 情報通知
 }
+
+data class EpisodeInfo(
+    val episodeNo: Int,
+    val title: String,
+    val error: String? = null
+)
+
+data class NovelDownloadInfo(
+    val ncode: String,
+    val title: String,
+    val successEpisodes: List<EpisodeInfo>,
+    val failedEpisodes: List<EpisodeInfo>
+)
+
+data class ErrorLog(
+    val id: String,
+    val timestamp: Long,
+    val ncode: String,
+    val novelTitle: String,
+    val episodeNo: Int,
+    val episodeTitle: String?,
+    val errorType: String,
+    val errorMessage: String,
+    val stackTrace: String?
+)
 
 class NotificationStore(private val context: Context) {
 
@@ -55,6 +84,8 @@ class NotificationStore(private val context: Context) {
         private const val NOTIFICATION_RELEASE_BODY_PREFIX = "notification_release_body_"
         private const val NOTIFICATION_RELEASE_PUBLISHED_PREFIX = "notification_release_published_"
         private const val NOTIFICATION_RELEASE_URL_PREFIX = "notification_release_url_"
+        // ダウンロード詳細用キー
+        private const val NOTIFICATION_DOWNLOAD_DETAILS_PREFIX = "notification_download_details_"
     }
 
     suspend fun addNotification(notification: AppNotification) {
@@ -85,6 +116,36 @@ class NotificationStore(private val context: Context) {
             }
             notification.releaseUrl?.let {
                 preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${notification.id}")] = it
+            }
+
+            // ダウンロード詳細を保存（nullでない場合のみ）
+            notification.downloadDetails?.let { details ->
+                val jsonArray = JSONArray()
+                details.forEach { info ->
+                    val infoJson = JSONObject().apply {
+                        put("ncode", info.ncode)
+                        put("title", info.title)
+                        put("successEpisodes", JSONArray().apply {
+                            info.successEpisodes.forEach { ep ->
+                                put(JSONObject().apply {
+                                    put("episodeNo", ep.episodeNo)
+                                    put("title", ep.title)
+                                })
+                            }
+                        })
+                        put("failedEpisodes", JSONArray().apply {
+                            info.failedEpisodes.forEach { ep ->
+                                put(JSONObject().apply {
+                                    put("episodeNo", ep.episodeNo)
+                                    put("title", ep.title)
+                                    put("error", ep.error)
+                                })
+                            }
+                        })
+                    }
+                    jsonArray.put(infoJson)
+                }
+                preferences[stringPreferencesKey("${NOTIFICATION_DOWNLOAD_DETAILS_PREFIX}${notification.id}")] = jsonArray.toString()
             }
 
             enforceNotificationLimit(preferences)
@@ -124,6 +185,8 @@ class NotificationStore(private val context: Context) {
             preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${id}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${id}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${id}"))
+            // ダウンロード詳細も削除
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_DOWNLOAD_DETAILS_PREFIX}${id}"))
         }
     }
 
@@ -144,6 +207,41 @@ class NotificationStore(private val context: Context) {
             val releaseBody = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${id}")]
             val releasePublishedAt = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${id}")]
             val releaseUrl = preferences[stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${id}")]
+            val downloadDetailsJson = preferences[stringPreferencesKey("${NOTIFICATION_DOWNLOAD_DETAILS_PREFIX}${id}")]
+
+            val downloadDetails = downloadDetailsJson?.let { json ->
+                try {
+                    val jsonArray = JSONArray(json)
+                    (0 until jsonArray.length()).mapNotNull { index ->
+                        val infoJson = jsonArray.getJSONObject(index)
+                        val successArray = infoJson.getJSONArray("successEpisodes")
+                        val failedArray = infoJson.getJSONArray("failedEpisodes")
+
+                        NovelDownloadInfo(
+                            ncode = infoJson.getString("ncode"),
+                            title = infoJson.getString("title"),
+                            successEpisodes = (0 until successArray.length()).map { epIndex ->
+                                val epJson = successArray.getJSONObject(epIndex)
+                                EpisodeInfo(
+                                    episodeNo = epJson.getInt("episodeNo"),
+                                    title = epJson.getString("title")
+                                )
+                            },
+                            failedEpisodes = (0 until failedArray.length()).map { epIndex ->
+                                val epJson = failedArray.getJSONObject(epIndex)
+                                val errorValue = epJson.optString("error", "")
+                                EpisodeInfo(
+                                    episodeNo = epJson.getInt("episodeNo"),
+                                    title = epJson.getString("title"),
+                                    error = errorValue.ifEmpty { null }
+                                )
+                            }
+                        )
+                    }
+                } catch (e: Exception) {
+                    emptyList<NovelDownloadInfo>()
+                }
+            }
 
             if (title != null && content != null && timestamp != null && typeString != null) {
                 AppNotification(
@@ -157,7 +255,8 @@ class NotificationStore(private val context: Context) {
                     releaseName = releaseName,
                     releaseBody = releaseBody,
                     releasePublishedAt = releasePublishedAt,
-                    releaseUrl = releaseUrl
+                    releaseUrl = releaseUrl,
+                    downloadDetails = downloadDetails
                 )
             } else null
         }.sortedByDescending { it.timestamp }
@@ -200,6 +299,7 @@ class NotificationStore(private val context: Context) {
             preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${notificationId}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${notificationId}"))
             preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${notificationId}"))
+            preferences.remove(stringPreferencesKey("${NOTIFICATION_DOWNLOAD_DETAILS_PREFIX}${notificationId}"))
         }
     }
 
@@ -222,6 +322,7 @@ class NotificationStore(private val context: Context) {
                 preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_BODY_PREFIX}${notification.id}"))
                 preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_PUBLISHED_PREFIX}${notification.id}"))
                 preferences.remove(stringPreferencesKey("${NOTIFICATION_RELEASE_URL_PREFIX}${notification.id}"))
+                preferences.remove(stringPreferencesKey("${NOTIFICATION_DOWNLOAD_DETAILS_PREFIX}${notification.id}"))
             }
         }
     }

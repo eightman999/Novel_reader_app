@@ -91,6 +91,7 @@ fun SettingsScreenUpdated(
     // 状態変数に自動更新設定を追加
     var autoUpdateEnabled by remember { mutableStateOf(false) }
     var autoUpdateTime by remember { mutableStateOf("03:00") }
+    var autoDownloadEnabled by remember { mutableStateOf(true) }
 
     // インジケーターランプ設定の状態変数
     var indicatorLampEnabled by remember { mutableStateOf(true) }
@@ -226,6 +227,7 @@ fun SettingsScreenUpdated(
             // 自動更新設定の読み込み
             autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
             autoUpdateTime = settingsStore.autoUpdateTime.first()
+            autoDownloadEnabled = settingsStore.autoDownloadEnabled.first()
 
             // インジケーターランプ設定の読み込み
             indicatorLampEnabled = settingsStore.indicatorLampEnabled.first()
@@ -523,7 +525,7 @@ fun SettingsScreenUpdated(
                                 )
 
                                 // 自動更新設定を保存
-                                settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime)
+                                settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime, autoDownloadEnabled)
 
                                 // インジケーターランプ設定を保存
                                 settingsStore.saveIndicatorLampSettings(indicatorLampEnabled, indicatorLampStyle)
@@ -1114,6 +1116,29 @@ fun SettingsScreenUpdated(
                     // 説明文
                     Text(
                         text = "指定した時間に小説の更新をチェックします。\n更新があれば通知が表示されます。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+
+                    // 自動ダウンロードの有効/無効
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("更新を自動でDL")
+                        Spacer(modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = autoDownloadEnabled,
+                            onCheckedChange = { autoDownloadEnabled = it }
+                        )
+                    }
+
+                    // 説明文
+                    Text(
+                        text = "更新があった場合、自動的にエピソードをダウンロードします。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
