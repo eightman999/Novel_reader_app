@@ -122,18 +122,73 @@ class NovelRepository(
     }
 
     suspend fun insertEpisode(episode: EpisodeEntity) {
-        episodeDao.insertEpisode(episode)
+        withContext(Dispatchers.IO) {
+            // 既存のエピソードを確認
+            val existingEpisode = episodeDao.getEpisode(episode.ncode, episode.episode_no)
+
+            if (existingEpisode != null) {
+                // 既存エピソードがある場合、本文と既読情報を保持してマージ
+                val mergedEpisode = if (episode.body.isEmpty() && existingEpisode.body.isNotEmpty()) {
+                    // 新しいエピソードの本文が空で、既存の本文が存在する場合
+                    episode.copy(
+                        body = existingEpisode.body,
+                        is_read = existingEpisode.is_read,
+                        is_bookmark = existingEpisode.is_bookmark,
+                        reading_rate = existingEpisode.reading_rate
+                    )
+                } else {
+                    // それ以外の場合、既読情報のみ保持
+                    episode.copy(
+                        is_read = existingEpisode.is_read,
+                        is_bookmark = existingEpisode.is_bookmark,
+                        reading_rate = existingEpisode.reading_rate
+                    )
+                }
+                episodeDao.insertEpisode(mergedEpisode)
+            } else {
+                // 新規エピソード
+                episodeDao.insertEpisode(episode)
+            }
+        }
     }
 
-    suspend fun insertEpisodes(episodes: List<EpisodeEntity>) {
-        episodeDao.insertEpisodes(episodes)
+    suspend fun insertEpisodes(episodes: List<EpisodeEntity>, preserveExisting: Boolean = true) {
+        withContext(Dispatchers.IO) {
+            if (episodes.isEmpty()) {
+                return@withContext
+            }
+            
+            if (preserveExisting) {
+                val ncode = episodes.first().ncode
+                val existingEpisodes = episodeDao.getEpisodesByNcode(ncode).first()
+                val existingMap = existingEpisodes.associateBy { it.episode_no }
+                
+                val mergedEpisodes = episodes.map { newEpisode ->
+                    val existing = existingMap[newEpisode.episode_no]
+                    if (existing != null) {
+                        newEpisode.copy(
+                            body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
+                            is_read = existing.is_read,
+                            is_bookmark = existing.is_bookmark,
+                            reading_rate = existing.reading_rate
+                        )
+                    } else {
+                        newEpisode
+                    }
+                }
+                
+                episodeDao.insertEpisodes(mergedEpisodes)
+            } else {
+                episodeDao.insertEpisodes(episodes)
+            }
+        }
     }
 
     /**
-     * エピソードを保存（既読情報を保持）
+     * エピソードを保存（既読情報と本文を保持）
      *
-     * 既存のエピソードがある場合、既読情報（is_read、is_bookmark、reading_rate）を保持してマージする。
-     * これにより、小説の再取得や更新時に既読情報が失われるのを防ぐ。
+     * 既存のエピソードがある場合、既読情報（is_read、is_bookmark、reading_rate）と本文（body）を保持してマージする。
+     * これにより、小説の再取得や更新時に既読情報と本文が失われるのを防ぐ。
      *
      * @param episodes 保存するエピソードリスト
      */
@@ -146,17 +201,18 @@ class NovelRepository(
 
             val ncode = episodes.first().ncode
 
-            // 既存のエピソードを取得（既読情報を保持するため）
+            // 既存のエピソードを取得（既読情報と本文を保持するため）
             val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
             val existingEpisodesSnapshot = existingEpisodes.first()
             val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
 
-            // 新しいエピソードと既存のエピソードをマージ（既読情報を保持）
+            // 新しいエピソードと既存のエピソードをマージ（既読情報と本文を保持）
             val mergedEpisodes = episodes.map { newEpisode ->
                 val existing = existingMap[newEpisode.episode_no]
                 if (existing != null) {
                     // 既存のエピソードがある場合、既読情報を保持
                     newEpisode.copy(
+                        body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
                         is_read = existing.is_read,
                         is_bookmark = existing.is_bookmark,
                         reading_rate = existing.reading_rate
@@ -179,7 +235,7 @@ class NovelRepository(
      * このメソッドは再取得・更新処理でエピソードマッピング情報を確実に保存する。
      * エピソード番号（連番）とカクヨムの実際のエピソードIDの対応を保持する。
      *
-     * **重要**: 既存のエピソードの既読情報（is_read、is_bookmark、reading_rate）を保持する。
+     * **重要**: 既存のエピソードの既読情報（is_read、is_bookmark、reading_rate）と本文（body）を保持する。
      *
      * @param episodes エピソードリスト（episode_noは連番）
      * @param mappings エピソード番号（連番）→カクヨムEpisodeIDのマッピング
@@ -196,17 +252,18 @@ class NovelRepository(
 
             val ncode = episodes.first().ncode
 
-            // 既存のエピソードを取得（既読情報を保持するため）
+            // 既存のエピソードを取得（既読情報と本文を保持するため）
             val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
             val existingEpisodesSnapshot = existingEpisodes.first()
             val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
 
-            // 新しいエピソードと既存のエピソードをマージ（既読情報を保持）
+            // 新しいエピソードと既存のエピソードをマージ（既読情報と本文を保持）
             val mergedEpisodes = episodes.map { newEpisode ->
                 val existing = existingMap[newEpisode.episode_no]
                 if (existing != null) {
                     // 既存のエピソードがある場合、既読情報を保持
                     newEpisode.copy(
+                        body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
                         is_read = existing.is_read,
                         is_bookmark = existing.is_bookmark,
                         reading_rate = existing.reading_rate

@@ -14,10 +14,12 @@ import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.SettingsStore
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils.getColumnIndexSafely
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils.getIntSafely
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils.getStringSafely
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
@@ -178,15 +180,17 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                     message = "小説情報を同期中...",
                     progress = 0.3f
                 ))
-                val novelDescsCount = syncNovelDescs(db)
-
-                // エピソードの同期
+                val novelDescsCount = syncNovelDescs(db) 
+                
+                // エピソードの同期（設定を反映）
+                val settingsStore = SettingsStore(context)
+                val dbSyncSettings = settingsStore.getDatabaseSyncSettings()
                 updateProgress(callback, SyncProgress(
                     step = SyncStep.SYNCING_EPISODES,
                     message = "エピソードを同期中...",
                     progress = 0.6f
                 ))
-                val episodesCount = syncEpisodes(db)
+                val episodesCount = syncEpisodes(db, dbSyncSettings.preserveExistingEpisodes)
 
                 // 最後に読んだ記録の同期
                 updateProgress(callback, SyncProgress(
@@ -389,9 +393,11 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
 
     /**
      * エピソードデータを同期します
+     * @param db 外部データベース
+     * @param preserveExisting 既存エピソードを保持するか（デフォルト: true）
      * @return 同期されたエピソード数
      */
-    private suspend fun syncEpisodes(externalDb: SQLiteDatabase): Int {
+    private suspend fun syncEpisodes(externalDb: SQLiteDatabase, preserveExisting: Boolean = true): Int {
         var totalCount = 0
         var processedCount = 0
         val failedNcodes = mutableListOf<Pair<String, String>>() // ncode, errorMessage
@@ -480,9 +486,9 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
 
                                 // バッチサイズに達したら保存し、メモリ解放
                                 if (episodes.size >= batchSize) {
-                                    repository.insertEpisodes(episodes)
+                                    repository.insertEpisodes(episodes, preserveExisting)
                                     episodes.clear()
-
+                                    
                                     // 進捗更新（バッチごと）
                                     updateProgress(syncCallback, SyncProgress(
                                         step = SyncStep.SYNCING_EPISODES,
@@ -495,10 +501,10 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                                     ))
                                 }
                             }
-
+                            
                             // 残りのエピソードを保存
                             if (episodes.isNotEmpty()) {
-                                repository.insertEpisodes(episodes)
+                                repository.insertEpisodes(episodes, preserveExisting)
                                 episodes.clear()
                             }
 

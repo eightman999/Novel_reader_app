@@ -51,6 +51,11 @@ data class NovelListFilterSettings(
     val siteFilter: String = "ALL"
 )
 
+// データベース同期設定用のデータクラス
+data class DatabaseSyncSettings(
+    val preserveExistingEpisodes: Boolean = true  // 既存エピソードを保持するか
+)
+
 // DataStoreのインスタンスをトップレベルで定義
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -120,6 +125,9 @@ class SettingsStore(private val context: Context) {
         // インジケーターランプ設定のキー
         val INDICATOR_LAMP_ENABLED = booleanPreferencesKey("indicator_lamp_enabled")
         val INDICATOR_LAMP_STYLE = stringPreferencesKey("indicator_lamp_style")
+        
+        // データベース同期設定のキー
+        val DB_SYNC_PRESERVE_EXISTING_EPISODES = booleanPreferencesKey("db_sync_preserve_existing_episodes")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -170,6 +178,9 @@ class SettingsStore(private val context: Context) {
     // インジケーターランプ設定のデフォルト値
     val defaultIndicatorLampEnabled = true
     val defaultIndicatorLampStyle = "SOLID"
+    
+    // データベース同期設定のデフォルト値
+    val defaultDbSyncPreserveExistingEpisodes = true  // デフォルトは既存エピソードを保持
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -706,5 +717,33 @@ class SettingsStore(private val context: Context) {
             preferences[INDICATOR_LAMP_ENABLED] = enabled
             preferences[INDICATOR_LAMP_STYLE] = style
         }
+    }
+    
+    // データベース同期設定の取得
+    val dbSyncPreserveExistingEpisodes: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[DB_SYNC_PRESERVE_EXISTING_EPISODES] ?: defaultDbSyncPreserveExistingEpisodes
+        }
+    
+    // データベース同期設定の保存
+    suspend fun saveDbSyncPreserveExistingEpisodes(preserve: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[DB_SYNC_PRESERVE_EXISTING_EPISODES] = preserve
+        }
+    }
+    
+    // データベース同期設定を一括取得
+    suspend fun getDatabaseSyncSettings(): DatabaseSyncSettings {
+        val preferences = context.dataStore.data.first()
+        return DatabaseSyncSettings(
+            preserveExistingEpisodes = preferences[DB_SYNC_PRESERVE_EXISTING_EPISODES] ?: defaultDbSyncPreserveExistingEpisodes
+        )
     }
 }

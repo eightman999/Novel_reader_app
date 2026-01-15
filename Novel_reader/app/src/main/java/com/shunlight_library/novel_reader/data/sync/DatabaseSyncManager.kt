@@ -19,6 +19,7 @@ import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.SettingsStore
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -128,6 +129,10 @@ class DatabaseSyncManager(private val context: Context) {
      */
     private suspend fun syncData(externalDb: SQLiteDatabase): Boolean {
         try {
+            // データベース同期設定を取得
+            val settingsStore = SettingsStore(context)
+            val dbSyncSettings = settingsStore.getDatabaseSyncSettings()
+            
             // テーブルの存在チェック
             val tables = listOf("novels_descs", "episodes", "last_read_novel")
             for (table in tables) {
@@ -135,17 +140,17 @@ class DatabaseSyncManager(private val context: Context) {
                     Log.e(TAG, "外部DBにテーブルが存在しません: $table")
                     return false
                 }
-            }
-
+            } 
+            
             // 小説説明の同期
-            syncNovelDescs(externalDb)
-
-            // エピソードの同期
-            syncEpisodes(externalDb)
-
+            syncNovelDescs(externalDb) 
+            
+            // エピソードの同期（設定を反映）
+            syncEpisodes(externalDb, dbSyncSettings.preserveExistingEpisodes) 
+            
             // 最後に読んだ記録の同期
-            syncLastReadNovels(externalDb)
-
+            syncLastReadNovels(externalDb) 
+            
             return true
         } catch (e: Exception) {
             Log.e(TAG, "データ同期中にエラーが発生しました", e)
@@ -274,7 +279,7 @@ class DatabaseSyncManager(private val context: Context) {
     /**
      * エピソードデータを同期します
      */
-    private suspend fun syncEpisodes(externalDb: SQLiteDatabase) {
+    private suspend fun syncEpisodes(externalDb: SQLiteDatabase, preserveExisting: Boolean = true) {
         var cursor: Cursor? = null
         try {
             // 外部DBから全てのエピソードを取得
@@ -286,18 +291,18 @@ class DatabaseSyncManager(private val context: Context) {
                 null,
                 null,
                 null
-            )
-
+            ) 
+            
             // カラム名の取得とマッピング
             val columnNcode = cursor.getColumnIndexOrThrow("ncode")
             val columnEpisodeNo = cursor.getColumnIndexOrThrow("episode_no")
             val columnBody = cursor.getColumnIndexOrThrow("body")
             val columnETitle = getColumnIndexOrDefault(cursor, "e_title")
-            val columnUpdateTime = getColumnIndexOrDefault(cursor, "update_time")
-
+            val columnUpdateTime = getColumnIndexOrDefault(cursor, "update_time") 
+            
             val batchSize = 20
-            val episodes = mutableListOf<EpisodeEntity>()
-
+            val episodes = mutableListOf<EpisodeEntity>() 
+            
             // データの読み取りとバッチ処理
             while (cursor.moveToNext()) {
                 val episode = EpisodeEntity(
@@ -307,23 +312,23 @@ class DatabaseSyncManager(private val context: Context) {
                     e_title = columnETitle?.let { cursor.getString(it) } ?: "",
                     update_time = columnUpdateTime?.let { cursor.getString(it) } ?:
                     getCurrentDateString()
-                )
-
-                episodes.add(episode)
-
-                // バッチサイズに達したら保存
+                ) 
+                
+                episodes.add(episode) 
+                
+                // バッチサイズに達したら保存（設定を反映）
                 if (episodes.size >= batchSize) {
-                    repository.insertEpisodes(episodes)
+                    repository.insertEpisodes(episodes, preserveExisting)
                     episodes.clear()
                 }
-            }
-
-            // 残りのデータを保存
+            } 
+            
+            // 残りのデータを保存（設定を反映）
             if (episodes.isNotEmpty()) {
-                repository.insertEpisodes(episodes)
-            }
-
-            Log.d(TAG, "エピソードの同期が完了しました")
+                repository.insertEpisodes(episodes, preserveExisting)
+            } 
+            
+            Log.d(TAG, "エピソードの同期が完了しました (既存保持: $preserveExisting)")
         } catch (e: Exception) {
             Log.e(TAG, "エピソードの同期中にエラーが発生しました", e)
             throw e
