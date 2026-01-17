@@ -112,6 +112,7 @@ sealed class Screen {
     object RecentlyUpdatedNovels : Screen()
     object UpdateInfo : Screen()
     object DatabaseSync : Screen()
+    object DownloadQueue : Screen()
 }
 
 /**

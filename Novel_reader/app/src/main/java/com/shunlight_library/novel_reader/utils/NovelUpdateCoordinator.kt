@@ -208,12 +208,23 @@ object NovelUpdateCoordinator {
     }
 
     /**
-     * Releases the registration slot
+     * Releases registration slot
      */
     fun finishRegistration(session: RegistrationSession?) {
         session ?: return
         session.markFinished()
         activeRegistrations.remove(session.ncode, session)
+    }
+
+    /**
+     * Releases registration slot by ncode
+     */
+    fun finishRegistrationByNcode(ncode: String) {
+        val session = activeRegistrations[ncode]
+        session?.let {
+            it.markFinished()
+            activeRegistrations.remove(ncode, it)
+        }
     }
 
     /**

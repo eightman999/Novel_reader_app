@@ -312,50 +312,27 @@ fun WebViewScreen(
     // 小説登録関数（マルチサイト対応）
     fun registerNovel(novelUrl: String, callback: (Boolean, String) -> Unit) {
         isLoading = true
-        loadingMessage = "小説情報を取得中..."
+        loadingMessage = "キューに追加中..."
 
         scope.launch {
             try {
-                // 新しいRepository APIを使用してURLから小説を登録
-                val novelEntity = repository.addNovelByUrl(novelUrl)
+                // キューに追加
+                val queueId = com.shunlight_library.novel_reader.manager.RegistrationQueueManager.addToQueue(novelUrl)
 
-                if (novelEntity != null) {
-                    // 登録と同時にダウンロード処理を開始
+                if (queueId != null) {
                     withContext(Dispatchers.Main) {
                         isLoading = false
                         showAddDialog = false
-
-                        // 成功メッセージを表示
-                        callback(true, "小説「${novelEntity.title}」を登録しました")
-
-                        // ダウンロードサービスを開始
-                        val intent = Intent(context, com.shunlight_library.novel_reader.service.UpdateService::class.java).apply {
-                            action = com.shunlight_library.novel_reader.service.UpdateService.ACTION_START_UPDATE
-                            putExtra(com.shunlight_library.novel_reader.service.UpdateService.EXTRA_NCODE, novelEntity.ncode)
-                            putExtra(com.shunlight_library.novel_reader.service.UpdateService.EXTRA_UPDATE_TYPE, com.shunlight_library.novel_reader.service.UpdateService.UPDATE_TYPE_DOWNLOAD)
-                        }
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            // Android 12以降ではフォアグラウンドサービスタイプを指定
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                intent.putExtra(
-                                    "android.content.extra.FOREGROUND_SERVICE_TYPE",
-                                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                                )
-                            }
-                            context.startForegroundService(intent)
-                        } else {
-                            context.startService(intent)
-                        }
+                        callback(true, "ダウンロードキューに追加しました")
                     }
                 } else {
                     withContext(Dispatchers.Main) {
                         isLoading = false
-                        callback(false, "小説情報が取得できませんでした。既に登録されている可能性があります。")
+                        callback(false, "キューに追加できませんでした。")
                     }
                 }
             } catch (e: Exception) {
-                Log.e("WebViewScreen", "小説登録エラー", e)
+                Log.e("WebViewScreen", "キュー追加エラー", e)
                 withContext(Dispatchers.Main) {
                     isLoading = false
                     callback(false, "エラー: ${e.message}")
@@ -372,7 +349,7 @@ fun WebViewScreen(
                     showAddDialog = false
                 }
             },
-            title = { Text("小説の登録") },
+            title = { Text("小説を登録しますか？") },
             text = {
                 if (isLoading) {
                     Column(
@@ -384,7 +361,7 @@ fun WebViewScreen(
                         Text(loadingMessage)
                     }
                 } else {
-                    Text("$detectedSiteName の小説「$detectedNovelId」を小説一覧に登録しますか？")
+                    Text("URL: $detectedNovelUrl")
                 }
             },
             confirmButton = {

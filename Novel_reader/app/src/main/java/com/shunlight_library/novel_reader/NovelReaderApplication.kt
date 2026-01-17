@@ -28,7 +28,8 @@ class NovelReaderApplication : Application() {
             database.updateQueueDao(),
             database.urlEntityDao(),
             database.imageCacheDao(),
-            database.episodeMappingDao()
+            database.episodeMappingDao(),
+            database.registrationQueueDao()
         )
     }
 
@@ -51,6 +52,9 @@ class NovelReaderApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        // 新規登録キューの監視を開始
+        com.shunlight_library.novel_reader.manager.RegistrationQueueManager.startMonitoring()
     }
 
     /**

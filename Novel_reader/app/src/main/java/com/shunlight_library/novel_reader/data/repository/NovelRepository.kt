@@ -12,6 +12,7 @@ import com.shunlight_library.novel_reader.data.dao.URLEntityDao
 import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
 import com.shunlight_library.novel_reader.data.dao.ImageCacheDao
 import com.shunlight_library.novel_reader.data.dao.EpisodeMappingDao
+import com.shunlight_library.novel_reader.data.dao.RegistrationQueueDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -19,6 +20,7 @@ import com.shunlight_library.novel_reader.data.entity.URLEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
+import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -41,7 +43,8 @@ class NovelRepository(
     private val updateQueueDao: UpdateQueueDao,
     private val urlEntityDao: URLEntityDao,
     private val imageCacheDao: ImageCacheDao,
-    private val episodeMappingDao: EpisodeMappingDao
+    private val episodeMappingDao: EpisodeMappingDao,
+    private val registrationQueueDao: RegistrationQueueDao
 ) {
     // 処理状態管理（インジケーターランプ用）
     private val _processingStates = MutableStateFlow<List<ProcessingState>>(emptyList())
@@ -933,6 +936,78 @@ class NovelRepository(
                 AppLogger.e("NovelRepository", "Failed to get episode URL for ncode: $ncode, episode: $episodeNo", e)
                 null
             }
+        }
+    }
+
+    // ==================== 新規登録キュー管理メソッド ====================
+
+    suspend fun insertRegistrationQueue(queue: RegistrationQueueEntity): Long {
+        return registrationQueueDao.insert(queue)
+    }
+
+    fun getAllRegistrationQueue(): Flow<List<RegistrationQueueEntity>> {
+        return registrationQueueDao.getAll()
+    }
+
+    fun getRegistrationQueueByStatus(status: Int): Flow<List<RegistrationQueueEntity>> {
+        return registrationQueueDao.getByStatus(status)
+    }
+
+    suspend fun getRegistrationQueueById(id: Long): RegistrationQueueEntity? {
+        return registrationQueueDao.getById(id)
+    }
+
+    suspend fun updateRegistrationQueue(queue: RegistrationQueueEntity) {
+        registrationQueueDao.update(queue)
+    }
+
+    suspend fun deleteRegistrationQueue(id: Long) {
+        registrationQueueDao.deleteById(id)
+    }
+
+    suspend fun deleteCompletedRegistrationQueue() {
+        registrationQueueDao.deleteByStatus(RegistrationQueueEntity.STATUS_COMPLETED)
+    }
+
+    fun getProcessingRegistrationQueueCount(): Flow<Int> {
+        return registrationQueueDao.getProcessingCount()
+    }
+
+    suspend fun getPendingRegistrationQueueCount(): Int {
+        return registrationQueueDao.getPendingCount()
+    }
+
+    suspend fun getProcessingRegistrationQueueCountSync(): Int {
+        return registrationQueueDao.getProcessingCountSync()
+    }
+
+    suspend fun getNextPendingRegistrationQueue(): RegistrationQueueEntity? {
+        return registrationQueueDao.getNextPendingQueue()
+    }
+
+    suspend fun updateRegistrationQueueStatus(id: Long, status: Int, errorMessage: String? = null) {
+        registrationQueueDao.updateStatus(id, status, errorMessage)
+    }
+
+    suspend fun updateRegistrationQueueProgress(id: Long, currentEpisode: Int) {
+        registrationQueueDao.updateProgress(id, currentEpisode)
+    }
+
+    suspend fun updateRegistrationQueueNovelInfo(id: Long, title: String, totalEpisodes: Int) {
+        registrationQueueDao.updateNovelInfo(id, title, totalEpisodes)
+    }
+
+    suspend fun cancelRegistrationQueue(id: Long) {
+        val queue = registrationQueueDao.getById(id)
+        if (queue != null && queue.status == RegistrationQueueEntity.STATUS_PENDING) {
+            registrationQueueDao.deleteById(id)
+        }
+    }
+
+    suspend fun retryRegistrationQueue(id: Long) {
+        val queue = registrationQueueDao.getById(id)
+        if (queue != null && queue.status == RegistrationQueueEntity.STATUS_ERROR) {
+            registrationQueueDao.updateStatus(id, RegistrationQueueEntity.STATUS_PENDING, null)
         }
     }
 

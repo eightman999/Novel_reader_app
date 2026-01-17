@@ -14,6 +14,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.app.AlarmManager
 import androidx.core.app.NotificationCompat
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
@@ -58,6 +59,22 @@ class UpdateService : Service() {
     // Service binding
     private val binder = UpdateBinder()
 
+    // オペレーションキュー
+    private val operationQueue = ArrayDeque<UpdateOperation>()
+    private data class UpdateOperation(
+        val ncode: String,
+        val updateType: Int
+    )
+
+    // 更新タイプ名のマップ
+    private val updateTypeNames = mapOf(
+        UPDATE_TYPE_CHECK to "更新チェック",
+        UPDATE_TYPE_DOWNLOAD to "再ダウンロード",
+        UPDATE_TYPE_FIX_ERRORS to "エラー修正",
+        UPDATE_TYPE_BULK_UPDATE to "一括更新",
+        UPDATE_TYPE_CHECK_REVISION to "改稿チェック"
+    )
+
     // Coroutine scopes
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -93,11 +110,12 @@ class UpdateService : Service() {
         when (intent?.action) {
             ACTION_START_UPDATE -> {
                 val ncode = intent.getStringExtra(EXTRA_NCODE) ?: ""
-                updateType = intent.getIntExtra(EXTRA_UPDATE_TYPE, UPDATE_TYPE_CHECK)
+                val requestedUpdateType = intent.getIntExtra(EXTRA_UPDATE_TYPE, UPDATE_TYPE_CHECK)
 
                 if (!isRunning) {
                     isRunning = true
                     currentNcode = ncode
+                    updateType = requestedUpdateType
 
                     // 通知の作成
                     val notification = createNotification("更新処理を開始しています...")
@@ -114,14 +132,12 @@ class UpdateService : Service() {
                         startForeground(NOTIFICATION_ID, notification)
                     }
 
-                    // Start update based on type
-                    when (updateType) {
-                        UPDATE_TYPE_CHECK -> checkForUpdates(ncode)
-                        UPDATE_TYPE_DOWNLOAD -> downloadEpisodes(ncode)
-                        UPDATE_TYPE_FIX_ERRORS -> fixEpisodeErrors(ncode)
-                        UPDATE_TYPE_BULK_UPDATE -> performBulkUpdate()
-                        UPDATE_TYPE_CHECK_REVISION -> checkRevision(ncode)
-                    }
+                    // 最初のオペレーションを開始
+                    processNextOperation()
+                } else {
+                    // 実行中の場合もキューに追加（次に処理される）
+                    operationQueue.add(UpdateOperation(ncode, requestedUpdateType))
+                    updateNotificationWithQueueCount()
                 }
             }
             ACTION_STOP_UPDATE -> {
@@ -152,6 +168,79 @@ class UpdateService : Service() {
         updateListeners.remove(listener)
     }
 
+    private fun processNextOperation() {
+        if (operationQueue.isEmpty()) {
+            // 全てのオペレーション完了
+            isRunning = false
+            currentNcode = ""
+            updateType = 0
+
+            // 最終通知
+            val notification = createNotification("全ての更新処理が完了しました")
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, notification)
+
+            // フォアグラウンドサービス停止
+            serviceScope.launch {
+                delay(3000)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                stopSelf()
+            }
+            return
+        }
+
+        // 次のオペレーションを取得
+        val operation = operationQueue.removeFirst()
+        currentNcode = operation.ncode
+        updateType = operation.updateType
+
+        // 通知更新（詳細表示）
+        updateNotificationWithQueueCount()
+
+        // 適切な処理を開始
+        when (updateType) {
+            UPDATE_TYPE_CHECK -> checkForUpdates(operation.ncode)
+            UPDATE_TYPE_DOWNLOAD -> downloadEpisodes(operation.ncode)
+            UPDATE_TYPE_FIX_ERRORS -> fixEpisodeErrors(operation.ncode)
+            UPDATE_TYPE_BULK_UPDATE -> performBulkUpdate()
+            UPDATE_TYPE_CHECK_REVISION -> checkRevision(operation.ncode)
+        }
+    }
+
+    private fun updateNotificationWithQueueCount() {
+        val queueCount = operationQueue.size
+
+        // 現在処理中のタイプ名を取得
+        val currentTypeName = updateTypeNames[updateType] ?: "更新処理"
+
+        // 残りのオペレーションをタイプごとに集計
+        val remainingTypeCounts = operationQueue
+            .groupBy { it.updateType }
+            .mapValues { (_, ops) -> ops.size }
+
+        val contentText = if (queueCount > 0) {
+            // 詳細表示を作成
+            val remainingDetails = remainingTypeCounts.entries
+                .sortedByDescending { it.value }
+                .joinToString(", ") { (type, count) ->
+                    val typeName = updateTypeNames[type] ?: "更新処理"
+                    "${typeName}×${count}"
+                }
+            "${currentTypeName}中...（残り${queueCount}件：$remainingDetails）"
+        } else {
+            "${currentTypeName}中..."
+        }
+
+        val notification = createNotification(contentText)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
     private fun updateProgress(newProgress: Float, newMessage: String) {
         progress = newProgress
         message = newMessage
@@ -170,26 +259,18 @@ class UpdateService : Service() {
             NovelUpdateCoordinator.finishUpdate(it)
             currentUpdateSession = null
         }
-        isRunning = false
-        currentNcode = ""
         updateListeners.forEach { it.onUpdateComplete(success, resultMessage) }
 
-        // Update notification one last time
-        val finalMessage = if (success) "更新処理が完了しました" else "更新処理に失敗しました"
-        val notification = createNotification(finalMessage)
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
-
-        // Stop foreground service after a delay
-        serviceScope.launch {
-            delay(3000) // Give notification time to be seen
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                stopForeground(Service.STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
+        // エラーの場合、2秒待機
+        if (!success) {
+            serviceScope.launch {
+                delay(2000)
+                isRunning = true
+                processNextOperation()
             }
-            stopSelf()
+        } else {
+            isRunning = true
+            processNextOperation()
         }
     }
 
@@ -203,6 +284,74 @@ class UpdateService : Service() {
                 }
             }
             isRunning = false
+        }
+    }
+
+    // 403エラー判定ヘルパーメソッド
+    private fun is403Error(exception: Exception): Boolean {
+        return when (exception) {
+            is java.net.SocketException -> exception.message?.contains("403", ignoreCase = true) == true
+            is java.net.UnknownHostException -> false
+            else -> {
+                // スタックトレースから403を検索
+                val stackTrace = exception.stackTraceToString()
+                stackTrace.contains("403", ignoreCase = true) ||
+                exception.message?.contains("403", ignoreCase = true) == true ||
+                (exception.cause?.message?.contains("403", ignoreCase = true) == true)
+            }
+        }
+    }
+
+    // 403エラー時の再開処理
+    private fun handle403Error(ncode: String, updateType: Int) {
+        Log.w(TAG, "403エラー検出: $ncode, 10分後に再開します")
+
+        // 10分後にオペレーションを再キュー
+        val intent = Intent(this, UpdateService::class.java).apply {
+            action = ACTION_START_UPDATE
+            putExtra(EXTRA_NCODE, ncode)
+            putExtra(EXTRA_UPDATE_TYPE, updateType)
+        }
+
+        val pendingIntent = PendingIntent.getService(
+            this,
+            ncode.hashCode(),
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val triggerAtMillis = System.currentTimeMillis() + (10 * 60 * 1000) // 10分後
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        } else {
+            alarmManager.setExact(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
+
+        // 通知で403エラーを通知
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("403エラー発生")
+            .setContentText("アクセス制限がかかりました。10分後に自動的に再開します。")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        notificationManager.notify(NOTIFICATION_ID + 1, notification)
+
+        // 次のオペレーションへ（2秒待機）
+        serviceScope.launch {
+            delay(2000)
+            isRunning = true
+            processNextOperation()
         }
     }
 
@@ -382,6 +531,13 @@ class UpdateService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update check error", e)
+
+                // 403エラー検出
+                if (is403Error(e)) {
+                    handle403Error(ncode, UPDATE_TYPE_CHECK)
+                    return@launch
+                }
+
                 updateComplete(false, "エラー: ${e.message}")
             } finally {
                 if (currentUpdateSession === session) {
@@ -673,6 +829,13 @@ class UpdateService : Service() {
                 updateComplete(true, "完了: 成功${successCount}件、失敗${failCount}件")
             } catch (e: Exception) {
                 Log.e(TAG, "Download episodes error", e)
+
+                // 403エラー検出
+                if (is403Error(e)) {
+                    handle403Error(ncode, UPDATE_TYPE_DOWNLOAD)
+                    return@launch
+                }
+
                 updateComplete(false, "エラー: ${e.message}")
             } finally {
                 if (currentUpdateSession === session) {
@@ -994,6 +1157,13 @@ class UpdateService : Service() {
                 updateComplete(true, "完了: 成功${successCount}件、失敗${failCount}件")
             } catch (e: Exception) {
                 Log.e(TAG, "Fix episodes error", e)
+
+                // 403エラー検出
+                if (is403Error(e)) {
+                    handle403Error(ncode, UPDATE_TYPE_FIX_ERRORS)
+                    return@launch
+                }
+
                 updateComplete(false, "エラー: ${e.message}")
             } finally {
                 if (currentUpdateSession === session) {
@@ -1170,6 +1340,19 @@ class UpdateService : Service() {
                 updateComplete(true, message)
             } catch (e: Exception) {
                 Log.e(TAG, "Bulk update error", e)
+
+                // 403エラー検出（performBulkUpdateは特定のncodeを持たないため、最初のncodeを使用）
+                if (is403Error(e)) {
+                    val queueList = repository.getAllUpdateQueue()
+                    val firstNcode = queueList.firstOrNull()?.ncode ?: ""
+                    if (firstNcode.isNotEmpty()) {
+                        handle403Error(firstNcode, UPDATE_TYPE_BULK_UPDATE)
+                    } else {
+                        updateComplete(false, "エラー: ${e.message}")
+                    }
+                    return@launch
+                }
+
                 updateComplete(false, "エラー: ${e.message}")
             } finally {
                 currentUpdateSession?.let {
@@ -1304,10 +1487,17 @@ class UpdateService : Service() {
                     Log.e(TAG, "改稿チェックエラー", e)
                     updateComplete(false, "エラー: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Revision check error", e)
-                updateComplete(false, "エラー: ${e.message}")
-            } finally {
+                } catch (e: Exception) {
+                    Log.e(TAG, "Revision check error", e)
+
+                    // 403エラー検出
+                    if (is403Error(e)) {
+                        handle403Error(ncode, UPDATE_TYPE_CHECK_REVISION)
+                        return@launch
+                    }
+
+                    updateComplete(false, "エラー: ${e.message}")
+                } finally {
                 if (currentUpdateSession === session) {
                     NovelUpdateCoordinator.finishUpdate(session)
                     currentUpdateSession = null

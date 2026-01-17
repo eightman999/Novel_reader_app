@@ -385,6 +385,14 @@ fun NovelReaderApp(
             )
         }
 
+        is Screen.DownloadQueue -> {
+            val downloadQueueViewModel = remember { com.shunlight_library.novel_reader.ui.viewmodel.DownloadQueueViewModel() }
+            com.shunlight_library.novel_reader.ui.screens.DownloadQueueScreen(
+                onNavigateBack = { navigationManager.navigateBack() },
+                viewModel = downloadQueueViewModel
+            )
+        }
+
         is Screen.DatabaseSync -> {
             // アクティビティを起動するが、ナビゲーションバックは機能する
             val context = LocalContext.current
@@ -913,71 +921,85 @@ fun MainScreen(
                 SectionHeader(title = "オプション")
             }
 
-            // 設定、通知、DB同期
+            // 設定、通知、DB同期、キュー、メタデータ補完
             item {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    MenuButton(
-                        icon = "⚙",
-                        text = "設定",
-                        onClick = {
-                            onNavigate(Screen.Settings)
-                        }
-                    )
-
-                    // 通知ボタン（バッジ付き）
-                    Box {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         MenuButton(
-                            icon = "🔔",
-                            text = "通知",
+                            icon = "⚙",
+                            text = "設定",
                             onClick = {
-                                showNotificationDialog = true
+                                onNavigate(Screen.Settings)
                             }
                         )
-                        // 未読通知バッジ
-                        if (unreadNotificationCount > 0) {
-                            Badge(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = (-8).dp, y = 8.dp)
-                            ) {
-                                Text(
-                                    text = if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString(),
-                                    fontSize = 10.sp
-                                )
+
+                        // 通知ボタン（バッジ付き）
+                        Box {
+                            MenuButton(
+                                icon = "🔔",
+                                text = "通知",
+                                onClick = {
+                                    showNotificationDialog = true
+                                }
+                            )
+                            // 未読通知バッジ
+                            if (unreadNotificationCount > 0) {
+                                Badge(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = (-8).dp, y = 8.dp)
+                                ) {
+                                    Text(
+                                        text = if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString(),
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
                         }
                     }
-                    
-                    MenuButton(
-                        icon = "",
-                        text = "DB同期",
-                        onClick = {
-                            onNavigate(Screen.DatabaseSync)
-                        }
-                    )
-                }
-            }
 
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    MenuButton(
-                        icon = "🗂",
-                        text = "メタデータ補完",
-                        onClick = {
-                            showMetadataConfirm = true
-                        }
-                    )
-                    Spacer(modifier = Modifier.width(160.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MenuButton(
+                            icon = "",
+                            text = "DB同期",
+                            onClick = {
+                                onNavigate(Screen.DatabaseSync)
+                            }
+                        )
+
+                        MenuButton(
+                            icon = "",
+                            text = "キュー",
+                            onClick = {
+                                onNavigate(Screen.DownloadQueue)
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MenuButton(
+                            icon = "🗂",
+                            text = "メタデータ補完",
+                            onClick = {
+                                showMetadataConfirm = true
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(160.dp))
+                    }
                 }
             }
 
