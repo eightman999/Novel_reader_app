@@ -13,6 +13,7 @@ import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
 import com.shunlight_library.novel_reader.data.dao.ImageCacheDao
 import com.shunlight_library.novel_reader.data.dao.EpisodeMappingDao
 import com.shunlight_library.novel_reader.data.dao.RegistrationQueueDao
+import com.shunlight_library.novel_reader.data.dao.TempEpisodeDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -21,6 +22,7 @@ import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
+import com.shunlight_library.novel_reader.data.entity.TempEpisodeEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -44,7 +46,8 @@ class NovelRepository(
     private val urlEntityDao: URLEntityDao,
     private val imageCacheDao: ImageCacheDao,
     private val episodeMappingDao: EpisodeMappingDao,
-    private val registrationQueueDao: RegistrationQueueDao
+    private val registrationQueueDao: RegistrationQueueDao,
+    private val tempEpisodeDao: TempEpisodeDao
 ) {
     // 処理状態管理（インジケーターランプ用）
     private val _processingStates = MutableStateFlow<List<ProcessingState>>(emptyList())
@@ -1006,9 +1009,92 @@ class NovelRepository(
 
     suspend fun retryRegistrationQueue(id: Long) {
         val queue = registrationQueueDao.getById(id)
-        if (queue != null && queue.status == RegistrationQueueEntity.STATUS_ERROR) {
+        if (queue != null && (queue.status == RegistrationQueueEntity.STATUS_ERROR || queue.status == RegistrationQueueEntity.STATUS_TIMEOUT)) {
             registrationQueueDao.updateStatus(id, RegistrationQueueEntity.STATUS_PENDING, null)
         }
+    }
+
+    // === 一時エピソード関連メソッド ===
+
+    /**
+     * 一時テーブルにエピソードを保存
+     */
+    suspend fun insertTempEpisode(episode: TempEpisodeEntity) {
+        tempEpisodeDao.insert(episode)
+    }
+
+    /**
+     * 一時テーブルにエピソードを一括保存
+     */
+    suspend fun insertTempEpisodes(episodes: List<TempEpisodeEntity>) {
+        tempEpisodeDao.insertAll(episodes)
+    }
+
+    /**
+     * 指定ncodeの一時エピソード一覧を取得
+     */
+    suspend fun getTempEpisodesByNcode(ncode: String): List<TempEpisodeEntity> {
+        return tempEpisodeDao.getByNcode(ncode)
+    }
+
+    /**
+     * 指定ncodeの一時エピソード数を取得
+     */
+    suspend fun getTempEpisodeCountByNcode(ncode: String): Int {
+        return tempEpisodeDao.getCountByNcode(ncode)
+    }
+
+    /**
+     * 指定ncodeの最大エピソード番号を取得（リトライ時の続きから取得用）
+     */
+    suspend fun getTempMaxEpisodeNo(ncode: String): Int? {
+        return tempEpisodeDao.getMaxEpisodeNo(ncode)
+    }
+
+    /**
+     * 一時エピソードを本体テーブルに統合する。
+     * 既読ステータスやブックマークは既存データを保持する。
+     *
+     * @param ncode 統合対象の小説コード
+     * @return 統合されたエピソード数
+     */
+    suspend fun mergeTempEpisodesToMain(ncode: String): Int {
+        val tempEpisodes = tempEpisodeDao.getByNcode(ncode)
+        if (tempEpisodes.isEmpty()) return 0
+
+        var mergedCount = 0
+        for (tempEp in tempEpisodes) {
+            val mainEpisode = tempEp.toEpisodeEntity()
+            // insertEpisode は既存の既読・ブックマーク状態を保持する
+            insertEpisode(mainEpisode)
+            mergedCount++
+        }
+
+        // 統合完了後、一時データを削除
+        tempEpisodeDao.deleteByNcode(ncode)
+        AppLogger.d("NovelRepository", "一時エピソード統合完了: ncode=$ncode, ${mergedCount}話")
+        return mergedCount
+    }
+
+    /**
+     * 指定ncodeの一時エピソードを削除
+     */
+    suspend fun deleteTempEpisodesByNcode(ncode: String) {
+        tempEpisodeDao.deleteByNcode(ncode)
+    }
+
+    /**
+     * 指定キューIDの一時エピソードを削除
+     */
+    suspend fun deleteTempEpisodesByQueueId(queueId: Long) {
+        tempEpisodeDao.deleteByQueueId(queueId)
+    }
+
+    /**
+     * 全ての一時エピソードを削除
+     */
+    suspend fun deleteAllTempEpisodes() {
+        tempEpisodeDao.deleteAll()
     }
 
 }

@@ -4,25 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2025-12-15)
-- **Version**: 1.6.11 (versionCode: 170)
-- **Database**: Version 12 with 7 tables + performance indices
+### Current State (2026-01-30)
+- **Version**: 1.8.8 (versionCode: 182)
+- **Database**: Version 15 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
 - **Testing**: Unit tests + Instrumented tests available
 - **Performance**: Optimized for 1000+ novels, 320000+ episodes
 
 ### Key Numbers
-- **Entities**: 7 (NovelDesc, Episode, LastReadNovel, UpdateQueue, URL, ImageCache, EpisodeMapping)
-- **DAOs**: 7 (matching entities)
+- **Entities**: 9 (NovelDesc, Episode, LastReadNovel, UpdateQueue, URL, ImageCache, EpisodeMapping, RegistrationQueue, TempEpisode)
+- **DAOs**: 9 (matching entities)
 - **Screens**: 8 main screens + 1 sync activity
 - **Adapters**: 2 (SyosetuAdapter, KakuyomuAdapter)
-- **Migrations**: v1→v12 (11 migrations)
-- **Database Indices**: 15+ (including composite indices for performance)
+- **Migrations**: v1→v15 (14 migrations)
+- **Database Indices**: 17+ (including composite indices for performance)
 
 ### Common Tasks
 - **Add new feature**: Update version in build.gradle.kts, write Japanese commit message
-- **Database change**: Create new migration, update version to v13
+- **Database change**: Create new migration, update version to v16
 - **Add new site**: Implement NovelSiteAdapter interface, add to factory
 - **Fetching episodes**: Always use incremental saving (fetch 1 → save → fetch 2 → save)
 - **Site detection**: Check `novel.site_type` (1=Syosetu, 2=Kakuyomu)

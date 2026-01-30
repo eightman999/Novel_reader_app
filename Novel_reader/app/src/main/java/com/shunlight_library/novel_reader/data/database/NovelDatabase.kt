@@ -20,6 +20,7 @@ import com.shunlight_library.novel_reader.data.dao.UpdateQueueDao
 import com.shunlight_library.novel_reader.data.dao.ImageCacheDao
 import com.shunlight_library.novel_reader.data.dao.EpisodeMappingDao
 import com.shunlight_library.novel_reader.data.dao.RegistrationQueueDao
+import com.shunlight_library.novel_reader.data.dao.TempEpisodeDao
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
@@ -28,6 +29,7 @@ import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.data.entity.ImageCacheEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
+import com.shunlight_library.novel_reader.data.entity.TempEpisodeEntity
 
 /**
  * v1→v2のマイグレーション: 更新キュー用テーブルを作成
@@ -240,6 +242,33 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
 }
 
 /**
+ * v14→v15のマイグレーション: 一時エピソードテーブルを追加（ダウンロードステージング用）
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS temp_episodes (" +
+                    "ncode TEXT NOT NULL, " +
+                    "episode_no TEXT NOT NULL, " +
+                    "body TEXT NOT NULL, " +
+                    "e_title TEXT NOT NULL, " +
+                    "update_time TEXT NOT NULL, " +
+                    "is_read INTEGER NOT NULL DEFAULT 0, " +
+                    "is_bookmark INTEGER NOT NULL DEFAULT 0, " +
+                    "reading_rate REAL NOT NULL DEFAULT 0.0, " +
+                    "queue_id INTEGER NOT NULL DEFAULT 0, " +
+                    "PRIMARY KEY (ncode, episode_no))"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_temp_episodes_ncode ON temp_episodes (ncode, episode_no)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_temp_episodes_queue_id ON temp_episodes (queue_id)"
+        )
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -251,9 +280,10 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         URLEntity::class,
         ImageCacheEntity::class,
         EpisodeMappingEntity::class,
-        RegistrationQueueEntity::class
+        RegistrationQueueEntity::class,
+        TempEpisodeEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -265,6 +295,7 @@ abstract class NovelDatabase : RoomDatabase() {
     abstract fun imageCacheDao(): ImageCacheDao
     abstract fun episodeMappingDao(): EpisodeMappingDao
     abstract fun registrationQueueDao(): RegistrationQueueDao
+    abstract fun tempEpisodeDao(): TempEpisodeDao
 
     companion object {
         @Volatile
@@ -293,7 +324,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_10_11,
                         MIGRATION_11_12,
                         MIGRATION_12_13,
-                        MIGRATION_13_14
+                        MIGRATION_13_14,
+                        MIGRATION_14_15
                     )
                     .build()
                 INSTANCE = instance
