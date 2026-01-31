@@ -20,6 +20,8 @@ class DownloadQueueViewModel : ViewModel() {
 
     val errorQueues = repository.getRegistrationQueueByStatus(RegistrationQueueEntity.STATUS_ERROR)
 
+    val timeoutQueues = repository.getRegistrationQueueByStatus(RegistrationQueueEntity.STATUS_TIMEOUT)
+
     fun cancelQueue(id: Long) {
         viewModelScope.launch {
             com.shunlight_library.novel_reader.manager.RegistrationQueueManager.cancelQueue(id)

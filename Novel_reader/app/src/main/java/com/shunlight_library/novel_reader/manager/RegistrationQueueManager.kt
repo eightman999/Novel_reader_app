@@ -9,15 +9,19 @@ import android.util.Log
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
+import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
+import com.shunlight_library.novel_reader.data.entity.TempEpisodeEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,11 +30,27 @@ import java.util.Locale
  * 新規小説登録キューの管理クラス
  *
  * 同時処理数（2件）の制限を実現し、バックグラウンドで小説情報・エピソードを取得する。
- * 処理完了後は保持される（上限10件まで）。
+ * エピソードは一時テーブル（temp_episodes）に保存し、完了またはタイムアウト時に
+ * 本体テーブル（episodes）に統合する。
+ *
+ * タイムアウト時はステータスをTIMEOUTに設定し、一時データを保持してリトライ可能にする。
  */
 object RegistrationQueueManager {
     private const val TAG = "RegistrationQueueManager"
     const val MAX_CONCURRENT = 2
+
+    /**
+     * ダウンロード全体のタイムアウト（ミリ秒）
+     * デフォルト: 10分（600,000ms）
+     */
+    private const val DOWNLOAD_TIMEOUT_MS = 600_000L
+
+    /**
+     * 1話あたりの最大取得時間（ミリ秒）
+     * この時間を超えた場合、該当エピソードをスキップする
+     * デフォルト: 60秒
+     */
+    private const val PER_EPISODE_TIMEOUT_MS = 60_000L
 
     private val repository = NovelReaderApplication.getRepository()
     private val scope = CoroutineScope(Dispatchers.IO + Job())
@@ -126,6 +146,11 @@ object RegistrationQueueManager {
      */
     suspend fun cancelQueue(id: Long) {
         withContext(Dispatchers.IO) {
+            val queue = repository.getRegistrationQueueById(id)
+            if (queue != null) {
+                // 一時エピソードも削除
+                repository.deleteTempEpisodesByNcode(queue.ncode)
+            }
             repository.cancelRegistrationQueue(id)
             processingQueues[id]?.cancel()
             processingQueues.remove(id)
@@ -134,7 +159,7 @@ object RegistrationQueueManager {
     }
 
     /**
-     * エラーキューを再試行する
+     * エラー/タイムアウトキューを再試行する
      *
      * @param id キューID
      */
@@ -175,7 +200,10 @@ object RegistrationQueueManager {
     }
 
     /**
-     * キューを処理する
+     * キューを処理する（タイムアウト対応・一時DB経由）
+     *
+     * エピソードは一時テーブルに保存し、完了時に本体テーブルに統合する。
+     * タイムアウト時は一時データを保持し、リトライ時に続きから取得できる。
      *
      * @param queue 処理対象のキュー
      */
@@ -201,98 +229,88 @@ object RegistrationQueueManager {
                 if (novel != null) {
                     withContext(Dispatchers.IO) {
                         updateQueueError(queue.id, "既に登録されています: ${novel.title}")
+                        // 一時データも削除
+                        repository.deleteTempEpisodesByNcode(queue.ncode)
                         deleteQueue(queue.id)
                     }
                     com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishRegistration(session)
                     return@launch
                 }
 
-                // サイト種別に応じて取得処理
-                val adapter = NovelSiteAdapterFactory.getAdapter(queue.site_type)
-                val fetchSuccess = when (adapter.getSiteType()) {
-                    NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
-                        val kakuyomuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
-                        val result = kakuyomuAdapter.fetchNovelWithEpisodesIncludingMappings(
-                            queue.ncode,
-                            repository,
-                            onProgress = { current, total ->
-                                scope.launch {
-                                    updateQueueProgress(queue.id, current, total)
-                                }
-                            }
-                        )
-
-                        // 小説情報を保存
-                        repository.insertNovel(result.novelDesc)
-                        val episodesCount = result.episodes.size
-                        AppLogger.d(TAG, "小説登録完了: ${result.novelDesc.title}, ${episodesCount}話")
-                        true
-                    }
-                    NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
-                        val syosetuAdapter = adapter as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
-                        val (novelDesc, episodes) = syosetuAdapter.fetchNovelWithEpisodesR18(
-                            queue.ncode,
-                            queue.is_r18,
-                            repository,
-                            onProgress = { current, total ->
-                                scope.launch {
-                                    updateQueueProgress(queue.id, current, total)
-                                }
-                            }
-                        )
-
-                        // total_epを正しいエピソード数で更新
-                        val updatedNovelDesc = novelDesc.copy(total_ep = novelDesc.general_all_no)
-
-                        // 小説情報を保存
-                        repository.insertNovel(updatedNovelDesc)
-                        val episodesCount = if (episodes.isNotEmpty()) {
-                            episodes.size
-                        } else {
-                            novelDesc.general_all_no
-                        }
-                        AppLogger.d(TAG, "小説登録完了: ${updatedNovelDesc.title}, ${episodesCount}話")
-                        true
-                    }
-                    else -> {
-                        throw Exception("未対応のサイト種別: ${queue.site_type}")
-                    }
+                // リトライ時の既存一時データ数を確認
+                val existingTempCount = repository.getTempEpisodeCountByNcode(queue.ncode)
+                val resumeFrom = if (existingTempCount > 0) {
+                    val maxNo = repository.getTempMaxEpisodeNo(queue.ncode) ?: 0
+                    AppLogger.d(TAG, "リトライ: 一時データ ${existingTempCount}話あり（最大No: $maxNo）、続きから取得")
+                    maxNo
+                } else {
+                    0
                 }
 
-                if (!fetchSuccess) {
-                    throw Exception("小説の取得に失敗しました")
-                }
-
-                // 完了に変更
-                repository.updateRegistrationQueueStatus(
-                    queue.id,
-                    RegistrationQueueEntity.STATUS_COMPLETED,
-                    null
-                )
-
-                AppLogger.d(TAG, "キュー処理完了: id=${queue.id}, ncode=${queue.ncode}")
-
-                // 完了キューの上限管理（10個以上の場合、古いものから削除）
-                scope.launch {
-                    try {
-                        val completedQueues = repository.getRegistrationQueueByStatus(
-                            RegistrationQueueEntity.STATUS_COMPLETED
-                        ).first()
-
-                        if (completedQueues.size > 10) {
-                            val toDelete = completedQueues.take(completedQueues.size - 10)
-                            toDelete.forEach { completedQueue ->
-                                repository.deleteRegistrationQueue(completedQueue.id)
-                                AppLogger.d(TAG, "完了キューを削除（上限超過）: id=${completedQueue.id}")
+                try {
+                    // タイムアウト付きでダウンロード実行
+                    withTimeout(DOWNLOAD_TIMEOUT_MS) {
+                        // サイト種別に応じて取得処理（一時テーブル経由）
+                        val adapter = NovelSiteAdapterFactory.getAdapter(queue.site_type)
+                        when (adapter.getSiteType()) {
+                            NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+                                fetchKakuyomuWithTempDb(queue, resumeFrom)
+                            }
+                            NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
+                                fetchSyosetuWithTempDb(queue, resumeFrom)
+                            }
+                            else -> {
+                                throw Exception("未対応のサイト種別: ${queue.site_type}")
                             }
                         }
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "完了キューのクリーンアップエラー", e)
                     }
+
+                    // 完了: 一時テーブルから本体テーブルに統合
+                    val mergedCount = repository.mergeTempEpisodesToMain(queue.ncode)
+                    AppLogger.d(TAG, "本体DBに統合完了: ${mergedCount}話")
+
+                    // 完了に変更
+                    repository.updateRegistrationQueueStatus(
+                        queue.id,
+                        RegistrationQueueEntity.STATUS_COMPLETED,
+                        null
+                    )
+
+                    AppLogger.d(TAG, "キュー処理完了: id=${queue.id}, ncode=${queue.ncode}")
+
+                    // 完了キューの上限管理
+                    cleanupCompletedQueues()
+
+                } catch (e: TimeoutCancellationException) {
+                    // タイムアウト: 一時データは保持し、ステータスをTIMEOUTに設定
+                    val tempCount = repository.getTempEpisodeCountByNcode(queue.ncode)
+                    val totalEp = queue.total_episodes
+
+                    // タイムアウト時も途中までのデータを本体DBに統合
+                    val mergedCount = repository.mergeTempEpisodesToMain(queue.ncode)
+                    AppLogger.w(TAG, "タイムアウト: id=${queue.id}, ncode=${queue.ncode}, " +
+                            "取得済み=${tempCount}話, 統合=${mergedCount}話, 合計=${totalEp}話")
+
+                    repository.updateRegistrationQueueStatus(
+                        queue.id,
+                        RegistrationQueueEntity.STATUS_TIMEOUT,
+                        "タイムアウト（${tempCount}/${totalEp}話取得済み、${mergedCount}話統合済み）"
+                    )
                 }
 
             } catch (e: Exception) {
                 AppLogger.e(TAG, "キュー処理エラー: id=${queue.id}", e)
+
+                // エラー時も途中までの一時データを本体DBに統合
+                try {
+                    val mergedCount = repository.mergeTempEpisodesToMain(queue.ncode)
+                    if (mergedCount > 0) {
+                        AppLogger.d(TAG, "エラー発生時の部分統合: ${mergedCount}話を本体DBに統合")
+                    }
+                } catch (mergeError: Exception) {
+                    AppLogger.e(TAG, "部分統合エラー", mergeError)
+                }
+
                 withContext(Dispatchers.IO) {
                     updateQueueError(queue.id, e.message ?: "不明なエラー")
                 }
@@ -304,6 +322,118 @@ object RegistrationQueueManager {
         }
 
         processingQueues[queue.id] = job
+    }
+
+    /**
+     * カクヨム小説を一時テーブル経由で取得する
+     *
+     * @param queue 処理対象のキュー
+     * @param resumeFrom リトライ時の開始エピソード番号（0の場合は最初から）
+     */
+    private suspend fun fetchKakuyomuWithTempDb(queue: RegistrationQueueEntity, resumeFrom: Int) {
+        val adapter = NovelSiteAdapterFactory.getAdapter(queue.site_type) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+
+        // 一時テーブル経由でエピソードを取得（repositoryにはnullを渡して自前で保存を管理）
+        val result = adapter.fetchNovelWithEpisodesIncludingMappings(
+            queue.ncode,
+            repository = null,  // 自前で一時テーブルに保存する
+            onProgress = { current, total ->
+                scope.launch {
+                    updateQueueProgress(queue.id, current, total)
+                }
+            }
+        )
+
+        // 小説情報を保存
+        repository.insertNovel(result.novelDesc)
+
+        // エピソードを一時テーブルに保存
+        val episodes = result.episodes
+        for (episode in episodes) {
+            val epNo = episode.episode_no.toIntOrNull() ?: 0
+            if (epNo > resumeFrom) {
+                val tempEpisode = TempEpisodeEntity.fromEpisodeEntity(episode, queue.id)
+                repository.insertTempEpisode(tempEpisode)
+            }
+        }
+
+        AppLogger.d(TAG, "カクヨム小説取得完了（一時テーブル）: ${result.novelDesc.title}, ${episodes.size}話")
+    }
+
+    /**
+     * なろう小説を一時テーブル経由で取得する
+     *
+     * @param queue 処理対象のキュー
+     * @param resumeFrom リトライ時の開始エピソード番号（0の場合は最初から）
+     */
+    private suspend fun fetchSyosetuWithTempDb(queue: RegistrationQueueEntity, resumeFrom: Int) {
+        val adapter = NovelSiteAdapterFactory.getAdapter(queue.site_type) as com.shunlight_library.novel_reader.data.adapter.SyosetuAdapter
+
+        // まず小説情報を取得
+        val novelDesc = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelDetails(queue.ncode, queue.is_r18)
+            ?: throw Exception("小説情報の取得に失敗: ${queue.ncode}")
+
+        val updatedNovelDesc = novelDesc.copy(
+            site_type = NovelSiteAdapter.SITE_TYPE_SYOSETU,
+            total_ep = novelDesc.general_all_no
+        )
+
+        // 小説情報を保存
+        repository.insertNovel(updatedNovelDesc)
+
+        val totalEpisodes = novelDesc.general_all_no
+        val startFrom = resumeFrom + 1
+
+        AppLogger.d(TAG, "なろう小説エピソード取得開始: ${novelDesc.title}, " +
+                "全${totalEpisodes}話, 開始=${startFrom}話目")
+
+        // 1話ずつ取得→一時テーブルに保存
+        for (episodeNo in startFrom..totalEpisodes) {
+            val episode = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisodeWithRetry(
+                ncode = queue.ncode,
+                episodeNo = episodeNo.toString(),
+                isR18 = queue.is_r18,
+                noveltype = novelDesc.noveltype
+            )
+
+            if (episode != null) {
+                // 一時テーブルに保存
+                val tempEpisode = TempEpisodeEntity.fromEpisodeEntity(episode, queue.id)
+                repository.insertTempEpisode(tempEpisode)
+            } else {
+                AppLogger.w(TAG, "エピソード取得失敗（スキップ）: ${queue.ncode} 第${episodeNo}話")
+            }
+
+            // 進捗通知
+            scope.launch {
+                updateQueueProgress(queue.id, episodeNo, totalEpisodes)
+            }
+        }
+
+        AppLogger.d(TAG, "なろう小説取得完了（一時テーブル）: ${updatedNovelDesc.title}, ${totalEpisodes}話")
+    }
+
+    /**
+     * 完了キューの上限管理（10個以上の場合、古いものから削除）
+     */
+    private fun cleanupCompletedQueues() {
+        scope.launch {
+            try {
+                val completedQueues = repository.getRegistrationQueueByStatus(
+                    RegistrationQueueEntity.STATUS_COMPLETED
+                ).first()
+
+                if (completedQueues.size > 10) {
+                    val toDelete = completedQueues.take(completedQueues.size - 10)
+                    toDelete.forEach { completedQueue ->
+                        repository.deleteRegistrationQueue(completedQueue.id)
+                        AppLogger.d(TAG, "完了キューを削除（上限超過）: id=${completedQueue.id}")
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "完了キューのクリーンアップエラー", e)
+            }
+        }
     }
 
     /**

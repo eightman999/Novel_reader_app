@@ -33,7 +33,7 @@ data class RegistrationQueueEntity(
     val url: String,                      // 元のURL
     val is_r18: Boolean,                  // R18フラグ
 
-    // ステータス（0=待機中, 1=処理中, 2=完了, 3=エラー）
+    // ステータス（0=待機中, 1=処理中, 2=完了, 3=エラー, 4=タイムアウト）
     val status: Int,
 
     val current_episode: Int,             // 現在のエピソード数
@@ -49,5 +49,6 @@ data class RegistrationQueueEntity(
         const val STATUS_PROCESSING = 1   // 処理中
         const val STATUS_COMPLETED = 2    // 完了
         const val STATUS_ERROR = 3        // エラー
+        const val STATUS_TIMEOUT = 4      // タイムアウト（リトライ可能）
     }
 }

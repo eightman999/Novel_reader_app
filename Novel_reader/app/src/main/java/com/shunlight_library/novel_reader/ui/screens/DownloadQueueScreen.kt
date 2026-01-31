@@ -34,6 +34,7 @@ fun DownloadQueueScreen(
     val queues by viewModel.queues.collectAsState(initial = emptyList())
     val processingQueues by viewModel.processingQueues.collectAsState(initial = emptyList())
     val errorQueues by viewModel.errorQueues.collectAsState(initial = emptyList())
+    val timeoutQueues by viewModel.timeoutQueues.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -56,6 +57,7 @@ fun DownloadQueueScreen(
             StatusSummaryRow(
                 processingCount = processingQueues.size,
                 errorCount = errorQueues.size,
+                timeoutCount = timeoutQueues.size,
                 totalCount = queues.size
             )
 
@@ -85,6 +87,7 @@ fun DownloadQueueScreen(
 fun StatusSummaryRow(
     processingCount: Int,
     errorCount: Int,
+    timeoutCount: Int,
     totalCount: Int
 ) {
     Row(
@@ -100,6 +103,9 @@ fun StatusSummaryRow(
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (processingCount > 0) {
                 StatusBadge(text = "処理中: $processingCount", color = MaterialTheme.colorScheme.primary)
+            }
+            if (timeoutCount > 0) {
+                StatusBadge(text = "タイムアウト: $timeoutCount", color = Color(0xFFFF8C00))
             }
             if (errorCount > 0) {
                 StatusBadge(text = "エラー: $errorCount", color = MaterialTheme.colorScheme.error)
@@ -160,6 +166,7 @@ fun QueueItem(
         RegistrationQueueEntity.STATUS_PROCESSING -> MaterialTheme.colorScheme.primary
         RegistrationQueueEntity.STATUS_ERROR -> MaterialTheme.colorScheme.error
         RegistrationQueueEntity.STATUS_COMPLETED -> MaterialTheme.colorScheme.primary
+        RegistrationQueueEntity.STATUS_TIMEOUT -> Color(0xFFFF8C00) // オレンジ
         else -> MaterialTheme.colorScheme.onSurface
     }
 
@@ -168,6 +175,7 @@ fun QueueItem(
         RegistrationQueueEntity.STATUS_PROCESSING -> "処理中"
         RegistrationQueueEntity.STATUS_ERROR -> "エラー"
         RegistrationQueueEntity.STATUS_COMPLETED -> "完了"
+        RegistrationQueueEntity.STATUS_TIMEOUT -> "タイムアウト"
         else -> "不明"
     }
 
@@ -230,6 +238,26 @@ fun QueueItem(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
+            // タイムアウト時のメッセージ表示
+            if (queue.status == RegistrationQueueEntity.STATUS_TIMEOUT && !queue.error_message.isNullOrBlank()) {
+                Text(
+                    text = queue.error_message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFFF8C00),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                // タイムアウト時の進捗バー（途中まで取得済み）
+                if (queue.total_episodes > 0 && queue.current_episode > 0) {
+                    LinearProgressIndicator(
+                        progress = { queue.current_episode.toFloat() / queue.total_episodes.toFloat() },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFFFF8C00),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+
             if (queue.status == RegistrationQueueEntity.STATUS_ERROR && !queue.error_message.isNullOrBlank()) {
                 Text(
                     text = "エラー: ${queue.error_message}",
@@ -265,6 +293,20 @@ fun QueueItem(
                         Icon(Icons.Filled.Refresh, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("再試行")
+                    }
+                }
+
+                // タイムアウト時もリトライ可能
+                if (queue.status == RegistrationQueueEntity.STATUS_TIMEOUT) {
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF8C00)
+                        )
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("続きから再試行")
                     }
                 }
 
