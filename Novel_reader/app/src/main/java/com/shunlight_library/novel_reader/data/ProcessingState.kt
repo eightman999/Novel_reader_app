@@ -16,7 +16,8 @@ enum class ProcessingStatusType(val displayName: String, val color: Color) {
     CHECK("更新確認", Color.Green),       // 更新確認: 緑
     IDLE("アイドル", Color.Gray),         // アイドル: 灰色
     FETCHING("取得中", Color.Cyan),       // 取得: 水色
-    TIMEOUT("タイムアウト", Color(0xFFFF8C00))  // タイムアウト: オレンジ
+    TIMEOUT("タイムアウト", Color(0xFFFF8C00)),  // タイムアウト: オレンジ
+    PAUSED("一時停止", Color(0xFF9E9E9E))       // 一時停止: グレー
 }
 
 /**

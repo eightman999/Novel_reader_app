@@ -22,6 +22,17 @@ class DownloadQueueViewModel : ViewModel() {
 
     val timeoutQueues = repository.getRegistrationQueueByStatus(RegistrationQueueEntity.STATUS_TIMEOUT)
 
+    val pausedQueues = repository.getRegistrationQueueByStatus(RegistrationQueueEntity.STATUS_PAUSED)
+
+    /**
+     * キューを一時停止する（処理中/待機中）
+     */
+    fun pauseQueue(id: Long) {
+        viewModelScope.launch {
+            com.shunlight_library.novel_reader.manager.RegistrationQueueManager.pauseQueue(id)
+        }
+    }
+
     fun cancelQueue(id: Long) {
         viewModelScope.launch {
             com.shunlight_library.novel_reader.manager.RegistrationQueueManager.cancelQueue(id)
@@ -37,6 +48,15 @@ class DownloadQueueViewModel : ViewModel() {
     fun deleteCompletedQueue(id: Long) {
         viewModelScope.launch {
             repository.deleteRegistrationQueue(id)
+        }
+    }
+
+    /**
+     * エラー/タイムアウトのキューを削除する（一時データも含む）
+     */
+    fun deleteFailedQueue(id: Long) {
+        viewModelScope.launch {
+            com.shunlight_library.novel_reader.manager.RegistrationQueueManager.cancelQueue(id)
         }
     }
 }

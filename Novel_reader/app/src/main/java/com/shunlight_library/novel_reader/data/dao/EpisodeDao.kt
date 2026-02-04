@@ -75,4 +75,22 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE ncode = :ncode ORDER BY CAST(episode_no AS INTEGER)")
     suspend fun getEpisodesByNcodeList(ncode: String): List<EpisodeEntity>
 
+    /**
+     * 指定ncodeの最大エピソード番号を取得（リトライ時のレジュームポイント検出用）
+     */
+    @Query("SELECT MAX(CAST(episode_no AS INTEGER)) FROM episodes WHERE ncode = :ncode")
+    suspend fun getMaxEpisodeNo(ncode: String): Int?
+
+    /**
+     * 指定ncodeのエピソード数を取得
+     */
+    @Query("SELECT COUNT(*) FROM episodes WHERE ncode = :ncode")
+    suspend fun getEpisodeCountByNcode(ncode: String): Int
+
+    /**
+     * エピソードテーブルに存在する全ての異なるncodeを取得
+     */
+    @Query("SELECT DISTINCT ncode FROM episodes")
+    suspend fun getDistinctNcodes(): List<String>
+
 }

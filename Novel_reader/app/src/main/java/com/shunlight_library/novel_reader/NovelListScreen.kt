@@ -912,6 +912,10 @@ fun NovelListScreen(
                                         "この小説の処理中にエラーが発生しました。\nエラー状態が解消されるまでお待ちください。"
                                     com.shunlight_library.novel_reader.data.ProcessingStatusType.IDLE ->
                                         "この小説は現在処理中です。\n完了までお待ちください。"
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.TIMEOUT ->
+                                        "この小説のダウンロードがタイムアウトしました。\n再試行をお待ちください。"
+                                    com.shunlight_library.novel_reader.data.ProcessingStatusType.PAUSED ->
+                                        "この小説のダウンロードは一時停止中です。\nキュー画面から再開できます。"
                                 }
                                 showProcessingDialog = true
                             } else {

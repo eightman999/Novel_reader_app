@@ -297,7 +297,7 @@ val title = doc.select("h1.p-novel__title.p-novel__title--rensai").text()
 ```kotlin
 // KakuyomuAdapter.kt での実装パターン
 companion object {
-    private const val RATE_LIMIT_DELAY_MS = 1000L  // 1秒（スクレイピング時の推奨間隔）
+    private const val RATE_LIMIT_DELAY_MS = 500L  // 0.5秒（スクレイピング時の推奨間隔）
     private var lastAccessTime = 0L
 }
 
@@ -311,7 +311,7 @@ private suspend fun applyRateLimit() {
 ```
 
 **重要なルール**:
-- レート制限は**1秒間隔**（0.5秒や他の値は使用しない）
+- レート制限は**0.5秒間隔**
 - 全てのHTTPリクエスト前に`applyRateLimit()`を呼び出す
 - サーバー負荷軽減のため、この間隔を必ず守る
 
@@ -715,3 +715,38 @@ val episodeUrl = "https://kakuyomu.jp/works/{workId}/episodes/{episodeId}"
 - ユーザーには適切なエラーメッセージを表示
 
 このルールは全てのカクヨム関連処理（小説情報取得、エピソード一覧取得、エピソード本文取得、更新確認）で統一して適用すること。
+
+## 孤立エピソード検知・復元機能 (v1.9.0)
+
+**概要**: episodesテーブルに存在するが、novels_descsテーブルに対応するレコードがない「孤立エピソード」を検知し、APIから小説メタデータを取得してnovels_descsに追加する機能。
+
+**実装ファイル**:
+- `EpisodeDao.kt` - 孤立エピソード検出クエリ (`getDistinctNcodes()`)
+- `NovelRepository.kt` - 孤立ncode検出メソッド (`findOrphanedEpisodeNcodes()`)
+- `NovelRepository.kt` - メタデータ復元メソッド (`restoreNovelMetadata()`)
+- `SettingsScreen.kt` - 整合性チェックUI (`OrphanedEpisodeCheckSection()`)
+
+**主要機能**:
+1. **孤立エピソード検出**: episodesテーブルの全ncodeと、novels_descsテーブルの全ncodeを比較し、差分を抽出
+2. **メタデータ復元**: APIから小説メタデータを取得し、novels_descsに追加
+   - **小説家になろう**: 一般APIで試行→失敗時にR18 APIで再試行
+   - **カクヨム**: `fetchNovelMetadataWithEpisodeList()`を使用
+3. **エピソード数整合性**: APIの値ではなく、DB内の実際のエピソード数を使用
+4. **UIフロー**:
+   - ボタン押下 → 孤立エピソード検知
+   - 0件 → 「問題なし」Toast表示
+   - 1件以上 → 確認ダイアログ（件数とncodeリスト）
+   - ユーザー確認 → 1件ずつAPIでメタデータ取得・保存（プログレスバー表示）
+   - 完了 → 結果ダイアログ（成功/失敗の詳細）
+
+**重要なルール**:
+- エピソード本文は再ダウンロードしない（メタデータのみ取得）
+- `total_ep` と `episode_count` はAPIの値ではなく、DB内の実際のエピソード数で上書き
+- `registered_at` は現在日時を設定
+- R18判定: 小説家になろうの場合、まず一般APIで試行→失敗時にR18 APIで再試行
+- カクヨムのレート制限（0.5秒）を遵守
+
+**実装の注意点**:
+- SQLiteのIN句制限を考慮し、チャンク分割（500件単位）でクエリを実行
+- 例外処理を含め、各ncodeの処理結果を記録
+- UIでプログレスバーと件数表示を提供し、ユーザー体験を向上

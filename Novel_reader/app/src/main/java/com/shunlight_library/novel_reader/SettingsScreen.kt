@@ -44,6 +44,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.shunlight_library.novel_reader.worker.AutoUpdateScheduler
+import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
+import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1234,6 +1239,11 @@ fun SettingsScreenUpdated(
 
             HorizontalDivider()
 
+            // データベース整合性チェックセクション
+            OrphanedEpisodeCheckSection()
+
+            HorizontalDivider()
+
             // 開発者向けオプション
             SettingSection(title = "開発者向けオプション") {
                 // すべての更新スケジュールを削除
@@ -1261,6 +1271,176 @@ fun SettingsScreenUpdated(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+@Composable
+fun OrphanedEpisodeCheckSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = NovelReaderApplication.getRepository()
+
+    var isChecking by remember { mutableStateOf(false) }
+    var isRestoring by remember { mutableStateOf(false) }
+    var orphanedNcodes by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    var showResultDialog by remember { mutableStateOf(false) }
+    var resultMessage by remember { mutableStateOf("") }
+    var progressCurrent by remember { mutableIntStateOf(0) }
+    var progressTotal by remember { mutableIntStateOf(0) }
+
+    SettingSection(title = "データベース整合性チェック") {
+        Text(
+            text = "エピソードは存在するが小説情報が欠落しているデータを検知し、APIから小説情報を取得して復元します。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        Button(
+            onClick = {
+                scope.launch {
+                    isChecking = true
+                    try {
+                        val found = withContext(Dispatchers.IO) {
+                            repository.findOrphanedEpisodeNcodes()
+                        }
+                        orphanedNcodes = found
+                        if (found.isEmpty()) {
+                            Toast.makeText(context, "孤立エピソードは見つかりませんでした", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showConfirmDialog = true
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "検知エラー: ${e.message}", Toast.LENGTH_LONG).show()
+                    } finally {
+                        isChecking = false
+                    }
+                }
+            },
+            enabled = !isChecking && !isRestoring,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            if (isChecking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("検知中...")
+            } else {
+                Text("孤立エピソード検知・復元")
+            }
+        }
+
+        if (isRestoring) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { if (progressTotal > 0) progressCurrent.toFloat() / progressTotal else 0f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+            Text(
+                text = "復元中: $progressCurrent / $progressTotal",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+    }
+
+    // 確認ダイアログ
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("孤立エピソード検知結果") },
+            text = {
+                Column {
+                    Text("${orphanedNcodes.size}件の孤立エピソードが見つかりました。")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "対象ncode:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    orphanedNcodes.forEach { ncode ->
+                        Text(
+                            text = "  - $ncode",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("APIから小説情報を取得して復元しますか？")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmDialog = false
+                    isRestoring = true
+                    progressTotal = orphanedNcodes.size
+                    progressCurrent = 0
+
+                        scope.launch {
+                        val successes = mutableListOf<String>()
+                        val failures = mutableListOf<String>()
+
+                        for (ncode in orphanedNcodes) {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    repository.restoreNovelMetadata(ncode) { success, message ->
+                                        if (success) {
+                                            successes.add(ncode)
+                                        } else {
+                                            failures.add("$ncode: $message")
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                failures.add("$ncode: ${e.message}")
+                            }
+                            progressCurrent++
+                        }
+
+                        isRestoring = false
+                        val sb = StringBuilder()
+                        if (successes.isNotEmpty()) {
+                            sb.appendLine("成功: ${successes.size}件")
+                            successes.forEach { sb.appendLine("  - $it") }
+                        }
+                        if (failures.isNotEmpty()) {
+                            sb.appendLine("失敗: ${failures.size}件")
+                            failures.forEach { sb.appendLine("  - $it") }
+                        }
+                        resultMessage = sb.toString()
+                        showResultDialog = true
+                    }
+                }) {
+                    Text("復元する")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    // 結果ダイアログ
+    if (showResultDialog) {
+        AlertDialog(
+            onDismissRequest = { showResultDialog = false },
+            title = { Text("復元結果") },
+            text = { Text(resultMessage) },
+            confirmButton = {
+                TextButton(onClick = { showResultDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

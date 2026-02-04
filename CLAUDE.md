@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-01-30)
-- **Version**: 1.8.8 (versionCode: 182)
+### Current State (2026-01-31)
+- **Version**: 1.8.9 (versionCode: 183)
 - **Database**: Version 15 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -336,6 +336,8 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Favorite novels management
 - Episode ID mapping for Kakuyomu integration
 - Download date tracking with registered_at field
+- Timeout resume: タイムアウト時に一時テーブルデータを保持し、リトライ時に続きからダウンロード再開
+- Kakuyomu streaming download: カクヨムのエピソードを1話ずつ取得→保存するストリーミング方式（メモリ効率改善）
 
 ### Performance Optimizations
 
@@ -463,7 +465,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 1.6.1 (versionCode 160).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 1.8.9 (versionCode 183).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.

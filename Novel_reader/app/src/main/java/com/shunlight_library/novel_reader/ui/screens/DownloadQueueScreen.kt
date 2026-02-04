@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -35,6 +37,7 @@ fun DownloadQueueScreen(
     val processingQueues by viewModel.processingQueues.collectAsState(initial = emptyList())
     val errorQueues by viewModel.errorQueues.collectAsState(initial = emptyList())
     val timeoutQueues by viewModel.timeoutQueues.collectAsState(initial = emptyList())
+    val pausedQueues by viewModel.pausedQueues.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -58,6 +61,7 @@ fun DownloadQueueScreen(
                 processingCount = processingQueues.size,
                 errorCount = errorQueues.size,
                 timeoutCount = timeoutQueues.size,
+                pausedCount = pausedQueues.size,
                 totalCount = queues.size
             )
 
@@ -72,9 +76,11 @@ fun DownloadQueueScreen(
                     items(queues) { queue ->
                         QueueItem(
                             queue = queue,
+                            onPause = { viewModel.pauseQueue(queue.id) },
                             onCancel = { viewModel.cancelQueue(queue.id) },
                             onRetry = { viewModel.retryQueue(queue.id) },
-                            onDeleteCompleted = { viewModel.deleteCompletedQueue(queue.id) }
+                            onDeleteCompleted = { viewModel.deleteCompletedQueue(queue.id) },
+                            onDeleteFailed = { viewModel.deleteFailedQueue(queue.id) }
                         )
                     }
                 }
@@ -88,6 +94,7 @@ fun StatusSummaryRow(
     processingCount: Int,
     errorCount: Int,
     timeoutCount: Int,
+    pausedCount: Int,
     totalCount: Int
 ) {
     Row(
@@ -103,6 +110,9 @@ fun StatusSummaryRow(
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (processingCount > 0) {
                 StatusBadge(text = "処理中: $processingCount", color = MaterialTheme.colorScheme.primary)
+            }
+            if (pausedCount > 0) {
+                StatusBadge(text = "一時停止: $pausedCount", color = Color(0xFF9E9E9E))
             }
             if (timeoutCount > 0) {
                 StatusBadge(text = "タイムアウト: $timeoutCount", color = Color(0xFFFF8C00))
@@ -157,9 +167,11 @@ fun EmptyQueueMessage() {
 @Composable
 fun QueueItem(
     queue: RegistrationQueueEntity,
+    onPause: () -> Unit = {},
     onCancel: () -> Unit,
     onRetry: () -> Unit,
-    onDeleteCompleted: () -> Unit
+    onDeleteCompleted: () -> Unit,
+    onDeleteFailed: () -> Unit = {}
 ) {
     val statusColor = when (queue.status) {
         RegistrationQueueEntity.STATUS_PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -167,6 +179,7 @@ fun QueueItem(
         RegistrationQueueEntity.STATUS_ERROR -> MaterialTheme.colorScheme.error
         RegistrationQueueEntity.STATUS_COMPLETED -> MaterialTheme.colorScheme.primary
         RegistrationQueueEntity.STATUS_TIMEOUT -> Color(0xFFFF8C00) // オレンジ
+        RegistrationQueueEntity.STATUS_PAUSED -> Color(0xFF9E9E9E) // グレー
         else -> MaterialTheme.colorScheme.onSurface
     }
 
@@ -176,6 +189,7 @@ fun QueueItem(
         RegistrationQueueEntity.STATUS_ERROR -> "エラー"
         RegistrationQueueEntity.STATUS_COMPLETED -> "完了"
         RegistrationQueueEntity.STATUS_TIMEOUT -> "タイムアウト"
+        RegistrationQueueEntity.STATUS_PAUSED -> "一時停止"
         else -> "不明"
     }
 
@@ -238,6 +252,26 @@ fun QueueItem(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
+            // 一時停止時のメッセージ表示
+            if (queue.status == RegistrationQueueEntity.STATUS_PAUSED && !queue.error_message.isNullOrBlank()) {
+                Text(
+                    text = queue.error_message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9E9E9E),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                // 一時停止時の進捗バー（途中まで取得済み）
+                if (queue.total_episodes > 0 && queue.current_episode > 0) {
+                    LinearProgressIndicator(
+                        progress = { queue.current_episode.toFloat() / queue.total_episodes.toFloat() },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF9E9E9E),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+
             // タイムアウト時のメッセージ表示
             if (queue.status == RegistrationQueueEntity.STATUS_TIMEOUT && !queue.error_message.isNullOrBlank()) {
                 Text(
@@ -273,6 +307,7 @@ fun QueueItem(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 待機中: 一時停止 + 削除
                 if (queue.status == RegistrationQueueEntity.STATUS_PENDING) {
                     OutlinedButton(
                         onClick = onCancel,
@@ -280,13 +315,55 @@ fun QueueItem(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
+                        Icon(Icons.Filled.Delete, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("キャンセル")
+                        Text("削除")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = onPause
+                    ) {
+                        Icon(Icons.Filled.Pause, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("一時停止")
                     }
                 }
 
+                // 処理中: 一時停止 + 削除
+                if (queue.status == RegistrationQueueEntity.STATUS_PROCESSING) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("削除")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = onPause
+                    ) {
+                        Icon(Icons.Filled.Pause, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("一時停止")
+                    }
+                }
+
+                // エラー時: 再試行 + 削除
                 if (queue.status == RegistrationQueueEntity.STATUS_ERROR) {
+                    OutlinedButton(
+                        onClick = onDeleteFailed,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("削除")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = onRetry
                     ) {
@@ -296,8 +373,19 @@ fun QueueItem(
                     }
                 }
 
-                // タイムアウト時もリトライ可能
+                // タイムアウト時: 削除 + 続きから再試行
                 if (queue.status == RegistrationQueueEntity.STATUS_TIMEOUT) {
+                    OutlinedButton(
+                        onClick = onDeleteFailed,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("削除")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = onRetry,
                         colors = ButtonDefaults.buttonColors(
@@ -310,6 +398,29 @@ fun QueueItem(
                     }
                 }
 
+                // 一時停止: 削除 + 続きから再開
+                if (queue.status == RegistrationQueueEntity.STATUS_PAUSED) {
+                    OutlinedButton(
+                        onClick = onDeleteFailed,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("削除")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = onRetry
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("続きから再開")
+                    }
+                }
+
+                // 完了: 削除ボタン
                 if (queue.status == RegistrationQueueEntity.STATUS_COMPLETED) {
                     OutlinedButton(
                         onClick = onDeleteCompleted,

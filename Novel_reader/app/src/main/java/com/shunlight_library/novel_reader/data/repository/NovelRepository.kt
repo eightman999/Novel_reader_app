@@ -1009,7 +1009,9 @@ class NovelRepository(
 
     suspend fun retryRegistrationQueue(id: Long) {
         val queue = registrationQueueDao.getById(id)
-        if (queue != null && (queue.status == RegistrationQueueEntity.STATUS_ERROR || queue.status == RegistrationQueueEntity.STATUS_TIMEOUT)) {
+        if (queue != null && (queue.status == RegistrationQueueEntity.STATUS_ERROR
+                    || queue.status == RegistrationQueueEntity.STATUS_TIMEOUT
+                    || queue.status == RegistrationQueueEntity.STATUS_PAUSED)) {
             registrationQueueDao.updateStatus(id, RegistrationQueueEntity.STATUS_PENDING, null)
         }
     }
@@ -1045,10 +1047,40 @@ class NovelRepository(
     }
 
     /**
-     * 指定ncodeの最大エピソード番号を取得（リトライ時の続きから取得用）
+     * 指定ncodeの一時テーブルの最大エピソード番号を取得（リトライ時の続きから取得用）
      */
     suspend fun getTempMaxEpisodeNo(ncode: String): Int? {
         return tempEpisodeDao.getMaxEpisodeNo(ncode)
+    }
+
+    /**
+     * 指定ncodeの本体テーブルの最大エピソード番号を取得（レジュームポイント検出用）
+     */
+    suspend fun getMainMaxEpisodeNo(ncode: String): Int? {
+        return episodeDao.getMaxEpisodeNo(ncode)
+    }
+
+    /**
+     * 指定ncodeの本体テーブルのエピソード数を取得
+     */
+    suspend fun getMainEpisodeCountByNcode(ncode: String): Int {
+        return episodeDao.getEpisodeCountByNcode(ncode)
+    }
+
+    /**
+     * エピソードテーブルに存在するがnovels_descsに存在しない孤立ncodeを検出する
+     */
+    suspend fun findOrphanedEpisodeNcodes(): List<String> = withContext(Dispatchers.IO) {
+        val episodeNcodes = episodeDao.getDistinctNcodes()
+        if (episodeNcodes.isEmpty()) return@withContext emptyList()
+
+        // SQLite IN句の制限を考慮してチャンク分割
+        val existingNovels = episodeNcodes.chunked(500).flatMap { chunk ->
+            novelDescDao.getNovelsByNcodes(chunk)
+        }
+        val existingNcodes = existingNovels.map { it.ncode }.toSet()
+
+        episodeNcodes.filter { it !in existingNcodes }
     }
 
     /**
@@ -1056,9 +1088,11 @@ class NovelRepository(
      * 既読ステータスやブックマークは既存データを保持する。
      *
      * @param ncode 統合対象の小説コード
+     * @param deleteTempAfterMerge trueの場合、統合後に一時データを削除する（デフォルト: true）
+     *                             タイムアウト時はfalseを指定し、リトライ時のレジュームを可能にする
      * @return 統合されたエピソード数
      */
-    suspend fun mergeTempEpisodesToMain(ncode: String): Int {
+    suspend fun mergeTempEpisodesToMain(ncode: String, deleteTempAfterMerge: Boolean = true): Int {
         val tempEpisodes = tempEpisodeDao.getByNcode(ncode)
         if (tempEpisodes.isEmpty()) return 0
 
@@ -1070,9 +1104,14 @@ class NovelRepository(
             mergedCount++
         }
 
-        // 統合完了後、一時データを削除
-        tempEpisodeDao.deleteByNcode(ncode)
-        AppLogger.d("NovelRepository", "一時エピソード統合完了: ncode=$ncode, ${mergedCount}話")
+        if (deleteTempAfterMerge) {
+            // 統合完了後、一時データを削除
+            tempEpisodeDao.deleteByNcode(ncode)
+            AppLogger.d("NovelRepository", "一時エピソード統合完了（一時データ削除済み）: ncode=$ncode, ${mergedCount}話")
+        } else {
+            // タイムアウト時: 一時データを保持してリトライ時のレジュームを可能にする
+            AppLogger.d("NovelRepository", "一時エピソード統合完了（一時データ保持）: ncode=$ncode, ${mergedCount}話")
+        }
         return mergedCount
     }
 
@@ -1095,6 +1134,60 @@ class NovelRepository(
      */
     suspend fun deleteAllTempEpisodes() {
         tempEpisodeDao.deleteAll()
+    }
+
+    /**
+     * 孤立エピソードの小説メタデータを復元
+     *
+     * ncodeからsite_typeを判定し、APIから小説メタデータを取得してnovels_descsに追加する。
+     * エピソード本文は再ダウンロードしない。
+     *
+     * @param ncode 孤立エピソードのncode
+     * @param onResult 結果コールバック (成功したかどうか, メッセージ)
+     */
+    suspend fun restoreNovelMetadata(
+        ncode: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        try {
+            val isKakuyomu = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)
+            var novelDesc: NovelDescEntity? = null
+
+            if (isKakuyomu) {
+                val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
+                val kakuyomuAdapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
+                val (desc, _) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
+                novelDesc = desc
+            } else {
+                var isR18 = false
+                novelDesc = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelDetails(ncode, isR18 = false)
+                if (novelDesc == null) {
+                    isR18 = true
+                    novelDesc = com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelDetails(ncode, isR18 = true)
+                }
+            }
+
+            if (novelDesc != null) {
+                val actualEpisodeCount = episodeDao.getEpisodeCountByNcode(ncode)
+                val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+                val updatedNovel = novelDesc.copy(
+                    total_ep = actualEpisodeCount,
+                    registered_at = currentDate
+                )
+
+                insertNovel(updatedNovel)
+                onResult(true, "「${updatedNovel.title}」のメタデータを復元しました（${actualEpisodeCount}話）")
+                AppLogger.d("NovelRepository", "孤立エピソードメタデータ復元成功: ncode=$ncode, title=${updatedNovel.title}, episodes=$actualEpisodeCount")
+            } else {
+                onResult(false, "ncode=$ncode の小説情報を取得できませんでした")
+                AppLogger.w("NovelRepository", "孤立エピソードメタデータ復元失敗: ncode=$ncode, 小説情報が見つかりません")
+            }
+        } catch (e: Exception) {
+            val errorMsg = "ncode=$ncode のメタデータ復元中にエラーが発生しました: ${e.message}"
+            onResult(false, errorMsg)
+            AppLogger.e("NovelRepository", "孤立エピソードメタデータ復元エラー: ncode=$ncode", e)
+        }
     }
 
 }
