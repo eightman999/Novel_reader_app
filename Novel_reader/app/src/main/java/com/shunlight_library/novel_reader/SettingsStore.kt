@@ -142,6 +142,9 @@ class SettingsStore(private val context: Context) {
         
         // データベース同期設定のキー
         val DB_SYNC_PRESERVE_EXISTING_EPISODES = booleanPreferencesKey("db_sync_preserve_existing_episodes")
+
+        // ルビ自動変換設定のキー
+        val AUTO_RUBY_ENABLED = booleanPreferencesKey("auto_ruby_enabled")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -195,6 +198,9 @@ class SettingsStore(private val context: Context) {
     
     // データベース同期設定のデフォルト値
     val defaultDbSyncPreserveExistingEpisodes = true  // デフォルトは既存エピソードを保持
+
+    // ルビ自動変換のデフォルト値
+    val defaultAutoRubyEnabled = true  // デフォルトは有効
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -788,6 +794,26 @@ class SettingsStore(private val context: Context) {
     suspend fun saveDbSyncPreserveExistingEpisodes(preserve: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[DB_SYNC_PRESERVE_EXISTING_EPISODES] = preserve
+        }
+    }
+
+    // ルビ自動変換設定の取得
+    val autoRubyEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_RUBY_ENABLED] ?: defaultAutoRubyEnabled
+        }
+
+    // ルビ自動変換設定の保存
+    suspend fun saveAutoRubyEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTO_RUBY_ENABLED] = enabled
         }
     }
     
