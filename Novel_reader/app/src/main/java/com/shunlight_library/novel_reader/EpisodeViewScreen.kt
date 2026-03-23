@@ -77,6 +77,7 @@ fun EpisodeViewScreen(
     var textOrientation by remember { mutableStateOf("Horizontal") }
     var swipeEnabled by remember { mutableStateOf(true) }
     var tapEnabled by remember { mutableStateOf(false) }
+    var autoRubyEnabled by remember { mutableStateOf(true) }
 
     // カスタムフォント情報
     var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
@@ -101,6 +102,7 @@ fun EpisodeViewScreen(
             textOrientation = settingsStore.textOrientation.first()
             swipeEnabled = settingsStore.swipeEnabled.first()
             tapEnabled = settingsStore.tapEnabled.first()
+            autoRubyEnabled = settingsStore.autoRubyEnabled.first()
 
             // カスタムフォント情報を読み込む
             customFonts = settingsStore.getAllCustomFontInfo()
@@ -659,6 +661,7 @@ fun EpisodeViewScreen(
                             isCustomFont = isCustomFont,
                             customFontPath = customFontPath,
                             textOrientation = textOrientation,
+                            autoRubyEnabled = autoRubyEnabled,
                             ncode = ncode,
                             episodeNo = episodeNo,
                             savedReadingRate = episode!!.reading_rate,
@@ -739,6 +742,7 @@ fun EnhancedHtmlRubyWebView(
     isCustomFont: Boolean = false,
     customFontPath: String = "",
     textOrientation: String = "Horizontal",
+    autoRubyEnabled: Boolean = true,
     ncode: String,
     episodeNo: String,
     savedReadingRate: Float = 0f,
@@ -750,25 +754,27 @@ fun EnhancedHtmlRubyWebView(
 
     // HTMLを修正する関数
     fun fixRubyTags(html: String): String {
-        // パターン1: <ruby>対象</rb>(ルビ) の修正
+        // パターン1: <ruby>対象</rb>(ルビ) の修正（既存タグの修正なので常に適用）
         var fixed = html.replace("<ruby>([^<]*?)</rb>\\(([^)]*?)\\)".toRegex()) {
             val base = it.groupValues[1]
             val ruby = it.groupValues[2]
             "<ruby>$base<rt>$ruby</rt></ruby>"
         }
 
-        // パターン2: <ruby>対象(ルビ) の修正
+        // パターン2: <ruby>対象(ルビ) の修正（既存タグの修正なので常に適用）
         fixed = fixed.replace("<ruby>([^<(]*?)\\(([^)]*?)\\)".toRegex()) {
             val base = it.groupValues[1]
             val ruby = it.groupValues[2]
             "<ruby>$base<rt>$ruby</rt></ruby>"
         }
 
-        // パターン3: 対象(ルビ) パターンをrubyタグに変換
-        fixed = fixed.replace("([^<>\\s]+?)\\(([^)]+?)\\)".toRegex()) {
-            val base = it.groupValues[1]
-            val ruby = it.groupValues[2]
-            "<ruby>$base<rt>$ruby</rt></ruby>"
+        // パターン3: 漢字（よみがな）→ <ruby> 自動変換（autoRubyEnabled がONのときのみ適用）
+        if (autoRubyEnabled) {
+            fixed = fixed.replace("([^<>\\s]+?)\\(([^)]+?)\\)".toRegex()) {
+                val base = it.groupValues[1]
+                val ruby = it.groupValues[2]
+                "<ruby>$base<rt>$ruby</rt></ruby>"
+            }
         }
 
         return fixed
