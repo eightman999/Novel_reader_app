@@ -42,6 +42,15 @@ data class NovelWithEpisodesAndMappings(
 )
 
 /**
+ * カクヨム更新確認用の軽量サマリー
+ * 更新確認ではエピソード一覧全件を取得せず、必要最小限の情報のみ返す。
+ */
+data class KakuyomuUpdateSummary(
+    val novelDesc: NovelDescEntity,
+    val latestEpisodeCount: Int
+)
+
+/**
  * カクヨム用のアダプター実装
  *
  * カクヨムには公式APIが存在しないため、HTMLスクレイピングで情報を取得する。
@@ -285,7 +294,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
         Pair(novelDesc, episodesWithoutBody)
     }
 
-    override suspend fun checkForUpdates(novelId: String, currentEpisodeCount: Int): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * 更新確認専用の軽量メタデータ取得。
+     * 作品ページを1回取得し、必要時のみ第一話ページ目次を1回だけフォールバックで取得する。
+     */
+    suspend fun fetchUpdateSummary(novelId: String): KakuyomuUpdateSummary = withContext(Dispatchers.IO) {
         val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
             PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)
         } else {
@@ -298,23 +311,90 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val html = performHttpRequest(url)
         val doc = Jsoup.parse(html)
 
-        // エピソード数を取得して比較
-        // JSONから取得を試みる
-        val (_, workData) = extractNextDataJson(doc, workId)
-        var episodeCount = workData?.optInt("publicEpisodeCount") ?: 0
+        val novelDesc = parseNovelInfo(doc, workId)
+        val workPageCount = extractLatestEpisodeCountFromWorkPage(doc, workId)
+        val latestEpisodeCount = if (workPageCount > 0) workPageCount else novelDesc.total_ep
 
-        // JSONから取得できない場合はHTML
-        if (episodeCount == 0) {
-            // 新しいHTML構造
-            var episodes = doc.select("a.WorkTocSection_link__ocg9K")
-            if (episodes.isEmpty()) {
-                // 古い構造（フォールバック）
-                episodes = doc.select("ol.widget-toc-items li.widget-toc-episode")
-            }
-            episodeCount = episodes.size
+        val normalizedNovelDesc = if (novelDesc.total_ep != latestEpisodeCount) {
+            novelDesc.copy(
+                total_ep = latestEpisodeCount,
+                noveltype = if (latestEpisodeCount == 1) 2 else 1
+            )
+        } else {
+            novelDesc
         }
 
-        episodeCount > currentEpisodeCount
+        AppLogger.d(
+            "KakuyomuAdapter",
+            "更新確認サマリー取得完了: ${normalizedNovelDesc.title}, latestEpisodeCount=$latestEpisodeCount"
+        )
+
+        KakuyomuUpdateSummary(
+            novelDesc = normalizedNovelDesc,
+            latestEpisodeCount = latestEpisodeCount
+        )
+    }
+
+    override suspend fun checkForUpdates(novelId: String, currentEpisodeCount: Int): Boolean = withContext(Dispatchers.IO) {
+        val summary = fetchUpdateSummary(novelId)
+        summary.latestEpisodeCount > currentEpisodeCount
+    }
+
+    private suspend fun extractLatestEpisodeCountFromWorkPage(doc: Document, workId: String): Int {
+        // 1) JSONから取得（最優先）
+        val (_, workData) = extractNextDataJson(doc, workId)
+        val jsonCount = workData?.optInt("publicEpisodeCount") ?: 0
+        if (jsonCount > 0) {
+            return jsonCount
+        }
+
+        // 2) 作品ページの目次要素から取得
+        val newStructureCount = doc.select("a.WorkTocSection_link__ocg9K").size
+        if (newStructureCount > 0) {
+            return newStructureCount
+        }
+
+        val oldStructureCount = doc.select("ol.widget-toc-items li.widget-toc-episode").size
+        if (oldStructureCount > 0) {
+            return oldStructureCount
+        }
+
+        // 3) 最終フォールバック: 第一話ページの目次を1回だけ取得して件数を数える
+        return extractEpisodeCountFromFirstEpisodeToc(doc, workId)
+    }
+
+    private suspend fun extractEpisodeCountFromFirstEpisodeToc(workDoc: Document, workId: String): Int {
+        val firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
+            ?: workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
+            ?: workDoc.select("a[href*='/episodes/']").firstOrNull()?.attr("href")
+
+        if (firstEpisodeLink.isNullOrBlank()) {
+            AppLogger.w("KakuyomuAdapter", "第一話リンクが取得できないため件数フォールバックをスキップ: workId=$workId")
+            return 0
+        }
+
+        applyRateLimit()
+
+        val episodeUrl = if (firstEpisodeLink.startsWith("http")) {
+            firstEpisodeLink
+        } else {
+            "$BASE_URL$firstEpisodeLink"
+        }
+        val episodeHtml = performHttpRequest(episodeUrl)
+        val episodeDoc = Jsoup.parse(episodeHtml)
+
+        val tocItemsCount = episodeDoc.select("ol.widget-toc-items li.widget-toc-episode").size
+        if (tocItemsCount > 0) {
+            return tocItemsCount
+        }
+
+        val tocLinksCount = episodeDoc.select("a.widget-toc-episode-episodeTitle").size
+        if (tocLinksCount > 0) {
+            return tocLinksCount
+        }
+
+        AppLogger.w("KakuyomuAdapter", "第一話目次からエピソード件数を取得できませんでした: workId=$workId")
+        return 0
     }
 
     override fun extractNovelIdFromUrl(url: String): String? {
@@ -690,6 +770,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
             - Pseudo-Ncode: $pseudoNcode
         """.trimIndent())
 
+        // 完結フラグ検出: HTMLに"完結済"や"Completed"表記があるか確認
+        val isCompleted = detectKakuyomuCompletion(doc, workData)
+        val endFlag = if (isCompleted) 1 else 2
+
         return NovelDescEntity(
             ncode = pseudoNcode,
             title = title,
@@ -707,7 +791,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
             updated_at = lastUpdateDate,  // サイト上の最終更新日時
             is_favorite = 0,
             site_type = NovelSiteAdapter.SITE_TYPE_KAKUYOMU,
-            registered_at = getCurrentDateTime()  // データベース登録日時
+            registered_at = getCurrentDateTime(),  // データベース登録日時
+            sub_site = 0,  // カクヨムはsite_type=2で管理、sub_siteは使用しない
+            end_flag = endFlag
         )
     }
 
@@ -1685,6 +1771,29 @@ class KakuyomuAdapter : NovelSiteAdapter {
     /**
      * 現在日付を取得（YYYY-MM-DD形式）
      */
+    /**
+     * カクヨム作品の完結フラグを検出する
+     * HTMLやJSONデータから完結済み情報を取得
+     */
+    private fun detectKakuyomuCompletion(doc: org.jsoup.nodes.Document, workData: org.json.JSONObject?): Boolean {
+        // JSONから完結情報を確認
+        workData?.let {
+            val isCompleted = it.optBoolean("isCompleted", false)
+            if (isCompleted) return true
+            val serializeState = it.optString("serialState", "")
+            if (serializeState.contains("COMPLETED", ignoreCase = true)) return true
+        }
+        // HTML内の完結バッジ・ラベルを検索
+        val pageText = doc.text()
+        if (pageText.contains("完結済")) return true
+        // 完結バッジのクラス名パターン
+        if (doc.select("[class*='completed'], [class*='Completed'], [class*='complete']").isNotEmpty()) {
+            val badge = doc.select("[class*='completed'], [class*='Completed']").text()
+            if (badge.contains("完結", ignoreCase = false)) return true
+        }
+        return false
+    }
+
     private fun getCurrentDate(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }

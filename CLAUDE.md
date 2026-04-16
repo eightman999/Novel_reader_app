@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-01-31)
-- **Version**: 1.8.9 (versionCode: 183)
-- **Database**: Version 15 with 9 tables + performance indices
+### Current State (2026-04-16)
+- **Version**: 2.0.1 (versionCode: 201)
+- **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
 - **Testing**: Unit tests + Instrumented tests available
@@ -17,12 +17,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **DAOs**: 9 (matching entities)
 - **Screens**: 8 main screens + 1 sync activity
 - **Adapters**: 2 (SyosetuAdapter, KakuyomuAdapter)
-- **Migrations**: v1→v15 (14 migrations)
-- **Database Indices**: 17+ (including composite indices for performance)
+- **Migrations**: v1→v16 (15 migrations)
+- **Database Indices**: 20+ (including composite indices for performance)
 
 ### Common Tasks
 - **Add new feature**: Update version in build.gradle.kts, write Japanese commit message
-- **Database change**: Create new migration, update version to v16
+- **Database change**: Create new migration, update version to v17
 - **Add new site**: Implement NovelSiteAdapter interface, add to factory
 - **Fetching episodes**: Always use incremental saving (fetch 1 → save → fetch 2 → save)
 - **Site detection**: Check `novel.site_type` (1=Syosetu, 2=Kakuyomu)
@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Quick Links to Documentation
 - Architecture details → [Architecture Overview](#architecture-overview)
-- Database schema → [Database Schema (Version 12)](#database-schema-version-12)
+- Database schema → [Database Schema (Version 16)](#database-schema-version-16)
 - Performance optimization → [Performance Optimizations](#performance-optimizations)
 - Multi-site support → [Multi-Site Architecture](#multi-site-architecture)
 - API specifications → [なろう小説API仕様](#なろう小説api仕様), [カクヨムダウンロードプロトコル](#カクヨムダウンロードプロトコル)
@@ -275,7 +275,7 @@ navigationManager.navigateTo(NavigationScreen.EpisodeList(novelId))
 #### Settings Management
 Use `SettingsStore` for persistent configuration with DataStore.
 
-### Database Schema (Version 12)
+### Database Schema (Version 16)
 
 #### Migration History
 - v1→v2: Added `update_queue` table
@@ -289,14 +289,16 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - v9→v10: Added `episode_mapping` table (Kakuyomu episode ID mapping)
 - v10→v11: Added `registered_at` to novels_descs (download date tracking)
 - v11→v12: **Performance optimization** - Added indices for sorting/filtering (total_ep, author, title, is_read, is_bookmark) and composite indices (site_type+is_favorite, ncode+is_read, ncode+is_bookmark)
+- v12→v15: Various feature additions (see git history)
+- v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; initialized sub_site for existing records
 
 #### Tables (7 total)
 1. **`novels_descs`** - Novel metadata
    - Basic info: ncode, title, author, synopsis, tags, rating
    - Stats: total_ep, general_all_no, length, noveltype
-   - Dates: last_update_date, updated_at, registered_at
-   - Flags: is_favorite, site_type (1=Syosetu, 2=Kakuyomu)
-   - **Indices (v12)**: last_update_date, favorite, length, type, site, registered, **total_ep, author, title, (site_type+is_favorite)**
+   - Dates: last_update_date, updated_at, registered_at, last_checked_at
+   - Flags: is_favorite, site_type (1=Syosetu, 2=Kakuyomu), sub_site (0=不明, 1=なろう, 2=ノクターン, 3=ムーンライト, 4=ミッドナイト), end_flag (0=不明, 1=完結, 2=連載中)
+   - **Indices (v16)**: last_update_date, favorite, length, type, site, registered, **total_ep, author, title, (site_type+is_favorite)**, sub_site, end_flag, last_checked_at
 
 2. **`episodes`** - Episode content
    - Content: ncode, e_no, e_title, e_body, chapter_title
@@ -338,6 +340,12 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Download date tracking with registered_at field
 - Timeout resume: タイムアウト時に一時テーブルデータを保持し、リトライ時に続きからダウンロード再開
 - Kakuyomu streaming download: カクヨムのエピソードを1話ずつ取得→保存するストリーミング方式（メモリ効率改善）
+- Sub-site classification: sub_site フィールドでなろう/ノクターン/ムーンライト/ミッドナイト/カクヨムを区別
+- Completion flag: end_flag フィールドで完結/連載中を管理（Syosetu API + Kakuyomu HTML scraping）
+- Simple list mode: シンプルリストモード設定で全リスト画面のカード表示をフラット化
+- Advanced filtering: 未読/完結/媒体フィルターを NovelListScreen・RecentlyReadScreen に追加
+- Error fix options: 欠落修正にオプションダイアログ追加（期間・短編除外・完結除外・媒体・挿絵エラー検知）
+- Download status screen: ダウンロード状況画面にフィルターチップと一括削除ボタンを追加
 
 ### Performance Optimizations
 
@@ -465,7 +473,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 1.5.4 → 1.5.5) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 1.8.9 (versionCode 183).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.1 (versionCode 201).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.

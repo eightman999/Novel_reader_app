@@ -438,43 +438,34 @@ class UpdateService : Service() {
                     // カクヨムの場合、HTMLスクレイピングで取得
                     val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
-
-                    val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
+                    val updateSummary = adapter.fetchUpdateSummary(workId)
 
                     if (!isRunning || session.isCancelled()) {
                         updateComplete(false, "更新処理が中断されました")
                         return@launch
                     }
 
-                    if (hasUpdate) {
-                        // メタデータのみ取得（本文はダウンロードしない）
-                        val (updatedNovelDesc, episodes) = adapter.fetchNovelMetadataWithEpisodeList(workId)
+                    generalAllNo = updateSummary.latestEpisodeCount
+                    updatedAt = updateSummary.novelDesc.updated_at
 
-                        if (!isRunning || session.isCancelled()) {
-                            updateComplete(false, "更新処理が中断されました")
-                            return@launch
-                        }
-
-                        generalAllNo = episodes.size
-                        updatedAt = updatedNovelDesc.updated_at
-
-                        // 小説情報を更新
-                        val updatedNovel = novel.copy(
-                            general_all_no = generalAllNo,
-                            updated_at = updatedAt,
-                            title = updatedNovelDesc.title,
-                            author = updatedNovelDesc.author,
-                            Synopsis = updatedNovelDesc.Synopsis,
-                            main_tag = updatedNovelDesc.main_tag,
-                            sub_tag = updatedNovelDesc.sub_tag,
-                            last_update_date = updatedNovelDesc.last_update_date
-                        )
-                        repository.updateNovel(updatedNovel)
-                    } else {
+                    if (generalAllNo <= novel.total_ep) {
                         // 更新なしの場合
                         updateComplete(true, "この小説に更新はありません")
                         return@launch
                     }
+
+                    // 小説情報を更新
+                    val updatedNovel = novel.copy(
+                        general_all_no = generalAllNo,
+                        updated_at = updatedAt,
+                        title = updateSummary.novelDesc.title,
+                        author = updateSummary.novelDesc.author,
+                        Synopsis = updateSummary.novelDesc.Synopsis,
+                        main_tag = updateSummary.novelDesc.main_tag,
+                        sub_tag = updateSummary.novelDesc.sub_tag,
+                        last_update_date = updateSummary.novelDesc.last_update_date
+                    )
+                    repository.updateNovel(updatedNovel)
                 } else {
                     // 小説家になろうの場合、APIから取得
                     val urlEntity = repository.getOrCreateURL(ncode, novel.rating == 1)

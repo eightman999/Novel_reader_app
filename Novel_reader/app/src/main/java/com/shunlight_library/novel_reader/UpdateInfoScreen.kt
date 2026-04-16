@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -64,6 +66,15 @@ fun UpdateInfoScreen(
     var syncMessage by remember { mutableStateOf("") }
     var currentCount by remember { mutableStateOf(0) }
     var totalCount by remember { mutableStateOf(0) }
+    // 欠落修正オプション
+    var showErrorFixOptionsDialog by remember { mutableStateOf(false) }
+    var optDateFilterEnabled by remember { mutableStateOf(false) }
+    var optDateStart by remember { mutableStateOf("") }
+    var optDateEnd by remember { mutableStateOf("") }
+    var optExcludeShort by remember { mutableStateOf(false) }
+    var optExcludeCompleted by remember { mutableStateOf(false) }
+    var optSelectedSubSites by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var optCheckIllustration by remember { mutableStateOf(false) }
     // データ取得
     LaunchedEffect(key1 = Unit) {
         repository.allUpdateQueue.collect { queueList ->
@@ -75,6 +86,308 @@ fun UpdateInfoScreen(
             novels = novelsList.associateBy { it.ncode }
         }
     }
+    // 欠落修正オプションダイアログ
+    if (showErrorFixOptionsDialog) {
+        var tempDateFilter by remember { mutableStateOf(optDateFilterEnabled) }
+        var tempDateStart by remember { mutableStateOf(optDateStart) }
+        var tempDateEnd by remember { mutableStateOf(optDateEnd) }
+        var tempExcludeShort by remember { mutableStateOf(optExcludeShort) }
+        var tempExcludeCompleted by remember { mutableStateOf(optExcludeCompleted) }
+        var tempSelectedSubSites by remember { mutableStateOf(optSelectedSubSites) }
+        var tempCheckIllustration by remember { mutableStateOf(optCheckIllustration) }
+
+        AlertDialog(
+            onDismissRequest = { showErrorFixOptionsDialog = false },
+            title = { Text("欠落修正オプション") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(4.dp)) {
+                    // 期間指定
+                    Text("期間指定", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { tempDateFilter = !tempDateFilter }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = tempDateFilter, onCheckedChange = { tempDateFilter = it })
+                        Text("登録日で絞り込む", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    if (tempDateFilter) {
+                        OutlinedTextField(
+                            value = tempDateStart,
+                            onValueChange = { tempDateStart = it },
+                            label = { Text("開始日 (yyyy-MM-dd)") },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = tempDateEnd,
+                            onValueChange = { tempDateEnd = it },
+                            label = { Text("終了日 (yyyy-MM-dd)") },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            singleLine = true
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // 除外設定
+                    Text("除外設定", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { tempExcludeShort = !tempExcludeShort }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = tempExcludeShort, onCheckedChange = { tempExcludeShort = it })
+                        Text("短編小説を除外", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { tempExcludeCompleted = !tempExcludeCompleted }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = tempExcludeCompleted, onCheckedChange = { tempExcludeCompleted = it })
+                        Text("完結済みを除外", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // 媒体指定
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("媒体指定", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { tempSelectedSubSites = emptySet() }) {
+                            Text("全選択", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    SubSiteConst.labels.forEach { (siteId, label) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                val cur = tempSelectedSubSites.toMutableSet()
+                                if (siteId in cur) cur.remove(siteId) else cur.add(siteId)
+                                tempSelectedSubSites = cur
+                            }.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = tempSelectedSubSites.isEmpty() || siteId in tempSelectedSubSites,
+                                onCheckedChange = { checked ->
+                                    val cur = tempSelectedSubSites.toMutableSet()
+                                    if (checked) cur.add(siteId) else cur.remove(siteId)
+                                    tempSelectedSubSites = cur
+                                }
+                            )
+                            Text(label, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // 特殊検知
+                    Text("特殊検知", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { tempCheckIllustration = !tempCheckIllustration }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = tempCheckIllustration, onCheckedChange = { tempCheckIllustration = it })
+                        Column(modifier = Modifier.padding(start = 8.dp)) {
+                            Text("挿絵エラー検知")
+                            Text(
+                                "挿絵タグあり・未キャッシュのエピソードを検知",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    // オプションを確定して保存
+                    optDateFilterEnabled = tempDateFilter
+                    optDateStart = tempDateStart
+                    optDateEnd = tempDateEnd
+                    optExcludeShort = tempExcludeShort
+                    optExcludeCompleted = tempExcludeCompleted
+                    optSelectedSubSites = tempSelectedSubSites
+                    optCheckIllustration = tempCheckIllustration
+                    showErrorFixOptionsDialog = false
+
+                    // スキャン開始
+                    isSyncing = true
+                    syncProgress = 0f
+                    syncStep = "エラーチェック"
+                    syncMessage = "評価0-2の小説を検索中..."
+                    errorNovelCount = 0
+                    errorEpisodeCount = 0
+                    missingEpisodeCount = 0
+                    redownloadTargets = emptyMap()
+
+                    val capturedDateFilter = tempDateFilter
+                    val capturedDateStart = tempDateStart
+                    val capturedDateEnd = tempDateEnd
+                    val capturedExcludeShort = tempExcludeShort
+                    val capturedExcludeCompleted = tempExcludeCompleted
+                    val capturedSubSites = tempSelectedSubSites
+                    val capturedCheckIllustration = tempCheckIllustration
+
+                    scope.launch {
+                        try {
+                            // 評価0-2の小説を取得
+                            var scanNovels = repository.getNovelsForUpdate().filter { it.rating in 0..2 }
+
+                            // 登録日フィルター
+                            if (capturedDateFilter) {
+                                if (capturedDateStart.isNotEmpty()) {
+                                    scanNovels = scanNovels.filter { it.registered_at >= capturedDateStart }
+                                }
+                                if (capturedDateEnd.isNotEmpty()) {
+                                    scanNovels = scanNovels.filter { it.registered_at <= capturedDateEnd + " 23:59:59" }
+                                }
+                            }
+                            // 短編除外
+                            if (capturedExcludeShort) {
+                                scanNovels = scanNovels.filter { it.noveltype != 2 }
+                            }
+                            // 完結除外
+                            if (capturedExcludeCompleted) {
+                                scanNovels = scanNovels.filter { it.end_flag != 1 }
+                            }
+                            // 媒体フィルター
+                            if (capturedSubSites.isNotEmpty()) {
+                                scanNovels = scanNovels.filter { novel ->
+                                    val subSite = if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) SubSiteConst.KAKUYOMU
+                                    else novel.sub_site.takeIf { it > 0 } ?: SubSiteConst.SYOSETU
+                                    subSite in capturedSubSites
+                                }
+                            }
+
+                            if (scanNovels.isEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    syncProgress = 1f
+                                    syncMessage = "条件に一致する小説が見つかりませんでした"
+                                    Toast.makeText(context, "条件に一致する小説が見つかりませんでした", Toast.LENGTH_SHORT).show()
+                                    delay(1500)
+                                    isSyncing = false
+                                }
+                                return@launch
+                            }
+
+                            totalCount = scanNovels.size
+                            val novelErrorMap = mutableMapOf<String, List<String>>()
+                            var totalErrorEps = 0
+                            var totalMissingEps = 0
+                            var novelsWithErrors = 0
+
+                            scanNovels.forEachIndexed { index, novel ->
+                                syncProgress = 0.3f + (0.7f * index.toFloat() / scanNovels.size)
+                                currentCount = index + 1
+                                syncMessage = "「${novel.title}」のエラーをチェック中... (${index + 1}/${scanNovels.size})"
+
+                                try {
+                                    val episodes = repository.getEpisodesByNcode(novel.ncode).first()
+
+                                    val errorEpisodes = episodes.filter {
+                                        it.body.isEmpty() || it.e_title.isEmpty()
+                                    }
+
+                                    val generalAllNoValue: Int
+                                    if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                                        val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                                        val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
+                                        val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
+                                        generalAllNoValue = allEpisodes.size
+                                        val updatedNovel = novel.copy(
+                                            general_all_no = generalAllNoValue,
+                                            updated_at = updatedNovelDesc.updated_at,
+                                            title = updatedNovelDesc.title,
+                                            author = updatedNovelDesc.author,
+                                            Synopsis = updatedNovelDesc.Synopsis,
+                                            main_tag = updatedNovelDesc.main_tag,
+                                            sub_tag = updatedNovelDesc.sub_tag,
+                                            last_update_date = updatedNovelDesc.last_update_date
+                                        )
+                                        repository.updateNovel(updatedNovel)
+                                    } else {
+                                        val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                        generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
+                                    }
+
+                                    val isKakuyomu = novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU
+                                    val missingEpisodes: List<String>
+                                    if (isKakuyomu) {
+                                        missingEpisodes = emptyList()
+                                    } else {
+                                        val episodeNumberMap = episodes.associate { ep ->
+                                            (ep.episode_no.toIntOrNull() ?: 0) to ep.episode_no
+                                        }
+                                        val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
+                                        val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
+                                        missingEpisodes = (1..checkRangeMax).filter { !episodeNumberMap.containsKey(it) }.map { it.toString() }
+                                    }
+
+                                    val errorEpisodeNumbers = errorEpisodes.map { it.episode_no }
+
+                                    // 挿絵エラー検知
+                                    val illustrationErrors: List<String>
+                                    if (capturedCheckIllustration) {
+                                        val imgSrcRegex = Regex("""src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                                        illustrationErrors = episodes.filter { ep ->
+                                            if (!ep.body.contains("<img", ignoreCase = true)) return@filter false
+                                            imgSrcRegex.findAll(ep.body).any { it.groupValues[1].startsWith("http") }
+                                        }.map { it.episode_no }
+                                    } else {
+                                        illustrationErrors = emptyList()
+                                    }
+
+                                    val targets = (errorEpisodeNumbers + missingEpisodes + illustrationErrors).distinct().let { list ->
+                                        if (isKakuyomu) list else list.sortedBy { it.toIntOrNull() ?: 0 }
+                                    }
+
+                                    if (targets.isNotEmpty()) {
+                                        novelErrorMap[novel.ncode] = targets
+                                        totalErrorEps += errorEpisodes.size
+                                        totalMissingEps += missingEpisodes.size
+                                        novelsWithErrors++
+                                    }
+
+                                    delay(100)
+                                } catch (e: Exception) {
+                                    Log.e("UpdateInfo", "小説のエラーチェックに失敗: ${novel.ncode} - ${e.message}")
+                                }
+                            }
+
+                            if (novelErrorMap.isEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    syncProgress = 1f
+                                    syncMessage = "エラーや欠番は見つかりませんでした"
+                                    Toast.makeText(context, "エラーや欠番は見つかりませんでした", Toast.LENGTH_SHORT).show()
+                                    delay(1500)
+                                    isSyncing = false
+                                }
+                                return@launch
+                            }
+
+                            errorNovelCount = novelsWithErrors
+                            errorEpisodeCount = totalErrorEps
+                            missingEpisodeCount = totalMissingEps
+                            redownloadTargets = novelErrorMap
+
+                            withContext(Dispatchers.Main) {
+                                isSyncing = false
+                                showErrorFixConfirmDialog = true
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                syncProgress = 1f
+                                syncMessage = "エラー: ${e.message}"
+                                Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
+                                delay(1500)
+                                isSyncing = false
+                            }
+                        }
+                    }
+                }) { Text("スキャン開始") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showErrorFixOptionsDialog = false }) { Text("キャンセル") }
+            }
+        )
+    }
+
     if (showErrorFixConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showErrorFixConfirmDialog = false },
@@ -254,23 +567,19 @@ fun UpdateInfoScreen(
                                                     // カクヨムの場合、HTMLスクレイピングで更新確認
                                                     val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                                                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
+                                                    val updateSummary = adapter.fetchUpdateSummary(workId)
+                                                    val generalAllNo = updateSummary.latestEpisodeCount
 
-                                                    val hasUpdate = adapter.checkForUpdates(workId, novel.total_ep)
-
-                                                    if (hasUpdate) {
-                                                        // メタデータのみ取得（本文はダウンロードしない）
-                                                        val (updatedNovelDesc, episodes) = adapter.fetchNovelMetadataWithEpisodeList(workId)
-                                                        val generalAllNo = episodes.size
-
+                                                    if (generalAllNo > novel.total_ep) {
                                                         val updatedNovel = novel.copy(
                                                             general_all_no = generalAllNo,
-                                                            updated_at = updatedNovelDesc.updated_at,
-                                                            title = updatedNovelDesc.title,
-                                                            author = updatedNovelDesc.author,
-                                                            Synopsis = updatedNovelDesc.Synopsis,
-                                                            main_tag = updatedNovelDesc.main_tag,
-                                                            sub_tag = updatedNovelDesc.sub_tag,
-                                                            last_update_date = updatedNovelDesc.last_update_date
+                                                            updated_at = updateSummary.novelDesc.updated_at,
+                                                            title = updateSummary.novelDesc.title,
+                                                            author = updateSummary.novelDesc.author,
+                                                            Synopsis = updateSummary.novelDesc.Synopsis,
+                                                            main_tag = updateSummary.novelDesc.main_tag,
+                                                            sub_tag = updateSummary.novelDesc.sub_tag,
+                                                            last_update_date = updateSummary.novelDesc.last_update_date
                                                         )
                                                         repository.updateNovel(updatedNovel)
 
@@ -278,7 +587,7 @@ fun UpdateInfoScreen(
                                                             ncode = novel.ncode,
                                                             total_ep = novel.total_ep,
                                                             general_all_no = generalAllNo,
-                                                            update_time = updatedNovelDesc.updated_at
+                                                            update_time = updateSummary.novelDesc.updated_at
                                                         )
                                                         repository.insertUpdateQueue(updateQueue)
 
@@ -804,168 +1113,7 @@ fun UpdateInfoScreen(
                         }
 
                         Button(
-                            onClick = {
-                                // エラー修正処理を開始
-                                isSyncing = true
-                                syncProgress = 0f
-                                syncStep = "エラーチェック"
-                                syncMessage = "評価0-2の小説を検索中..."
-                                errorNovelCount = 0
-                                errorEpisodeCount = 0
-                                missingEpisodeCount = 0
-                                redownloadTargets = emptyMap()
-
-                                scope.launch {
-                                    try {
-                                        // 評価0-2の小説を取得
-                                        val novels = repository.getNovelsForUpdate().filter { it.rating in 0..2 }
-
-                                        if (novels.isEmpty()) {
-                                            withContext(Dispatchers.Main) {
-                                                syncProgress = 1f
-                                                syncMessage = "評価0-2の小説が見つかりませんでした"
-                                                Toast.makeText(context, "評価0-2の小説が見つかりませんでした", Toast.LENGTH_SHORT).show()
-                                                delay(1500)
-                                                isSyncing = false
-                                            }
-                                            return@launch
-                                        }
-
-                                        // 総数設定
-                                        totalCount = novels.size
-
-                                        // 各小説のエラーをチェック
-                                        val novelErrorMap = mutableMapOf<String, List<String>>()
-                                        var totalErrorEps = 0
-                                        var totalMissingEps = 0
-                                        var novelsWithErrors = 0
-
-                                        novels.forEachIndexed { index, novel ->
-                                            syncProgress = 0.3f + (0.7f * index.toFloat() / novels.size)
-                                            currentCount = index + 1
-                                            syncMessage = "「${novel.title}」のエラーをチェック中... (${index + 1}/${novels.size})"
-
-                                            try {
-                                                // エピソードを取得
-                                                val episodes = repository.getEpisodesByNcode(novel.ncode).first()
-
-                                                // エラーのあるエピソードを特定（body または e_title が空）
-                                                val errorEpisodes = episodes.filter {
-                                                    it.body.isEmpty() || it.e_title.isEmpty()
-                                                }
-
-                                                val generalAllNoValue: Int
-
-                                                if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                                                    // カクヨムの場合、HTMLスクレイピングで取得
-                                                    val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
-                                                    val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
-
-                                                    val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
-                                                    generalAllNoValue = allEpisodes.size
-
-                                                    // 小説情報を更新
-                                                    val updatedNovel = novel.copy(
-                                                        general_all_no = generalAllNoValue,
-                                                        updated_at = updatedNovelDesc.updated_at,
-                                                        title = updatedNovelDesc.title,
-                                                        author = updatedNovelDesc.author,
-                                                        Synopsis = updatedNovelDesc.Synopsis,
-                                                        main_tag = updatedNovelDesc.main_tag,
-                                                        sub_tag = updatedNovelDesc.sub_tag,
-                                                        last_update_date = updatedNovelDesc.last_update_date
-                                                    )
-                                                    repository.updateNovel(updatedNovel)
-                                                } else {
-                                                    // 小説家になろうの場合、APIから取得
-                                                    val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
-                                                    generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
-                                                }
-
-                                                // カクヨムかどうかをチェック
-                                                val isKakuyomu = novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU
-
-                                                val missingEpisodes: List<String>
-                                                if (isKakuyomu) {
-                                                    // カクヨムの場合は欠番チェックをしない（エピソードIDが連番でないため）
-                                                    missingEpisodes = emptyList()
-                                                } else {
-                                                    // 小説家になろうの場合は欠番チェック
-                                                    val episodeNumberMap = episodes.associate { episode ->
-                                                        val numericValue = episode.episode_no.toIntOrNull() ?: 0
-                                                        numericValue to episode.episode_no
-                                                    }
-
-                                                    val maxEpisodeNo = episodeNumberMap.keys.maxOrNull() ?: 0
-                                                    val checkRangeMax = maxOf(generalAllNoValue, maxEpisodeNo)
-
-                                                    missingEpisodes = (1..checkRangeMax).filter { epNo ->
-                                                        !episodeNumberMap.containsKey(epNo)
-                                                    }.map { it.toString() }
-                                                }
-
-                                                // エラーエピソードの番号リスト（episode_noをそのまま使用）
-                                                val errorEpisodeNumbers = errorEpisodes.map { it.episode_no }
-
-                                                // 再取得対象（エラーと欠番を合わせる）
-                                                val targets = (errorEpisodeNumbers + missingEpisodes).distinct().let { list ->
-                                                    // 小説家になろうの場合のみソート（数値として）
-                                                    if (isKakuyomu) {
-                                                        list
-                                                    } else {
-                                                        list.sortedBy { it.toIntOrNull() ?: 0 }
-                                                    }
-                                                }
-
-                                                if (targets.isNotEmpty()) {
-                                                    novelErrorMap[novel.ncode] = targets
-                                                    totalErrorEps += errorEpisodes.size
-                                                    totalMissingEps += missingEpisodes.size
-                                                    novelsWithErrors++
-                                                }
-
-                                                // APIに負担をかけないよう少し待機
-                                                delay(100)
-                                            } catch (e: Exception) {
-                                                Log.e("UpdateInfo", "小説のエラーチェックに失敗: ${novel.ncode} - ${e.message}")
-                                            }
-                                        }
-
-                                        // エラーが見つからなかった場合
-                                        if (novelErrorMap.isEmpty()) {
-                                            withContext(Dispatchers.Main) {
-                                                syncProgress = 1f
-                                                syncMessage = "エラーや欠番は見つかりませんでした"
-                                                Toast.makeText(context, "エラーや欠番は見つかりませんでした", Toast.LENGTH_SHORT).show()
-                                                delay(1500)
-                                                isSyncing = false
-                                            }
-                                            return@launch
-                                        }
-
-                                        // エラーが見つかった場合
-                                        errorNovelCount = novelsWithErrors
-                                        errorEpisodeCount = totalErrorEps
-                                        missingEpisodeCount = totalMissingEps
-                                        redownloadTargets = novelErrorMap
-
-                                        // 確認ダイアログを表示
-                                        withContext(Dispatchers.Main) {
-                                            isSyncing = false
-                                            showErrorFixConfirmDialog = true
-                                        }
-
-                                    } catch (e: Exception) {
-                                        withContext(Dispatchers.Main) {
-                                            syncProgress = 1f
-                                            syncMessage = "エラー: ${e.message}"
-                                            Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
-                                            delay(1500)
-                                            isSyncing = false
-                                        }
-                                    }
-                                }
-                            },
+                            onClick = { showErrorFixOptionsDialog = true },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !isRefreshing && !isSyncing
                         ) {

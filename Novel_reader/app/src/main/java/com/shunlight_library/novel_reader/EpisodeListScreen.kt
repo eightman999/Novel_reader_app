@@ -235,28 +235,26 @@ fun EpisodeListScreen(
                     updateProgress = 0.3f
                     updateMessage = "更新を確認中..."
 
-                    val hasUpdate = kakuyomuAdapter.checkForUpdates(workId, targetNovel.total_ep)
+                    val updateSummary = kakuyomuAdapter.fetchUpdateSummary(workId)
+                    val latestEpisodeCount = updateSummary.latestEpisodeCount
 
-                    if (hasUpdate) {
+                    if (latestEpisodeCount > targetNovel.total_ep) {
                         updateProgress = 0.6f
                         updateMessage = "詳細情報を取得中（メタデータのみ）..."
 
-                        // メタデータのみ取得（本文はダウンロードしない）
-                        val (updatedNovelDesc, episodes) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
-
-                        newGeneralAllNo = episodes.size
-                        newUpdatedAt = updatedNovelDesc.updated_at
+                        newGeneralAllNo = latestEpisodeCount
+                        newUpdatedAt = updateSummary.novelDesc.updated_at
 
                         // 小説情報を更新
                         val updatedNovel = targetNovel.copy(
                             general_all_no = newGeneralAllNo,
                             updated_at = newUpdatedAt,
-                            title = updatedNovelDesc.title,
-                            author = updatedNovelDesc.author,
-                            Synopsis = updatedNovelDesc.Synopsis,
-                            main_tag = updatedNovelDesc.main_tag,
-                            sub_tag = updatedNovelDesc.sub_tag,
-                            last_update_date = updatedNovelDesc.last_update_date
+                            title = updateSummary.novelDesc.title,
+                            author = updateSummary.novelDesc.author,
+                            Synopsis = updateSummary.novelDesc.Synopsis,
+                            main_tag = updateSummary.novelDesc.main_tag,
+                            sub_tag = updateSummary.novelDesc.sub_tag,
+                            last_update_date = updateSummary.novelDesc.last_update_date
                         )
                         repository.updateNovel(updatedNovel)
 

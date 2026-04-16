@@ -14,6 +14,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
@@ -78,6 +79,9 @@ class AutoUpdateWorker(
 
             // 通知チャンネルを作成
             createNotificationChannel()
+
+            // フォアグラウンドサービスとして実行（バックグラウンドでも継続）
+            setForeground(createForegroundInfo("小説更新確認中..."))
 
             // 更新確認処理
             val updateResults = performUpdateCheck()
@@ -162,8 +166,8 @@ class AutoUpdateWorker(
                                             NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
                                                 val kakuyomuAdapter = adapter as KakuyomuAdapter
                                                 val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
-                                                val (updatedNovel, _) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
-                                                updatedNovel.total_ep
+                                                val updateSummary = kakuyomuAdapter.fetchUpdateSummary(workId)
+                                                updateSummary.latestEpisodeCount
                                             }
                                             else -> novel.total_ep
                                         }
@@ -185,6 +189,9 @@ class AutoUpdateWorker(
 
                                             Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)")
                                         }
+                                        // 更新確認日時を記録
+                                        val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                                        repository.updateLastCheckedAt(novel.ncode, nowStr)
                                     } finally {
                                         NovelUpdateCoordinator.finishUpdate(session)
                                     }
@@ -380,14 +387,48 @@ class AutoUpdateWorker(
         val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
         val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as KakuyomuAdapter
 
-        // マッピング情報を取得
+        // 並列更新確認処理でcachedMappingsが上書きされている可能性があるため、
+        // ダウンロード前に当該作品のエピソードリストを再取得して正確なマッピングを得る
+        val episodeListFromWeb: List<com.shunlight_library.novel_reader.data.entity.EpisodeEntity>
+        try {
+            val (_, fetchedEpisodes) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
+            episodeListFromWeb = fetchedEpisodes
+            Log.d(TAG, "カクヨムエピソードリスト再取得完了: ${novel.ncode}, ${fetchedEpisodes.size}話")
+        } catch (e: Exception) {
+            Log.e(TAG, "カクヨムエピソードリスト再取得エラー: ${novel.ncode}", e)
+            // 再取得失敗時は全エピソードをエラーとして記録
+            episodeNos.forEach { episodeNo ->
+                failedEpisodes.add(EpisodeInfo(
+                    episodeNo = episodeNo,
+                    title = "第${episodeNo}話",
+                    error = "エピソードリスト取得失敗: ${e.message}"
+                ))
+            }
+            return
+        }
+
+        // エピソード番号→IDとタイトルのマッピングを構築
         val mappings = kakuyomuAdapter.getCachedMappings()
+        val episodeTitles = episodeListFromWeb.associate {
+            it.episode_no.toIntOrNull() to (it.e_title ?: "第${it.episode_no}話")
+        }
 
         episodeNos.forEach { episodeNo ->
             var success = false
             var errorMessage: String? = null
 
-            val kakuyomuEpisodeId = mappings[episodeNo] ?: episodeNo.toString()
+            val kakuyomuEpisodeId = mappings[episodeNo]
+            if (kakuyomuEpisodeId == null) {
+                Log.e(TAG, "カクヨムエピソードIDが見つかりません: ${novel.ncode} エピソード${episodeNo}")
+                failedEpisodes.add(EpisodeInfo(
+                    episodeNo = episodeNo,
+                    title = "第${episodeNo}話",
+                    error = "エピソードIDが見つかりません"
+                ))
+                return@forEach
+            }
+
+            val episodeTitle = episodeTitles[episodeNo] ?: "第${episodeNo}話"
 
             for (retry in 1..MAX_RETRIES) {
                 try {
@@ -398,7 +439,7 @@ class AutoUpdateWorker(
                         val episode = com.shunlight_library.novel_reader.data.entity.EpisodeEntity(
                             ncode = novel.ncode,
                             episode_no = episodeNo.toString(),
-                            e_title = "第${episodeNo}話",
+                            e_title = episodeTitle,
                             body = episodeBody,
                             update_time = currentTime,
                             is_read = 0,
@@ -408,7 +449,7 @@ class AutoUpdateWorker(
                         repository.insertEpisode(episode)
                         successEpisodes.add(EpisodeInfo(
                             episodeNo = episodeNo,
-                            title = "第${episodeNo}話"
+                            title = episodeTitle
                         ))
                         success = true
                         break
@@ -425,7 +466,7 @@ class AutoUpdateWorker(
             if (!success) {
                 failedEpisodes.add(EpisodeInfo(
                     episodeNo = episodeNo,
-                    title = "第${episodeNo}話",
+                    title = episodeTitle,
                     error = errorMessage ?: "ダウンロードに失敗しました"
                 ))
             }
@@ -566,6 +607,24 @@ class AutoUpdateWorker(
             type = NotificationType.ERROR
         )
         notificationStore.addNotification(appNotification)
+    }
+
+    private fun createForegroundInfo(progress: String): ForegroundInfo {
+        createNotificationChannel()
+        val intent = Intent(applicationContext, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            applicationContext, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("小説リーダー 自動更新")
+            .setContentText(progress)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+        return ForegroundInfo(NOTIFICATION_ID + 100, notification)
     }
 
     private fun createNotificationChannel() {
