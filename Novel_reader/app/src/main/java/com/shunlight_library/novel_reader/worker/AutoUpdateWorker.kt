@@ -10,6 +10,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -33,6 +34,7 @@ import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import com.shunlight_library.novel_reader.utils.ReleaseUtils
@@ -82,6 +84,7 @@ class AutoUpdateWorker(
 
             // フォアグラウンドサービスとして実行（バックグラウンドでも継続）
             setForeground(createForegroundInfo("小説更新確認中..."))
+            AppLogger.logNotification("自動更新開始", "小説更新確認中...")
 
             // 更新確認処理
             val updateResults = performUpdateCheck()
@@ -103,8 +106,29 @@ class AutoUpdateWorker(
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "自動更新処理中にエラーが発生", e)
-            // エラー発生時に通知
-            sendErrorNotification(e.message ?: "不明なエラー")
+            val errorMsg = e.message ?: "不明なエラー"
+            sendErrorNotification(errorMsg)
+
+            try {
+                val stackTraceWriter = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(stackTraceWriter))
+                errorLogStore.addErrorLog(
+                    ErrorLog(
+                        id = "fatal_${System.currentTimeMillis()}",
+                        timestamp = System.currentTimeMillis(),
+                        ncode = "",
+                        novelTitle = "自動更新全体",
+                        episodeNo = 0,
+                        episodeTitle = null,
+                        errorType = "AutoUpdateFatal",
+                        errorMessage = errorMsg,
+                        stackTrace = stackTraceWriter.toString()
+                    )
+                )
+            } catch (logErr: Exception) {
+                Log.e(TAG, "致命的エラーのログ保存に失敗", logErr)
+            }
+
             Result.failure()
         } finally {
             // 自動更新の終了を通知
@@ -198,6 +222,24 @@ class AutoUpdateWorker(
                                 } catch (e: Exception) {
                                     Log.e(TAG, "小説 ${novel.ncode} の更新確認エラー", e)
                                     error = "${novel.title}: ${e.message}"
+
+                                    try {
+                                        val sw = java.io.StringWriter()
+                                        e.printStackTrace(java.io.PrintWriter(sw))
+                                        errorLogStore.addErrorLog(
+                                            ErrorLog(
+                                                id = "update_${System.currentTimeMillis()}_${novel.ncode}",
+                                                timestamp = System.currentTimeMillis(),
+                                                ncode = novel.ncode,
+                                                novelTitle = novel.title,
+                                                episodeNo = 0,
+                                                episodeTitle = null,
+                                                errorType = "UpdateCheckError",
+                                                errorMessage = e.message ?: "更新確認エラー",
+                                                stackTrace = sw.toString()
+                                            )
+                                        )
+                                    } catch (_: Exception) {}
                                 }
 
                                 Pair(Pair(localNewCount, localUpdatedCount), Pair(updateQueueItem, error))
@@ -283,6 +325,24 @@ class AutoUpdateWorker(
                     } catch (e: Exception) {
                         Log.e(TAG, "エピソードダウンロードエラー: ${queueItem.ncode}", e)
                         errors.add("${queueItem.ncode}: ダウンロードエラー - ${e.message}")
+
+                        try {
+                            val sw = java.io.StringWriter()
+                            e.printStackTrace(java.io.PrintWriter(sw))
+                            errorLogStore.addErrorLog(
+                                ErrorLog(
+                                    id = "dl_${System.currentTimeMillis()}_${queueItem.ncode}",
+                                    timestamp = System.currentTimeMillis(),
+                                    ncode = queueItem.ncode,
+                                    novelTitle = repository.getNovelByNcode(queueItem.ncode)?.title ?: queueItem.ncode,
+                                    episodeNo = 0,
+                                    episodeTitle = null,
+                                    errorType = "DownloadBatchError",
+                                    errorMessage = "エピソードダウンロード全体エラー: ${e.message}",
+                                    stackTrace = sw.toString()
+                                )
+                            )
+                        } catch (_: Exception) {}
                     }
                 }
                 } else {
@@ -396,6 +456,25 @@ class AutoUpdateWorker(
             Log.d(TAG, "カクヨムエピソードリスト再取得完了: ${novel.ncode}, ${fetchedEpisodes.size}話")
         } catch (e: Exception) {
             Log.e(TAG, "カクヨムエピソードリスト再取得エラー: ${novel.ncode}", e)
+
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                errorLogStore.addErrorLog(
+                    ErrorLog(
+                        id = "list_${System.currentTimeMillis()}_${novel.ncode}",
+                        timestamp = System.currentTimeMillis(),
+                        ncode = novel.ncode,
+                        novelTitle = novel.title,
+                        episodeNo = 0,
+                        episodeTitle = null,
+                        errorType = "EpisodeListError",
+                        errorMessage = "エピソードリスト取得失敗: ${e.message}",
+                        stackTrace = sw.toString()
+                    )
+                )
+            } catch (_: Exception) {}
+
             // 再取得失敗時は全エピソードをエラーとして記録
             episodeNos.forEach { episodeNo ->
                 failedEpisodes.add(EpisodeInfo(
@@ -532,6 +611,7 @@ class AutoUpdateWorker(
             .build()
 
         notificationManager.notify(NOTIFICATION_ID, notification)
+        AppLogger.logNotification(title, content)
     }
 
     private suspend fun saveAppNotification(results: UpdateResult) {
@@ -569,6 +649,7 @@ class AutoUpdateWorker(
             )
 
             notificationStore.addNotification(notification)
+            AppLogger.logNotification(notification.title, notification.content)
         }
 
         // エラーのみの場合も通知
@@ -606,7 +687,8 @@ class AutoUpdateWorker(
             timestamp = System.currentTimeMillis(),
             type = NotificationType.ERROR
         )
-        notificationStore.addNotification(appNotification)
+            notificationStore.addNotification(appNotification)
+            AppLogger.logNotification(appNotification.title, appNotification.content)
     }
 
     private fun createForegroundInfo(progress: String): ForegroundInfo {
@@ -624,7 +706,15 @@ class AutoUpdateWorker(
             .setOngoing(true)
             .setSilent(true)
             .build()
-        return ForegroundInfo(NOTIFICATION_ID + 100, notification)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NOTIFICATION_ID + 100,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NOTIFICATION_ID + 100, notification)
+        }
     }
 
     private fun createNotificationChannel() {

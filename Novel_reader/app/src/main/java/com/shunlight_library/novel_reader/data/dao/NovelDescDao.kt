@@ -49,4 +49,16 @@ interface NovelDescDao {
     @Query("SELECT * FROM novels_descs WHERE ncode IN (:ncodes)")
     suspend fun getNovelsByNcodes(ncodes: List<String>): List<NovelDescEntity>
 
+    @Query("UPDATE novels_descs SET end_flag = :endFlag WHERE ncode = :ncode")
+    suspend fun updateEndFlag(ncode: String, endFlag: Int)
+
+    @Query("UPDATE novels_descs SET last_checked_at = :dateTime WHERE ncode = :ncode")
+    suspend fun updateLastCheckedAt(ncode: String, dateTime: String)
+
+    @Query("UPDATE novels_descs SET sub_site = :subSite WHERE ncode = :ncode")
+    suspend fun updateSubSite(ncode: String, subSite: Int)
+
+    @Query("SELECT * FROM novels_descs WHERE sub_site = :subSite")
+    suspend fun getNovelsBySubSite(subSite: Int): List<NovelDescEntity>
+
 }

@@ -545,6 +545,33 @@ class NovelRepository(
 
     val favoriteNovels: Flow<List<NovelDescEntity>> = novelDescDao.getFavoriteNovels()
 
+    // v2.0.0 新規メソッド: sub_site / end_flag / last_checked_at 更新
+    suspend fun updateEndFlag(ncode: String, endFlag: Int) {
+        withContext(Dispatchers.IO) { novelDescDao.updateEndFlag(ncode, endFlag) }
+    }
+
+    suspend fun updateLastCheckedAt(ncode: String, dateTime: String) {
+        withContext(Dispatchers.IO) { novelDescDao.updateLastCheckedAt(ncode, dateTime) }
+    }
+
+    suspend fun updateSubSite(ncode: String, subSite: Int) {
+        withContext(Dispatchers.IO) { novelDescDao.updateSubSite(ncode, subSite) }
+    }
+
+    /**
+     * URLからサブサイト番号を判定する
+     * 0=不明, 1=なろう, 2=ノクターン, 3=ムーンライト, 4=ミッドナイト
+     */
+    fun detectSubSiteFromUrl(url: String): Int = when {
+        url.contains("moonlight.syosetu.com") -> 3
+        url.contains("midnight.syosetu.com") -> 4
+        url.contains("nocturne.syosetu.com") -> 2
+        url.contains("novel18.syosetu.com") -> 2  // デフォルトR18 → ノクターン
+        url.contains("ncode.syosetu.com") -> 1
+        url.contains("kakuyomu.jp") -> 0  // site_type=2 で判定するため0
+        else -> 0
+    }
+
     suspend fun getDatabaseDebugInfo(): String {
         return withContext(Dispatchers.IO) {
             val novels = novelDescDao.getNovelCount()

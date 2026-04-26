@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -30,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -82,6 +85,9 @@ fun SettingsScreenUpdated(
     var showDBSyncDialog by remember { mutableStateOf(false) }
     var selectedDbUri by remember { mutableStateOf<Uri?>(null) }
     var isSyncing by remember { mutableStateOf(false) }
+
+    // シンプルリストモード
+    var useSimpleListMode by remember { mutableStateOf(false) }
 
     // 表示設定の状態変数
     var showTitle by remember { mutableStateOf(true) }
@@ -218,6 +224,9 @@ fun SettingsScreenUpdated(
             fontColor = settingsStore.fontColor.first()
             episodeBackgroundColor = settingsStore.episodeBackgroundColor.first()
             useDefaultBackground = settingsStore.useDefaultBackground.first()
+
+            // シンプルリストモードの読み込み
+            useSimpleListMode = settingsStore.getUseSimpleListMode()
 
             // 表示設定の読み込み
             val displaySettings = settingsStore.getDisplaySettings()
@@ -748,6 +757,32 @@ fun SettingsScreenUpdated(
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
+                    // シンプルリストモード
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("シンプルリストモード")
+                            Text(
+                                "縁取り（カード）を廃止してフラットなリスト表示にする",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = useSimpleListMode,
+                            onCheckedChange = {
+                                useSimpleListMode = it
+                                scope.launch { settingsStore.saveUseSimpleListMode(it) }
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
                     // タイトル表示設定
                     Row(
                         modifier = Modifier
@@ -1485,6 +1520,982 @@ fun RadioButtonOption(
         )
         Spacer(modifier = Modifier.width(16.dp))
         Text(text)
+    }
+}
+
+// ─────────────────────────────────────────────
+// Sub-screens for the new Settings hub flow
+// ─────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsDisplayScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val settingsStore = remember { SettingsStore(context) }
+    val scope = rememberCoroutineScope()
+
+    var themeMode by remember { mutableStateOf("System") }
+    var fontFamily by remember { mutableStateOf("Gothic") }
+    var fontSize by remember { mutableStateOf(16) }
+    var textOrientation by remember { mutableStateOf("Horizontal") }
+    var useSimpleListMode by remember { mutableStateOf(false) }
+    var showTitle by remember { mutableStateOf(true) }
+    var showAuthor by remember { mutableStateOf(true) }
+    var showSynopsis by remember { mutableStateOf(true) }
+    var showTags by remember { mutableStateOf(true) }
+    var showRating by remember { mutableStateOf(true) }
+    var showUpdateDate by remember { mutableStateOf(true) }
+    var showEpisodeCount by remember { mutableStateOf(true) }
+    var indicatorLampEnabled by remember { mutableStateOf(true) }
+    var indicatorLampStyle by remember { mutableStateOf("SOLID") }
+    var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
+    var showCustomFontDialog by remember { mutableStateOf(false) }
+
+    val fontPickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                scope.launch {
+                    val customFont = com.shunlight_library.novel_reader.utils.FontUtils.importFontFromUri(context, uri)
+                    if (customFont != null) {
+                        settingsStore.saveCustomFont(customFont.id, customFont.name, customFont.filePath, customFont.fontType)
+                        fontFamily = customFont.id
+                        customFonts = settingsStore.getAllCustomFontInfo()
+                        android.widget.Toast.makeText(context, "フォント「${customFont.name}」を追加しました", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "フォントの追加に失敗しました", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        themeMode = settingsStore.themeMode.first()
+        fontFamily = settingsStore.fontFamily.first()
+        fontSize = settingsStore.fontSize.first()
+        textOrientation = settingsStore.textOrientation.first()
+        useSimpleListMode = settingsStore.getUseSimpleListMode()
+        val ds = settingsStore.getDisplaySettings()
+        showTitle = ds.showTitle; showAuthor = ds.showAuthor; showSynopsis = ds.showSynopsis
+        showTags = ds.showTags; showRating = ds.showRating; showUpdateDate = ds.showUpdateDate
+        showEpisodeCount = ds.showEpisodeCount
+        indicatorLampEnabled = settingsStore.indicatorLampEnabled.first()
+        indicatorLampStyle = settingsStore.indicatorLampStyle.first()
+        customFonts = settingsStore.getAllCustomFontInfo()
+    }
+
+    if (showCustomFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomFontDialog = false },
+            title = { Text("カスタムフォント") },
+            text = {
+                Column {
+                    if (customFonts.isNotEmpty()) {
+                        Text("保存済みのフォント", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+                        customFonts.forEach { fontInfo ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .selectable(selected = fontFamily == fontInfo.id, onClick = { fontFamily = fontInfo.id; showCustomFontDialog = false })
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = fontFamily == fontInfo.id, onClick = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column { Text(fontInfo.name); Text("形式: ${fontInfo.type.uppercase()}", style = MaterialTheme.typography.bodySmall) }
+                                Spacer(modifier = Modifier.weight(1f))
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        if (com.shunlight_library.novel_reader.utils.FontUtils.deleteCustomFont(context, fontInfo.path)) {
+                                            settingsStore.deleteCustomFont(fontInfo.id)
+                                            if (fontFamily == fontInfo.id) fontFamily = "Gothic"
+                                            customFonts = settingsStore.getAllCustomFontInfo()
+                                            android.widget.Toast.makeText(context, "フォント「${fontInfo.name}」を削除しました", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }) { Icon(Icons.Default.Delete, contentDescription = "削除", tint = MaterialTheme.colorScheme.error) }
+                            }
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                    Button(onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("font/ttf","font/otf","application/x-font-ttf","application/x-font-otf","application/x-font-ttc","font/collection","application/octet-stream"))
+                        }
+                        fontPickerLauncher.launch(intent)
+                        showCustomFontDialog = false
+                    }, modifier = Modifier.fillMaxWidth()) { Text("新しいフォントを追加") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showCustomFontDialog = false }) { Text("閉じる") } }
+        )
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
+        topBar = {
+            TopAppBar(
+                title = { Text("表示・フォント") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } }
+            )
+        },
+        bottomBar = {
+            Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(), tonalElevation = 8.dp) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                settingsStore.saveThemeMode(themeMode)
+                                settingsStore.saveFontFamily(fontFamily)
+                                settingsStore.saveFontSize(fontSize)
+                                settingsStore.saveTextOrientation(textOrientation)
+                                settingsStore.saveUseSimpleListMode(useSimpleListMode)
+                                settingsStore.saveDisplaySettings(DisplaySettings(showTitle, showAuthor, showSynopsis, showTags, showRating, showUpdateDate, showEpisodeCount))
+                                settingsStore.saveIndicatorLampSettings(indicatorLampEnabled, indicatorLampStyle)
+                                android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
+                                onBack()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "保存に失敗しました: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) { Text("設定を保存") }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SettingSection(title = "表示モード") {
+                Column(modifier = Modifier.selectableGroup()) {
+                    RadioButtonOption("システム設定に従う", themeMode == "System") { themeMode = "System" }
+                    RadioButtonOption("ライトモード", themeMode == "Light") { themeMode = "Light" }
+                    RadioButtonOption("ダークモード", themeMode == "Dark") { themeMode = "Dark" }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "フォント") {
+                Column(modifier = Modifier.selectableGroup()) {
+                    RadioButtonOption("ゴシック体", fontFamily == "Gothic") { fontFamily = "Gothic" }
+                    RadioButtonOption("明朝体", fontFamily == "Mincho") { fontFamily = "Mincho" }
+                    RadioButtonOption("丸ゴシック", fontFamily == "Rounded") { fontFamily = "Rounded" }
+                    RadioButtonOption("筆記体", fontFamily == "Handwriting") { fontFamily = "Handwriting" }
+                    customFonts.forEach { fi -> RadioButtonOption("カスタム: ${fi.name}", fontFamily == fi.id) { fontFamily = fi.id } }
+                    Button(onClick = { showCustomFontDialog = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("カスタムフォントを管理...") }
+                    if (fontFamily !in listOf("Gothic","Mincho","Rounded","Handwriting")) {
+                        val sel = customFonts.firstOrNull { it.id == fontFamily }
+                        if (sel != null) {
+                            Button(
+                                onClick = { scope.launch {
+                                    com.shunlight_library.novel_reader.utils.FontUtils.deleteCustomFont(context, sel.path)
+                                    settingsStore.deleteCustomFont(sel.id)
+                                    fontFamily = "Gothic"
+                                    customFonts = settingsStore.getAllCustomFontInfo()
+                                    android.widget.Toast.makeText(context, "フォント「${sel.name}」を削除しました", android.widget.Toast.LENGTH_SHORT).show()
+                                }},
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            ) { Text("選択中のカスタムフォントを削除") }
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "フォントサイズ (${fontSize}sp)") {
+                Slider(value = fontSize.toFloat(), onValueChange = { fontSize = it.toInt() }, valueRange = 12f..24f, steps = 6, modifier = Modifier.padding(horizontal = 16.dp))
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("小", fontSize = 12.sp); Text("中", fontSize = 16.sp); Text("大", fontSize = 24.sp)
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "テキスト表示の向き") {
+                Column(modifier = Modifier.selectableGroup()) {
+                    RadioButtonOption("横書き", textOrientation == "Horizontal") { textOrientation = "Horizontal" }
+                    RadioButtonOption("縦書き", textOrientation == "Vertical") { textOrientation = "Vertical" }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "小説一覧の表示設定") {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("シンプルリストモード")
+                            Text("縁取り（カード）を廃止してフラットなリスト表示にする", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = useSimpleListMode, onCheckedChange = { useSimpleListMode = it; scope.launch { settingsStore.saveUseSimpleListMode(it) } })
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    listOf(
+                        "タイトルを表示" to showTitle,
+                        "作者名を表示" to showAuthor,
+                        "あらすじを表示" to showSynopsis,
+                        "タグを表示" to showTags,
+                        "評価を表示" to showRating,
+                        "更新日を表示" to showUpdateDate,
+                        "エピソード数を表示" to showEpisodeCount
+                    ).forEachIndexed { i, (label, value) ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(label); Spacer(modifier = Modifier.weight(1f))
+                            Switch(checked = value, onCheckedChange = { v ->
+                                when (i) {
+                                    0 -> showTitle = v; 1 -> showAuthor = v; 2 -> showSynopsis = v
+                                    3 -> showTags = v; 4 -> showRating = v; 5 -> showUpdateDate = v
+                                    6 -> showEpisodeCount = v
+                                }
+                            })
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "インジケーターランプ設定") {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("インジケーターランプを表示"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = indicatorLampEnabled, onCheckedChange = { indicatorLampEnabled = it })
+                }
+                if (indicatorLampEnabled) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("表示スタイル", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+                        RadioButtonOption("点灯（常時表示）", indicatorLampStyle == "SOLID") { indicatorLampStyle = "SOLID" }
+                        RadioButtonOption("点滅", indicatorLampStyle == "BLINKING") { indicatorLampStyle = "BLINKING" }
+                    }
+                    Text(
+                        "画面左下に更新・取得処理の状態を表示します。\nインジケーターをタップすると詳細を確認できます。",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsReadingScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val settingsStore = remember { SettingsStore(context) }
+    val scope = rememberCoroutineScope()
+
+    var episodeBackgroundColor by remember { mutableStateOf("#F5F5DC") }
+    var fontColor by remember { mutableStateOf("#000000") }
+    var swipeEnabled by remember { mutableStateOf(true) }
+    var tapEnabled by remember { mutableStateOf(false) }
+
+    val backgroundOptions = listOf("White" to "#FFFFFF", "Cream" to "#F5F5DC", "Light Gray" to "#EEEEEE", "Light Blue" to "#E6F2FF", "Dark Gray" to "#303030", "Black" to "#000000")
+    val fontColorOptions = listOf("Black" to "#000000", "Dark Gray" to "#333333", "Navy" to "#000080", "Dark Green" to "#006400", "White" to "#FFFFFF")
+
+    LaunchedEffect(Unit) {
+        episodeBackgroundColor = settingsStore.episodeBackgroundColor.first()
+        fontColor = settingsStore.fontColor.first()
+        swipeEnabled = settingsStore.swipeEnabled.first()
+        tapEnabled = settingsStore.tapEnabled.first()
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
+        topBar = {
+            TopAppBar(
+                title = { Text("読書設定") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } }
+            )
+        },
+        bottomBar = {
+            Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(), tonalElevation = 8.dp) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                settingsStore.saveEpisodeBackgroundColor(episodeBackgroundColor)
+                                settingsStore.saveFontColor(fontColor)
+                                settingsStore.saveSwipeEnabled(swipeEnabled)
+                                settingsStore.saveTapEnabled(tapEnabled)
+                                android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
+                                onBack()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "保存に失敗しました: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) { Text("設定を保存") }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SettingSection(title = "背景色 (エピソード表示時)") {
+                backgroundOptions.forEach { (label, hex) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .selectable(selected = episodeBackgroundColor == hex, onClick = { episodeBackgroundColor = hex })
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = episodeBackgroundColor == hex, onClick = null)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(label)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Box(modifier = Modifier.size(24.dp).background(
+                            try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.White }
+                        ))
+                    }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "フォント色 (エピソード表示時)") {
+                fontColorOptions.forEach { (label, hex) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .selectable(selected = fontColor == hex, onClick = { fontColor = hex })
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = fontColor == hex, onClick = null)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(label)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Box(modifier = Modifier.size(24.dp).background(
+                            try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.Black }
+                        ))
+                    }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "操作設定") {
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("左右スワイプで話を移動"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = swipeEnabled, onCheckedChange = { swipeEnabled = it })
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("画面タップで話を移動"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = tapEnabled, onCheckedChange = { tapEnabled = it })
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsNetworkScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val settingsStore = remember { SettingsStore(context) }
+    val scope = rememberCoroutineScope()
+
+    var selfServerAccess by remember { mutableStateOf(false) }
+    var selfServerPath by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        selfServerAccess = settingsStore.selfServerAccess.first()
+        selfServerPath = settingsStore.selfServerPath.first()
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
+        topBar = {
+            TopAppBar(
+                title = { Text("ネットワーク") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } }
+            )
+        },
+        bottomBar = {
+            Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(), tonalElevation = 8.dp) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                settingsStore.saveSelfServerAccess(selfServerAccess)
+                                settingsStore.saveSelfServerPath(selfServerPath)
+                                android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
+                                onBack()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "保存に失敗しました: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) { Text("設定を保存") }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SettingSection(title = "自己サーバーアクセス") {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("自己サーバーへの接続"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = selfServerAccess, onCheckedChange = { selfServerAccess = it })
+                }
+            }
+            if (selfServerAccess) {
+                HorizontalDivider()
+                SettingSection(title = "自己サーバーのディレクトリ設定") {
+                    com.shunlight_library.novel_reader.ui.components.ServerDirectorySelector(
+                        currentPath = selfServerPath,
+                        onPathSelected = { uri -> selfServerPath = uri.toString() }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsAutoUpdateScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val settingsStore = remember { SettingsStore(context) }
+    val autoUpdateScheduler = remember { com.shunlight_library.novel_reader.worker.AutoUpdateScheduler(context) }
+    val scope = rememberCoroutineScope()
+
+    var autoUpdateEnabled by remember { mutableStateOf(false) }
+    var autoUpdateTime by remember { mutableStateOf("03:00") }
+    var autoDownloadEnabled by remember { mutableStateOf(true) }
+    var showTimePickerDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
+        autoUpdateTime = settingsStore.autoUpdateTime.first()
+        autoDownloadEnabled = settingsStore.autoDownloadEnabled.first()
+    }
+
+    if (showTimePickerDialog) {
+        TimePickerDialog(
+            initialTime = autoUpdateTime,
+            onDismiss = { showTimePickerDialog = false },
+            onTimeSelected = { selectedTime -> autoUpdateTime = selectedTime; showTimePickerDialog = false }
+        )
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
+        topBar = {
+            TopAppBar(
+                title = { Text("自動更新") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } }
+            )
+        },
+        bottomBar = {
+            Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(), tonalElevation = 8.dp) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime, autoDownloadEnabled)
+                                autoUpdateScheduler.resetSchedule(autoUpdateEnabled, autoUpdateTime)
+                                android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
+                                onBack()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "保存に失敗しました: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) { Text("設定を保存") }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SettingSection(title = "自動更新設定") {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("自動更新を有効にする"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = autoUpdateEnabled, onCheckedChange = { autoUpdateEnabled = it })
+                }
+                if (autoUpdateEnabled) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { showTimePickerDialog = true }.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("自動更新時間"); Spacer(modifier = Modifier.weight(1f))
+                        Text(autoUpdateTime, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Default.Schedule, contentDescription = "時間を選択", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Text(
+                        "指定した時間に小説の更新をチェックします。\n更新があれば通知が表示されます。",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("更新を自動でDL"); Spacer(modifier = Modifier.weight(1f))
+                        Switch(checked = autoDownloadEnabled, onCheckedChange = { autoDownloadEnabled = it })
+                    }
+                    Text(
+                        "更新があった場合、自動的にエピソードをダウンロードします。",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsStorageScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val settingsStore = remember { SettingsStore(context) }
+    val scope = rememberCoroutineScope()
+
+    var imageSaveLocation by remember { mutableStateOf("") }
+    var selectedDbUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showDBSyncDialog by remember { mutableStateOf(false) }
+    var isSyncing by remember { mutableStateOf(false) }
+
+    val imageSaveLocationLabel = remember(imageSaveLocation) {
+        if (imageSaveLocation.isBlank()) "未設定"
+        else runCatching {
+            val uri = android.net.Uri.parse(imageSaveLocation)
+            androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)?.name ?: uri.lastPathSegment ?: imageSaveLocation
+        }.getOrElse { imageSaveLocation }
+    }
+
+    val imageDirectoryPickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let {
+            val uriString = it.toString()
+            val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            try {
+                val alreadyPersisted = context.contentResolver.persistedUriPermissions.any { p -> p.uri == it }
+                if (!alreadyPersisted) context.contentResolver.takePersistableUriPermission(it, flags)
+                val prev = imageSaveLocation
+                imageSaveLocation = uriString
+                scope.launch { settingsStore.saveImageSaveLocation(uriString) }
+                if (prev.isNotBlank() && prev != uriString) {
+                    runCatching { context.contentResolver.releasePersistableUriPermission(android.net.Uri.parse(prev), flags) }
+                }
+                android.widget.Toast.makeText(context, "画像の保存先を設定しました", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: SecurityException) {
+                android.widget.Toast.makeText(context, "フォルダへのアクセス権限を取得できませんでした", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        imageSaveLocation = settingsStore.imageSaveLocation.first()
+    }
+
+    if (showDBSyncDialog && selectedDbUri != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isSyncing) showDBSyncDialog = false },
+            title = { Text("データベース同期") },
+            text = {
+                if (isSyncing) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        CircularProgressIndicator(); Spacer(modifier = Modifier.height(16.dp)); Text("同期中です。しばらくお待ちください...")
+                    }
+                } else { Text("選択したデータベースファイルから内部データベースに同期しますか？") }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!isSyncing) {
+                        isSyncing = true
+                        scope.launch {
+                            try {
+                                val syncManager = com.shunlight_library.novel_reader.data.sync.DatabaseSyncManager(context)
+                                val success = syncManager.syncFromExternalDb(selectedDbUri!!)
+                                android.widget.Toast.makeText(context, if (success) "データベースの同期に成功しました" else "データベースの同期に失敗しました", android.widget.Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "エラー: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            } finally { isSyncing = false; showDBSyncDialog = false }
+                        }
+                    }
+                }, enabled = !isSyncing) { Text(if (isSyncing) "同期中..." else "同期する") }
+            },
+            dismissButton = { TextButton(onClick = { showDBSyncDialog = false }, enabled = !isSyncing) { Text("キャンセル") } }
+        )
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
+        topBar = {
+            TopAppBar(
+                title = { Text("ストレージ・DB") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SettingSection(title = "画像保存先") {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text("現在の保存先", style = MaterialTheme.typography.bodyLarge)
+                    Text(imageSaveLocationLabel, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+                    if (imageSaveLocation.isNotBlank() && imageSaveLocationLabel != imageSaveLocation) {
+                        Text(imageSaveLocation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = {
+                        val initialUri = imageSaveLocation.takeIf { it.isNotBlank() }?.let { runCatching { android.net.Uri.parse(it) }.getOrNull() }
+                        imageDirectoryPickerLauncher.launch(initialUri)
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Folder, contentDescription = null); Spacer(modifier = Modifier.width(8.dp)); Text("フォルダを選択")
+                    }
+                    if (imageSaveLocation.isNotBlank()) {
+                        OutlinedButton(onClick = {
+                            val prev = imageSaveLocation
+                            val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            if (prev.isNotBlank()) {
+                                runCatching {
+                                    val uri = android.net.Uri.parse(prev)
+                                    if (context.contentResolver.persistedUriPermissions.any { it.uri == uri }) {
+                                        context.contentResolver.releasePersistableUriPermission(uri, flags)
+                                    }
+                                }
+                            }
+                            imageSaveLocation = ""
+                            scope.launch { settingsStore.clearImageSaveLocation() }
+                            android.widget.Toast.makeText(context, "画像の保存先を未設定にしました", android.widget.Toast.LENGTH_SHORT).show()
+                        }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            Icon(Icons.Default.Delete, contentDescription = null); Spacer(modifier = Modifier.width(8.dp)); Text("保存先をクリア")
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "データベース同期") {
+                Text("外部のSQLiteデータベースと内部データベースを同期します。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                com.shunlight_library.novel_reader.ui.components.DatabaseFileSelector(onFileSelected = { uri -> selectedDbUri = uri; showDBSyncDialog = true })
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = {
+                    val intent = android.content.Intent(context, com.shunlight_library.novel_reader.ui.DatabaseSyncActivity::class.java)
+                    context.startActivity(intent)
+                }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { Text("詳細な同期画面を開く") }
+            }
+            HorizontalDivider()
+            OrphanedEpisodeCheckSection()
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsDeveloperScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val autoUpdateScheduler = remember { com.shunlight_library.novel_reader.worker.AutoUpdateScheduler(context) }
+    val errorLogStore = remember { com.shunlight_library.novel_reader.data.ErrorLogStore(context) }
+    val notificationStore = remember { com.shunlight_library.novel_reader.data.NotificationStore(context) }
+    val settingsStore = remember { SettingsStore(context) }
+    val repository = remember { com.shunlight_library.novel_reader.NovelReaderApplication.getRepository() }
+    val scope = rememberCoroutineScope()
+
+    var errorLogs by remember { mutableStateOf<List<com.shunlight_library.novel_reader.data.ErrorLog>>(emptyList()) }
+    var notifications by remember { mutableStateOf<List<com.shunlight_library.novel_reader.data.AppNotification>>(emptyList()) }
+    var selectedErrorFilter by remember { mutableStateOf("全て") }
+    var lastAutoUpdateRun by remember { mutableStateOf("") }
+    var hasPendingWork by remember { mutableStateOf(false) }
+    var dbDebugInfo by remember { mutableStateOf("") }
+    var selectedErrorLog by remember { mutableStateOf<com.shunlight_library.novel_reader.data.ErrorLog?>(null) }
+    var selectedNotification by remember { mutableStateOf<com.shunlight_library.novel_reader.data.AppNotification?>(null) }
+
+    val errorFilterTypes = listOf("全て", "AutoUpdateFatal", "UpdateCheckError", "DownloadError", "DownloadBatchError", "EpisodeListError")
+    val dateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()) }
+    val shortDateFormat = remember { java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault()) }
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            errorLogs = errorLogStore.getAllErrorLogs()
+            notifications = notificationStore.getAllNotifications()
+            lastAutoUpdateRun = try {
+                val ts = settingsStore.lastAutoUpdateRunAt.first()
+                if (ts > 0) dateFormat.format(java.util.Date(ts)) else "未実行"
+            } catch (_: Exception) { "取得失敗" }
+            hasPendingWork = try { autoUpdateScheduler.hasPendingWork() } catch (_: Exception) { false }
+            dbDebugInfo = try { repository.getDatabaseDebugInfo() } catch (_: Exception) { "取得失敗" }
+        }
+    }
+
+    selectedErrorLog?.let { log ->
+        AlertDialog(
+            onDismissRequest = { selectedErrorLog = null },
+            title = { Text("エラー詳細", style = MaterialTheme.typography.titleLarge) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp).verticalScroll(rememberScrollState())
+                ) {
+                    Text("日時: ${dateFormat.format(java.util.Date(log.timestamp))}", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("小説名: ${log.novelTitle}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Nコード: ${log.ncode}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("エピソード: ${log.episodeTitle ?: "第${log.episodeNo}話"}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("エラー種類: ${log.errorType}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("エラーメッセージ: ${log.errorMessage}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    log.stackTrace?.let { trace ->
+                        Text("スタックトレース:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            Text(trace, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            errorLogStore.deleteErrorLog(log.id)
+                            errorLogs = errorLogStore.getAllErrorLogs()
+                        }
+                        selectedErrorLog = null
+                    }) { Text("削除") }
+                    TextButton(onClick = { selectedErrorLog = null }) { Text("閉じる") }
+                }
+            }
+        )
+    }
+
+    selectedNotification?.let { notif ->
+        AlertDialog(
+            onDismissRequest = { selectedNotification = null },
+            title = { Text(notif.title, style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp).verticalScroll(rememberScrollState())
+                ) {
+                    Text("日時: ${dateFormat.format(java.util.Date(notif.timestamp))}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("通知本文:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(notif.content, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("種別: ${notif.type.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+
+                    notif.downloadDetails?.let { details ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("ダウンロード詳細:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        details.forEach { detail ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("  ${detail.title} (成功:${detail.successEpisodes.size} 失敗:${detail.failedEpisodes.size})", style = MaterialTheme.typography.bodySmall)
+                            detail.failedEpisodes.forEach { ep ->
+                                Text("    ✗ 第${ep.episodeNo}話 ${ep.title} - ${ep.error ?: ""}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedNotification = null }) { Text("閉じる") }
+            }
+        )
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
+        topBar = {
+            TopAppBar(
+                title = { Text("開発者オプション") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // === 自動更新ステータス ===
+            SettingSection(title = "自動更新ステータス") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("最終自動更新実行:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(lastAutoUpdateRun, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("実行待ちワーク:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (hasPendingWork) "あり" else "なし", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = if (hasPendingWork) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+
+            // === DB診断情報 ===
+            SettingSection(title = "DB診断情報") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(dbDebugInfo, style = MaterialTheme.typography.bodySmall)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("エラーログ数: ${errorLogs.size}", style = MaterialTheme.typography.bodySmall, color = if (errorLogs.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+
+            // === エラーログ一覧 ===
+            SettingSection(title = "エラーログ (${errorLogs.size}件)") {
+                // フィルタチップ
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    errorFilterTypes.forEach { filter ->
+                        FilterChip(
+                            selected = selectedErrorFilter == filter,
+                            onClick = { selectedErrorFilter = filter },
+                            label = { Text(filter, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+
+                val filteredLogs = if (selectedErrorFilter == "全て") errorLogs else errorLogs.filter { it.errorType == selectedErrorFilter }
+
+                if (filteredLogs.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                        Text("エラーログはありません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    }
+                } else {
+                    filteredLogs.take(20).forEach { log ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedErrorLog = log },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(shortDateFormat.format(java.util.Date(log.timestamp)), style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    Text(log.errorType, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                }
+                                Text(log.novelTitle, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(log.errorMessage, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    if (filteredLogs.size > 20) {
+                        Text("...他${filteredLogs.size - 20}件", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val emailText = errorLogStore.formatErrorLogsForEmail(filteredLogs)
+                                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                    data = Uri.parse("mailto:contact@furinlab.com")
+                                    putExtra(Intent.EXTRA_SUBJECT, "小説リーダー エラーログ (${filteredLogs.size}件)")
+                                    putExtra(Intent.EXTRA_TEXT, emailText)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "エラーログを送信"))
+                            }
+                        },
+                        enabled = filteredLogs.isNotEmpty(),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("メール送信", fontSize = 12.sp) }
+
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                errorLogStore.clearAllErrorLogs()
+                                errorLogs = emptyList()
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        enabled = errorLogs.isNotEmpty(),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("全削除", fontSize = 12.sp) }
+                }
+            }
+
+            // === 通知履歴 ===
+            SettingSection(title = "通知履歴 (${notifications.size}件)") {
+                if (notifications.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
+                        Text("通知はありません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    }
+                } else {
+                    notifications.take(10).forEach { notif ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedNotification = notif },
+                            colors = CardDefaults.cardColors(
+                                containerColor = when (notif.type) {
+                                     com.shunlight_library.novel_reader.data.NotificationType.ERROR -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+                                     com.shunlight_library.novel_reader.data.NotificationType.UPDATE -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                                     else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                }
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(notif.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(shortDateFormat.format(java.util.Date(notif.timestamp)), style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                }
+                                Text(notif.content, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    if (notifications.size > 10) {
+                        Text("...他${notifications.size - 10}件", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // === ワークマネージャー操作 ===
+            SettingSection(title = "WorkManager操作") {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            autoUpdateScheduler.pruneAllWork()
+                            Toast.makeText(context, "すべての更新スケジュールを削除しました", Toast.LENGTH_SHORT).show()
+                            hasPendingWork = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                ) { Text("すべての更新スケジュールを削除") }
+                Text(
+                    "注意: 実行中のタスクもすべてキャンセル・削除されます。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            autoUpdateScheduler.runManualUpdate()
+                            Toast.makeText(context, "手動更新を開始しました", Toast.LENGTH_SHORT).show()
+                            hasPendingWork = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                ) { Text("手動更新を即座に実行") }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
 

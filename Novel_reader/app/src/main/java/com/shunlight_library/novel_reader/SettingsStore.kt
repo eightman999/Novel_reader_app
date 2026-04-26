@@ -48,7 +48,13 @@ data class NovelListFilterSettings(
     val showFavoritesOnly: Boolean = false,
     val showLongNovels: Boolean = true,
     val showShortNovels: Boolean = true,
-    val siteFilter: String = "ALL"
+    val siteFilter: String = "ALL",
+    // v2.0.0 新規フィルター
+    val showUnreadOnly: Boolean = false,
+    val showNoUnreadOnly: Boolean = false,
+    val showCompletedOnly: Boolean = false,
+    val showOngoingOnly: Boolean = false,
+    val selectedSubSites: String = ""  // カンマ区切りの数値文字列、空=全選択
 )
 
 // データベース同期設定用のデータクラス
@@ -121,6 +127,14 @@ class SettingsStore(private val context: Context) {
         val NOVEL_LIST_SHOW_LONG = booleanPreferencesKey("novel_list_show_long")
         val NOVEL_LIST_SHOW_SHORT = booleanPreferencesKey("novel_list_show_short")
         val NOVEL_LIST_SITE_FILTER = stringPreferencesKey("novel_list_site_filter")
+        // v2.0.0 新規フィルターキー
+        val NOVEL_LIST_SHOW_UNREAD_ONLY = booleanPreferencesKey("novel_list_show_unread_only")
+        val NOVEL_LIST_SHOW_NO_UNREAD_ONLY = booleanPreferencesKey("novel_list_show_no_unread_only")
+        val NOVEL_LIST_SHOW_COMPLETED_ONLY = booleanPreferencesKey("novel_list_show_completed_only")
+        val NOVEL_LIST_SHOW_ONGOING_ONLY = booleanPreferencesKey("novel_list_show_ongoing_only")
+        val NOVEL_LIST_SELECTED_SUB_SITES = stringPreferencesKey("novel_list_selected_sub_sites")
+        // シンプルリストモード
+        val USE_SIMPLE_LIST_MODE = booleanPreferencesKey("use_simple_list_mode")
 
         // インジケーターランプ設定のキー
         val INDICATOR_LAMP_ENABLED = booleanPreferencesKey("indicator_lamp_enabled")
@@ -527,6 +541,22 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    suspend fun saveThemeMode(mode: String) {
+        context.dataStore.edit { preferences -> preferences[THEME_MODE] = mode }
+    }
+
+    suspend fun saveFontFamily(family: String) {
+        context.dataStore.edit { preferences -> preferences[FONT_FAMILY] = family }
+    }
+
+    suspend fun saveTextOrientation(orientation: String) {
+        context.dataStore.edit { preferences -> preferences[TEXT_ORIENTATION] = orientation }
+    }
+
+    suspend fun saveSelfServerAccess(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SELF_SERVER_ACCESS] = enabled }
+    }
+
     // 表示設定の取得
     suspend fun getDisplaySettings(): DisplaySettings {
         val preferences = context.dataStore.data.first()
@@ -690,7 +720,12 @@ class SettingsStore(private val context: Context) {
             showFavoritesOnly = preferences[NOVEL_LIST_SHOW_FAVORITES_ONLY] ?: defaultNovelListShowFavoritesOnly,
             showLongNovels = preferences[NOVEL_LIST_SHOW_LONG] ?: defaultNovelListShowLong,
             showShortNovels = preferences[NOVEL_LIST_SHOW_SHORT] ?: defaultNovelListShowShort,
-            siteFilter = preferences[NOVEL_LIST_SITE_FILTER] ?: defaultNovelListSiteFilter
+            siteFilter = preferences[NOVEL_LIST_SITE_FILTER] ?: defaultNovelListSiteFilter,
+            showUnreadOnly = preferences[NOVEL_LIST_SHOW_UNREAD_ONLY] ?: false,
+            showNoUnreadOnly = preferences[NOVEL_LIST_SHOW_NO_UNREAD_ONLY] ?: false,
+            showCompletedOnly = preferences[NOVEL_LIST_SHOW_COMPLETED_ONLY] ?: false,
+            showOngoingOnly = preferences[NOVEL_LIST_SHOW_ONGOING_ONLY] ?: false,
+            selectedSubSites = preferences[NOVEL_LIST_SELECTED_SUB_SITES] ?: ""
         )
     }
 
@@ -708,6 +743,23 @@ class SettingsStore(private val context: Context) {
             preferences[NOVEL_LIST_SHOW_LONG] = settings.showLongNovels
             preferences[NOVEL_LIST_SHOW_SHORT] = settings.showShortNovels
             preferences[NOVEL_LIST_SITE_FILTER] = settings.siteFilter
+            preferences[NOVEL_LIST_SHOW_UNREAD_ONLY] = settings.showUnreadOnly
+            preferences[NOVEL_LIST_SHOW_NO_UNREAD_ONLY] = settings.showNoUnreadOnly
+            preferences[NOVEL_LIST_SHOW_COMPLETED_ONLY] = settings.showCompletedOnly
+            preferences[NOVEL_LIST_SHOW_ONGOING_ONLY] = settings.showOngoingOnly
+            preferences[NOVEL_LIST_SELECTED_SUB_SITES] = settings.selectedSubSites
+        }
+    }
+
+    // シンプルリストモードの取得・保存
+    suspend fun getUseSimpleListMode(): Boolean {
+        val preferences = context.dataStore.data.first()
+        return preferences[USE_SIMPLE_LIST_MODE] ?: false
+    }
+
+    suspend fun saveUseSimpleListMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[USE_SIMPLE_LIST_MODE] = enabled
         }
     }
 

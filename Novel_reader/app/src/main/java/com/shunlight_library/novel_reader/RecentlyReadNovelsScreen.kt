@@ -9,17 +9,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
+import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -36,29 +41,132 @@ fun RecentlyReadNovelsScreen(
 ) {
     val repository = NovelReaderApplication.getRepository()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val settingsStore = remember(context) { SettingsStore(context.applicationContext) }
 
     // 状態変数
-    var recentlyReadNovels by remember { mutableStateOf<List<LastReadNovelWithInfo>>(emptyList()) }
+    var allItems by remember { mutableStateOf<List<LastReadNovelWithInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var showFilterDialog by remember { mutableStateOf(false) }
+    var filterSettings by remember { mutableStateOf(FilterSettings()) }
+    var useSimpleListMode by remember { mutableStateOf(false) }
 
     // データの取得
     LaunchedEffect(Unit) {
-        // 最後に読んだ履歴を日付順に取得
+        useSimpleListMode = settingsStore.getUseSimpleListMode()
         val lastReadNovels = repository.allLastReadNovels.first()
-
-        // N+1クエリ対策：一括取得
         val ncodes = lastReadNovels.map { it.ncode }
         val novels = repository.getNovelsByNcodes(ncodes)
         val novelMap = novels.associateBy { it.ncode }
-
-        // 各履歴に対応する小説情報をマップから取得
-        val novelWithInfoList = lastReadNovels.map { lastRead ->
-            val novel = novelMap[lastRead.ncode]
-            LastReadNovelWithInfo(lastRead, novel)
+        allItems = lastReadNovels.map { lastRead ->
+            LastReadNovelWithInfo(lastRead, novelMap[lastRead.ncode])
         }
-
-        recentlyReadNovels = novelWithInfoList
         isLoading = false
+    }
+
+    // フィルタリング適用
+    val displayedItems by remember(allItems, filterSettings) {
+        derivedStateOf {
+            allItems.filter { item ->
+                val novel = item.novel ?: return@filter true
+                val unreadCount = maxOf(0, novel.total_ep - item.lastRead.episode_no)
+                if (filterSettings.showUnreadOnly && unreadCount == 0) return@filter false
+                if (filterSettings.showNoUnreadOnly && unreadCount > 0) return@filter false
+                if (filterSettings.showCompletedOnly && novel.end_flag != 1) return@filter false
+                if (filterSettings.showOngoingOnly && novel.end_flag != 2) return@filter false
+                if (!filterSettings.showLongNovels && novel.noveltype == 1) return@filter false
+                if (!filterSettings.showShortNovels && novel.noveltype == 2) return@filter false
+                if (filterSettings.selectedSubSites.isNotEmpty()) {
+                    val novelSubSite = if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) SubSiteConst.KAKUYOMU
+                    else novel.sub_site.takeIf { it > 0 } ?: SubSiteConst.SYOSETU
+                    if (novelSubSite !in filterSettings.selectedSubSites) return@filter false
+                }
+                if (filterSettings.showFavoritesOnly && novel.is_favorite != 1) return@filter false
+                true
+            }
+        }
+    }
+
+    // フィルターダイアログ
+    if (showFilterDialog) {
+        var tempFilter by remember(showFilterDialog, filterSettings) { mutableStateOf(filterSettings) }
+        AlertDialog(
+            onDismissRequest = { showFilterDialog = false },
+            title = { Text("フィルター設定") },
+            text = {
+                Column(modifier = Modifier.padding(8.dp).verticalScroll(rememberScrollState())) {
+                    // 未読フィルター
+                    Text("未読フィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                        tempFilter = tempFilter.copy(showUnreadOnly = !tempFilter.showUnreadOnly, showNoUnreadOnly = if (!tempFilter.showUnreadOnly) false else tempFilter.showNoUnreadOnly)
+                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tempFilter.showUnreadOnly, onCheckedChange = { tempFilter = tempFilter.copy(showUnreadOnly = it, showNoUnreadOnly = if (it) false else tempFilter.showNoUnreadOnly) })
+                        Text("未読ありのみ", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                        tempFilter = tempFilter.copy(showNoUnreadOnly = !tempFilter.showNoUnreadOnly, showUnreadOnly = if (!tempFilter.showNoUnreadOnly) false else tempFilter.showUnreadOnly)
+                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tempFilter.showNoUnreadOnly, onCheckedChange = { tempFilter = tempFilter.copy(showNoUnreadOnly = it, showUnreadOnly = if (it) false else tempFilter.showUnreadOnly) })
+                        Text("未読なしのみ", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // 完結フィルター
+                    Text("完結フィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                        tempFilter = tempFilter.copy(showCompletedOnly = !tempFilter.showCompletedOnly, showOngoingOnly = if (!tempFilter.showCompletedOnly) false else tempFilter.showOngoingOnly)
+                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tempFilter.showCompletedOnly, onCheckedChange = { tempFilter = tempFilter.copy(showCompletedOnly = it, showOngoingOnly = if (it) false else tempFilter.showOngoingOnly) })
+                        Text("完結済みのみ", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                        tempFilter = tempFilter.copy(showOngoingOnly = !tempFilter.showOngoingOnly, showCompletedOnly = if (!tempFilter.showOngoingOnly) false else tempFilter.showCompletedOnly)
+                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tempFilter.showOngoingOnly, onCheckedChange = { tempFilter = tempFilter.copy(showOngoingOnly = it, showCompletedOnly = if (it) false else tempFilter.showCompletedOnly) })
+                        Text("未完結のみ", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // 種別フィルター
+                    Text("種別フィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth().clickable { tempFilter = tempFilter.copy(showLongNovels = !tempFilter.showLongNovels) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tempFilter.showLongNovels, onCheckedChange = { tempFilter = tempFilter.copy(showLongNovels = it) })
+                        Text("長編を表示", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().clickable { tempFilter = tempFilter.copy(showShortNovels = !tempFilter.showShortNovels) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tempFilter.showShortNovels, onCheckedChange = { tempFilter = tempFilter.copy(showShortNovels = it) })
+                        Text("短編を表示", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // 媒体フィルター
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("媒体フィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { tempFilter = tempFilter.copy(selectedSubSites = emptySet()) }) { Text("全選択", style = MaterialTheme.typography.bodySmall) }
+                    }
+                    SubSiteConst.labels.forEach { (siteId, label) ->
+                        Row(modifier = Modifier.fillMaxWidth().clickable {
+                            val cur = tempFilter.selectedSubSites.toMutableSet()
+                            if (siteId in cur) cur.remove(siteId) else cur.add(siteId)
+                            tempFilter = tempFilter.copy(selectedSubSites = cur)
+                        }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = tempFilter.selectedSubSites.isEmpty() || siteId in tempFilter.selectedSubSites,
+                                onCheckedChange = { checked ->
+                                    val cur = tempFilter.selectedSubSites.toMutableSet()
+                                    if (checked) cur.add(siteId) else cur.remove(siteId)
+                                    tempFilter = tempFilter.copy(selectedSubSites = cur)
+                                }
+                            )
+                            Text(label, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { filterSettings = tempFilter; showFilterDialog = false }) { Text("適用") }
+            },
+            dismissButton = {
+                TextButton(onClick = { filterSettings = FilterSettings(); showFilterDialog = false }) { Text("リセット") }
+            }
+        )
     }
 
     Scaffold(
@@ -69,38 +177,30 @@ fun RecentlyReadNovelsScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                     }
+                },
+                actions = {
+                    IconButton(onClick = { showFilterDialog = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "フィルター")
+                    }
                 }
             )
         }
     ) { innerPadding ->
         if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-        } else if (recentlyReadNovels.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("最近読んだ小説はありません")
+        } else if (displayedItems.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                Text(if (allItems.isEmpty()) "最近読んだ小説はありません" else "条件に一致する小説はありません")
             }
         } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                items(recentlyReadNovels) { item ->
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                items(displayedItems) { item ->
                     RecentlyReadNovelItem(
                         lastReadNovel = item.lastRead,
                         novel = item.novel,
+                        useSimpleMode = useSimpleListMode,
                         onClick = { onNovelClick(item.lastRead.ncode, item.lastRead.episode_no.toString()) }
                     )
                     HorizontalDivider()
@@ -114,19 +214,22 @@ fun RecentlyReadNovelsScreen(
 fun RecentlyReadNovelItem(
     lastReadNovel: LastReadNovelEntity,
     novel: NovelDescEntity?,
+    useSimpleMode: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(if (useSimpleMode) 0.dp else 8.dp)
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (useSimpleMode) 0.dp else 2.dp),
+        colors = if (useSimpleMode) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                 else CardDefaults.cardColors()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(if (useSimpleMode) 8.dp else 16.dp)
         ) {
             if (novel != null) {
                 Text(

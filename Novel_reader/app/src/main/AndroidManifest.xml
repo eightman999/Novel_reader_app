@@ -46,6 +46,14 @@
                 android:label="データベース同期"
                 android:theme="@style/Theme.Novel_reader" />
 
+        <!-- WorkManagerのForeground Service (Android 14対応) -->
+        <service
+                android:name="androidx.work.impl.foreground.SystemForegroundService"
+                android:foregroundServiceType="dataSync"
+                android:exported="false"
+                android:enabled="@bool/enable_system_foreground_service_default"
+                tools:replace="android:foregroundServiceType" />
+
         <!-- 更新サービスを追加 -->
         <service
                 android:name=".service.UpdateService"

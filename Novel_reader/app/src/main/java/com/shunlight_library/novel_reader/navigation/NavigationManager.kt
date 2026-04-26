@@ -113,6 +113,13 @@ sealed class Screen {
     object UpdateInfo : Screen()
     object DatabaseSync : Screen()
     object DownloadQueue : Screen()
+    object SettingsMenu : Screen()
+    object SettingsDisplay : Screen()
+    object SettingsReading : Screen()
+    object SettingsNetwork : Screen()
+    object SettingsAutoUpdate : Screen()
+    object SettingsStorage : Screen()
+    object SettingsDeveloper : Screen()
 }
 
 /**

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -51,6 +52,7 @@ import com.shunlight_library.novel_reader.metadata.MetadataUpdateManager
 import com.shunlight_library.novel_reader.metadata.MetadataUpdateResult
 import com.shunlight_library.novel_reader.ui.components.IndicatorLampGroup
 import com.shunlight_library.novel_reader.ui.components.IndicatorLampStyle
+import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -150,6 +152,7 @@ fun NovelReaderApp(
     navigationManager: NavigationManager,
     notificationStore: NotificationStore? = null
 ) {
+    var developerUnlocked by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     // WebView用の状態変数を追加
     var showWebView by remember { mutableStateOf(false) }
@@ -279,7 +282,8 @@ fun NovelReaderApp(
         is Screen.Main -> {
             MainScreen(
                 onNavigate = { screen -> navigationManager.navigateTo(screen) },
-                notificationStore = notificationStore
+                notificationStore = notificationStore,
+                onDeveloperUnlocked = { developerUnlocked = true }
             )
         }
 
@@ -287,6 +291,38 @@ fun NovelReaderApp(
             SettingsScreenUpdated(
                 onBack = { navigationManager.navigateBack() }
             )
+        }
+
+        is Screen.SettingsMenu -> {
+            SettingsMenuScreen(
+                onBack = { navigationManager.navigateBack() },
+                onNavigate = { screen -> navigationManager.navigateTo(screen) },
+                developerUnlocked = developerUnlocked
+            )
+        }
+
+        is Screen.SettingsDisplay -> {
+            SettingsDisplayScreen(onBack = { navigationManager.navigateBack() })
+        }
+
+        is Screen.SettingsReading -> {
+            SettingsReadingScreen(onBack = { navigationManager.navigateBack() })
+        }
+
+        is Screen.SettingsNetwork -> {
+            SettingsNetworkScreen(onBack = { navigationManager.navigateBack() })
+        }
+
+        is Screen.SettingsAutoUpdate -> {
+            SettingsAutoUpdateScreen(onBack = { navigationManager.navigateBack() })
+        }
+
+        is Screen.SettingsStorage -> {
+            SettingsStorageScreen(onBack = { navigationManager.navigateBack() })
+        }
+
+        is Screen.SettingsDeveloper -> {
+            SettingsDeveloperScreen(onBack = { navigationManager.navigateBack() })
         }
 
         is Screen.NovelList -> {
@@ -472,7 +508,8 @@ fun MenuButton(
 @Composable
 fun MainScreen(
     onNavigate: (Screen) -> Unit,
-    notificationStore: NotificationStore? = null
+    notificationStore: NotificationStore? = null,
+    onDeveloperUnlocked: () -> Unit = {}
 ) {
     val repository = NovelReaderApplication.getRepository()
     val context = LocalContext.current
@@ -510,8 +547,10 @@ fun MainScreen(
         val current = System.currentTimeMillis()
         if (current - lastVersionTapTime < versionTapThreshold) {
             versionTapCount++
-            if (versionTapCount == 7) {
+            val remaining = 7 - versionTapCount
+            if (versionTapCount >= 7) {
                 versionTapCount = 0
+                onDeveloperUnlocked()
                 scope.launch {
                     val info = repository.getDatabaseDebugInfo()
                     val message = "おめでとう！あなたも開発者だ！"
@@ -526,6 +565,8 @@ fun MainScreen(
                     )
                     sendDevNotification(context, message, info)
                 }
+            } else if (remaining <= 3) {
+                Toast.makeText(context, "あと ${remaining} 回で開発者オプションが有効になります", Toast.LENGTH_SHORT).show()
             }
         } else {
             versionTapCount = 1
@@ -739,7 +780,9 @@ fun MainScreen(
                         Text(
                             text = updateInfoText,
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
@@ -779,7 +822,9 @@ fun MainScreen(
                             else
                                 "まだ小説を読んでいません",
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
@@ -937,7 +982,7 @@ fun MainScreen(
                             icon = "⚙",
                             text = "設定",
                             onClick = {
-                                onNavigate(Screen.Settings)
+                                onNavigate(Screen.SettingsMenu)
                             }
                         )
 
@@ -980,7 +1025,7 @@ fun MainScreen(
 
                         MenuButton(
                             icon = "",
-                            text = "キュー",
+                            text = "ダウンロード状況",
                             onClick = {
                                 onNavigate(Screen.DownloadQueue)
                             }

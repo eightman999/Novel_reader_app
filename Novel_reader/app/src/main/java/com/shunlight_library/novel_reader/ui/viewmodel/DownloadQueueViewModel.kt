@@ -9,7 +9,20 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+enum class QueueFilter(val label: String) {
+    ALL("全件"),
+    ERROR("エラー"),
+    TIMEOUT("タイムアウト"),
+    COMPLETED("完了"),
+    PENDING("未了")
+}
 
 class DownloadQueueViewModel : ViewModel() {
     private val repository = NovelReaderApplication.getRepository()
@@ -23,6 +36,44 @@ class DownloadQueueViewModel : ViewModel() {
     val timeoutQueues = repository.getRegistrationQueueByStatus(RegistrationQueueEntity.STATUS_TIMEOUT)
 
     val pausedQueues = repository.getRegistrationQueueByStatus(RegistrationQueueEntity.STATUS_PAUSED)
+
+    val filterState: MutableStateFlow<QueueFilter> = MutableStateFlow(QueueFilter.ALL)
+
+    val filteredQueues: StateFlow<List<RegistrationQueueEntity>> = combine(queues, filterState) { queueList, filter ->
+        when (filter) {
+            QueueFilter.ALL -> queueList
+            QueueFilter.ERROR -> queueList.filter { it.status == RegistrationQueueEntity.STATUS_ERROR }
+            QueueFilter.TIMEOUT -> queueList.filter { it.status == RegistrationQueueEntity.STATUS_TIMEOUT }
+            QueueFilter.COMPLETED -> queueList.filter { it.status == RegistrationQueueEntity.STATUS_COMPLETED }
+            QueueFilter.PENDING -> queueList.filter {
+                it.status in listOf(
+                    RegistrationQueueEntity.STATUS_PENDING,
+                    RegistrationQueueEntity.STATUS_PROCESSING,
+                    RegistrationQueueEntity.STATUS_PAUSED
+                )
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun setFilter(filter: QueueFilter) {
+        filterState.value = filter
+    }
+
+    /**
+     * 現在のフィルターで表示中のアイテムを一括削除する
+     */
+    fun bulkDelete() {
+        viewModelScope.launch {
+            val targets = filteredQueues.value.toList()
+            for (item in targets) {
+                if (item.status == RegistrationQueueEntity.STATUS_COMPLETED) {
+                    repository.deleteRegistrationQueue(item.id)
+                } else {
+                    com.shunlight_library.novel_reader.manager.RegistrationQueueManager.cancelQueue(item.id)
+                }
+            }
+        }
+    }
 
     /**
      * キューを一時停止する（処理中/待機中）

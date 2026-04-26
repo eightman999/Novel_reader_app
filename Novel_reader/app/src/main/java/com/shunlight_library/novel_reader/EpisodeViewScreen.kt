@@ -187,19 +187,23 @@ fun EpisodeViewScreen(
             var isVertical = getComputedStyle(document.body).writingMode === 'vertical-rl';
             var maxScroll;
             var currentScroll;
+            var scrollRatio;
 
             if (isVertical) {
-                // 縦書き: 横スクロール
+                // 縦書き(vertical-rl): 右端が先頭、左端が末尾
+                // scrollX=maxScroll が先頭(rate=0)、scrollX=0 が末尾(rate=1)
                 maxScroll = document.body.scrollWidth - window.innerWidth;
                 currentScroll = window.scrollX;
+                if (maxScroll <= 0) return 0;
+                scrollRatio = 1.0 - (currentScroll / maxScroll);
             } else {
                 // 横書き: 縦スクロール
                 maxScroll = document.body.scrollHeight - window.innerHeight;
                 currentScroll = window.scrollY;
+                if (maxScroll <= 0) return 0;
+                scrollRatio = currentScroll / maxScroll;
             }
 
-            if (maxScroll <= 0) return 0;
-            var scrollRatio = currentScroll / maxScroll;
             return Math.max(0, Math.min(1, scrollRatio));
         })();
     """.trimIndent()) { result ->
@@ -605,10 +609,10 @@ fun EpisodeViewScreen(
                     }
             ) {
                 // 縦書き時はWebViewが横スクロールするため、verticalScrollは不要
+                // 縦書き時はCSSがpaddingを管理するためComposeのhorizontal paddingは不要
                 val columnModifier = if (textOrientation == "Vertical") {
                     Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp)
                 } else {
                     Modifier
                         .fillMaxSize()
@@ -805,6 +809,7 @@ fun EnhancedHtmlRubyWebView(
         html {
             height: 100%;
             width: 100%;
+            ${if (textOrientation == "Vertical") "overflow-x: scroll; overflow-y: hidden;" else ""}
         }
         body {
             font-family: $actualFontFamily;
@@ -816,7 +821,9 @@ fun EnhancedHtmlRubyWebView(
             color: $fontColor;
             writing-mode: $writingMode;
             ${if (textOrientation == "Vertical") {
-                "height: 100vh; width: auto; overflow-x: auto; overflow-y: hidden;"
+                // width: max-content で縦書きコンテンツ全体を横方向に展開
+                // min-width: 100% で最低でも画面幅は確保
+                "height: 100%; width: max-content; min-width: 100%; overflow-x: scroll; overflow-y: hidden;"
             } else {
                 "min-height: 100vh; overflow-y: auto; word-wrap: break-word; overflow-wrap: break-word;"
             }}
@@ -868,21 +875,29 @@ fun EnhancedHtmlRubyWebView(
         window.onload = function() {
             var isVertical = ${isVertical};
 
-            // 保存された位置があれば復元
-            if (${savedReadingRate} > 0) {
-                // スクロール位置の計算
-                var maxScroll;
-                var targetPosition;
+            // スクロール位置を復元
+            var maxScroll;
+            var targetPosition;
 
-                if (isVertical) {
-                    // 縦書き: 横スクロール
-                    maxScroll = document.body.scrollWidth - window.innerWidth;
-                    targetPosition = maxScroll * ${savedReadingRate};
+            if (isVertical) {
+                // 縦書き(vertical-rl): 右端が先頭、左端が末尾
+                // scrollX=maxScroll が先頭(rate=0)、scrollX=0 が末尾(rate=1)
+                maxScroll = document.body.scrollWidth - window.innerWidth;
+                if (maxScroll > 0) {
+                    if (${savedReadingRate} > 0) {
+                        // 保存済みレートから位置を復元（反転: rate=0→右端, rate=1→左端）
+                        targetPosition = maxScroll * (1.0 - ${savedReadingRate});
+                    } else {
+                        // 未読: 先頭（右端）にスクロール
+                        targetPosition = maxScroll;
+                    }
                     setTimeout(function() {
                         window.scrollTo(targetPosition, 0);
-                    }, 100);
-                } else {
-                    // 横書き: 縦スクロール
+                    }, 150);
+                }
+            } else {
+                // 横書き: 縦スクロール
+                if (${savedReadingRate} > 0) {
                     maxScroll = document.body.scrollHeight - window.innerHeight;
                     targetPosition = maxScroll * ${savedReadingRate};
                     setTimeout(function() {
@@ -898,20 +913,21 @@ fun EnhancedHtmlRubyWebView(
                 scrollTimeout = setTimeout(function() {
                     var maxScroll;
                     var currentScroll;
+                    var scrollRatio;
 
                     if (isVertical) {
-                        // 縦書き: 横スクロール
+                        // 縦書き(vertical-rl): scrollX=maxScroll が先頭(rate=0)、scrollX=0 が末尾(rate=1)
                         maxScroll = document.body.scrollWidth - window.innerWidth;
                         currentScroll = window.scrollX;
+                        if (maxScroll <= 0) return;
+                        scrollRatio = 1.0 - (currentScroll / maxScroll);
                     } else {
                         // 横書き: 縦スクロール
                         maxScroll = document.body.scrollHeight - window.innerHeight;
                         currentScroll = window.scrollY;
+                        if (maxScroll <= 0) return;
+                        scrollRatio = currentScroll / maxScroll;
                     }
-
-                    if (maxScroll <= 0) return;
-
-                    var scrollRatio = currentScroll / maxScroll;
 
                     // 値の範囲を制限（0～1の範囲内に収める）
                     scrollRatio = Math.max(0, Math.min(1, scrollRatio));
@@ -972,7 +988,12 @@ fun EnhancedHtmlRubyWebView(
             }
         },
         update = { view ->
-            // コンポーネントの更新が必要な場合
+            // 縦書き時はTEXT_AUTOSIZINGを無効化（vertical-rlレイアウトに干渉するため）
+            view.settings.layoutAlgorithm = if (textOrientation == "Vertical") {
+                WebSettings.LayoutAlgorithm.NORMAL
+            } else {
+                WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
+            }
             view.loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
         },
         modifier = modifier.fillMaxSize()

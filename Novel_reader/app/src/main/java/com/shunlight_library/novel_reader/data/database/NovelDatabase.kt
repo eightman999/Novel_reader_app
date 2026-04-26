@@ -269,6 +269,24 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
 }
 
 /**
+ * v15→v16のマイグレーション: sub_site/end_flag/last_checked_at を追加
+ */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN sub_site INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN end_flag INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE novels_descs ADD COLUMN last_checked_at TEXT NOT NULL DEFAULT ''")
+        // 既存レコードの sub_site を初期化
+        database.execSQL("UPDATE novels_descs SET sub_site = 1 WHERE site_type = 1 AND rating = 2")
+        database.execSQL("UPDATE novels_descs SET sub_site = 2 WHERE site_type = 1 AND rating = 1")
+        // インデックス追加
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_sub_site ON novels_descs (sub_site)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_end_flag ON novels_descs (end_flag)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_last_checked ON novels_descs (last_checked_at)")
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -283,7 +301,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         RegistrationQueueEntity::class,
         TempEpisodeEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -325,7 +343,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_11_12,
                         MIGRATION_12_13,
                         MIGRATION_13_14,
-                        MIGRATION_14_15
+                        MIGRATION_14_15,
+                        MIGRATION_15_16
                     )
                     .build()
                 INSTANCE = instance

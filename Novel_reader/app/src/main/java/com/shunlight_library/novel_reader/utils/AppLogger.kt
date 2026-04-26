@@ -97,4 +97,12 @@ object AppLogger {
             Log.v(tag, message)
         }
     }
+
+    private const val NOTIFICATION_TAG = "NovelReaderNotification"
+
+    fun logNotification(title: String, content: String) {
+        if (isLoggingEnabled) {
+            Log.d(NOTIFICATION_TAG, "[$title] $content")
+        }
+    }
 }

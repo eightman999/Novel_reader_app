@@ -429,6 +429,14 @@ object NovelApiUtils {
                         val noveltype = (novelData["noveltype"] as? Int)
                         val length = (novelData["length"] as? Int)
                         val keyword = novelData["keyword"] as? String ?: ""
+                        // end: 1=連載中, 2=完結済み (APIフィールド)
+                        val endApiValue = (novelData["end"] as? Int) ?: 0
+                        // end_flag変換: APIの1=連載中→2, APIの2=完結→1, 0=不明→0
+                        val endFlag = when (endApiValue) {
+                            1 -> 2   // 連載中
+                            2 -> 1   // 完結
+                            else -> 0
+                        }
 
                         // APIから取得した小説の最終更新日時（サイト上の更新日時）
                         val updatedAt = novelData["updated_at"] as? String ?: ""
@@ -443,6 +451,8 @@ object NovelApiUtils {
 
                         // レーティング（R18なら1、それ以外なら2）
                         val rating = if (isR18) 1 else 2
+                        // sub_site: R18なら2(ノクターン), 一般なら1(なろう)
+                        val subSite = if (isR18) 2 else 1
 
                         return@withContext NovelDescEntity(
                             ncode = ncode,
@@ -459,7 +469,9 @@ object NovelApiUtils {
                             noveltype = noveltype,
                             length = length,
                             updated_at = updatedAt,  // サイト上の最終更新日時
-                            registered_at = currentDate  // データベース登録日時
+                            registered_at = currentDate,  // データベース登録日時
+                            sub_site = subSite,
+                            end_flag = endFlag
                         )
                     } else {
                         null

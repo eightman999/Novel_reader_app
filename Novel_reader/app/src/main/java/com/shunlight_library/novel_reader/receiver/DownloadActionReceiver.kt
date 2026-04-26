@@ -8,13 +8,11 @@ package com.shunlight_library.novel_reader.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
-import com.shunlight_library.novel_reader.service.UpdateService
+import androidx.work.*
+import com.shunlight_library.novel_reader.worker.AutoUpdateWorker
+import java.util.concurrent.TimeUnit
 
-/**
- * プッシュ通知のアクションボタンを処理するBroadcastReceiver
- */
 class DownloadActionReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "DownloadActionReceiver"
@@ -26,18 +24,17 @@ class DownloadActionReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             ACTION_DOWNLOAD_ALL -> {
-                // UpdateServiceを起動してバルク更新を実行
-                val serviceIntent = Intent(context, UpdateService::class.java).apply {
-                    action = UpdateService.ACTION_START_UPDATE
-                    putExtra(UpdateService.EXTRA_UPDATE_TYPE, UpdateService.UPDATE_TYPE_BULK_UPDATE)
-                }
-                // Android 8.0以降ではstartForegroundServiceを使用
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
-                Log.d(TAG, "Started UpdateService for bulk update")
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+
+                val workRequest = OneTimeWorkRequestBuilder<AutoUpdateWorker>()
+                    .setConstraints(constraints)
+                    .addTag("notification_bulk_update")
+                    .build()
+
+                WorkManager.getInstance(context).enqueue(workRequest)
+                Log.d(TAG, "Enqueued AutoUpdateWorker for bulk update via WorkManager")
             }
         }
     }

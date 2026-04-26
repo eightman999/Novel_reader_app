@@ -10,6 +10,7 @@ import android.content.Context
 import com.shunlight_library.novel_reader.data.database.NovelDatabase
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 
 /**
  * アプリケーション全体で使用するシングルトンを初期化するクラス。
@@ -56,6 +57,19 @@ class NovelReaderApplication : Application() {
 
         // 新規登録キューの監視を開始
         com.shunlight_library.novel_reader.manager.RegistrationQueueManager.startMonitoring()
+
+        // アプリ起動時に自動更新スケジュールを復元（Androidがジョブをキャンセルした場合のリカバリ）
+        applicationScope.launch {
+            try {
+                val settingsStore = SettingsStore(this@NovelReaderApplication)
+                val enabled = settingsStore.autoUpdateEnabled.first()
+                val time = settingsStore.autoUpdateTime.first()
+                com.shunlight_library.novel_reader.worker.AutoUpdateScheduler(this@NovelReaderApplication)
+                    .scheduleAutoUpdate(enabled, time)
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "自動更新スケジュール初期化エラー", e)
+            }
+        }
     }
 
     /**
