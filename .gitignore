@@ -9,3 +9,4 @@ release/baselineProfiles/0/app-release.dm
 *.dm
 *.dm
 /kakuyomu
+/.claude
