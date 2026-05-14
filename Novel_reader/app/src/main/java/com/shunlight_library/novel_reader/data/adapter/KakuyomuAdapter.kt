@@ -117,8 +117,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val novelDesc = parseNovelInfo(doc, workId)
 
         // エピソード一覧を抽出（本文なし）
-        // 目次から取得するため、docは不要
-        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
+        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode, doc)
 
         // 各エピソードの本文を取得
         AppLogger.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
@@ -184,7 +183,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val novelDesc = parseNovelInfo(doc, workId)
 
         // エピソード一覧を抽出（本文なし）
-        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
+        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode, doc)
 
         android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
 
@@ -287,7 +286,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val novelDesc = parseNovelInfo(doc, workId)
 
         // エピソード一覧を抽出（本文なし）
-        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode)
+        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode, doc)
 
         AppLogger.d("KakuyomuAdapter", "小説メタデータとエピソードリスト取得完了（本文なし）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
 
@@ -800,14 +799,22 @@ class KakuyomuAdapter : NovelSiteAdapter {
     /**
      * HTMLからエピソード一覧を抽出（TOC情報のみ、本文は含まない）
      * episode_sidebarエンドポイントから優先的に取得し、失敗した場合のみ他の方法を試行
+     *
+     * @param workDoc 呼び出し元で取得済みの作品ページDocument（再フェッチ防止）
      */
-    private suspend fun parseEpisodeList(workId: String, pseudoNcode: String): List<EpisodeEntity> {
+    private suspend fun parseEpisodeList(workId: String, pseudoNcode: String, workDoc: Document): List<EpisodeEntity> {
+        // 呼び出し元の取得済みdocから最初のエピソードリンクを抽出（重複フェッチ防止）
+        val firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
+            ?: workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
+            ?: workDoc.select("a[href*='/episodes/']").firstOrNull()?.attr("href")
+            ?: ""
+
         // 方法1: episode_sidebarエンドポイントから取得（最優先、最も確実）
-        val episodesWithMapping = extractEpisodesFromSidebar(workId, pseudoNcode)
+        val episodesWithMapping = extractEpisodesFromSidebar(workId, pseudoNcode, firstEpisodeLink)
         if (episodesWithMapping.isNotEmpty()) {
             // マッピング情報をキャッシュに保存
-            cachedMappings = episodesWithMapping.associate { 
-                it.episode.episode_no.toInt() to it.kakuyomuEpisodeId 
+            cachedMappings = episodesWithMapping.associate {
+                it.episode.episode_no.toInt() to it.kakuyomuEpisodeId
             }
             AppLogger.d("KakuyomuAdapter", "エピソード一覧取得成功 (episode_sidebar): ${episodesWithMapping.size}話")
             return episodesWithMapping.map { it.episode }
@@ -816,11 +823,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
         AppLogger.d("KakuyomuAdapter", "episode_sidebarからエピソード取得失敗、他の方法を試行")
 
         // 方法2: エピソードページの目次から取得（フォールバック）
-        val episodesWithMappingFromToc = extractEpisodesFromToc(workId, pseudoNcode)
+        val episodesWithMappingFromToc = extractEpisodesFromToc(workId, pseudoNcode, firstEpisodeLink)
         if (episodesWithMappingFromToc.isNotEmpty()) {
             // マッピング情報をキャッシュに保存
-            cachedMappings = episodesWithMappingFromToc.associate { 
-                it.episode.episode_no.toInt() to it.kakuyomuEpisodeId 
+            cachedMappings = episodesWithMappingFromToc.associate {
+                it.episode.episode_no.toInt() to it.kakuyomuEpisodeId
             }
             AppLogger.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesWithMappingFromToc.size}話")
             return episodesWithMappingFromToc.map { it.episode }
@@ -828,14 +835,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
 
         AppLogger.d("KakuyomuAdapter", "目次からエピソード取得失敗、他の方法を試行")
 
-        // 方法2: 作品ページのHTMLから取得（フォールバック）
-        val workUrl = "https://kakuyomu.jp/works/$workId"
-        val workHtml = performHttpRequest(workUrl)
-        val doc = Jsoup.parse(workHtml)
+        // 方法3: 呼び出し元の取得済みdocを再利用（フォールバック、重複フェッチなし）
+        val doc = workDoc
 
         AppLogger.d("KakuyomuAdapter", "=== 作品ページHTML構造調査開始 ===")
-        AppLogger.d("KakuyomuAdapter", "作品URL: $workUrl")
-        AppLogger.d("KakuyomuAdapter", "HTML長: ${workHtml.length}文字")
+        AppLogger.d("KakuyomuAdapter", "作品URL: https://kakuyomu.jp/works/$workId")
+        AppLogger.d("KakuyomuAdapter", "（取得済みdocを再利用）")
 
         // 複数のセレクタパターンを試行
         val workTocSelectors = listOf(
@@ -945,24 +950,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
      *
      * @param workId 作品ID
      * @param pseudoNcode 疑似Ncode
+     * @param firstEpisodeLink 呼び出し元で取得済みの最初のエピソードリンク（再フェッチ防止）
      * @return エピソードとマッピング情報のリスト（取得失敗時は空リスト）
      */
-    private suspend fun extractEpisodesFromSidebar(workId: String, pseudoNcode: String): List<KakuyomuEpisodeWithMapping> = withContext(Dispatchers.IO) {
+    private suspend fun extractEpisodesFromSidebar(workId: String, pseudoNcode: String, firstEpisodeLink: String): List<KakuyomuEpisodeWithMapping> = withContext(Dispatchers.IO) {
         return@withContext try {
-            applyRateLimit()
-
-            // 作品ページから最初のエピソードIDを取得
-            val workUrl = "https://kakuyomu.jp/works/$workId"
-            val workHtml = performHttpRequest(workUrl)
-            val workDoc = Jsoup.parse(workHtml)
-
-            // 最初のエピソードのリンクを取得
-            var firstEpisodeLink: String? = null
-            firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
-                ?: workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
-                ?: workDoc.select("a[href*='/episodes/']").firstOrNull()?.attr("href")
-
-            if (firstEpisodeLink.isNullOrEmpty()) {
+            if (firstEpisodeLink.isEmpty()) {
                 AppLogger.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
                 return@withContext emptyList()
             }
@@ -1089,53 +1082,22 @@ class KakuyomuAdapter : NovelSiteAdapter {
      *
      * @param workId 作品ID
      * @param pseudoNcode 疑似Ncode
+     * @param firstEpisodeLink 呼び出し元で取得済みの最初のエピソードリンク（再フェッチ防止）
      * @return エピソードとマッピング情報のリスト（取得失敗時は空リスト）
      */
-    private suspend fun extractEpisodesFromToc(workId: String, pseudoNcode: String): List<KakuyomuEpisodeWithMapping> = withContext(Dispatchers.IO) {
+    private suspend fun extractEpisodesFromToc(workId: String, pseudoNcode: String, firstEpisodeLink: String): List<KakuyomuEpisodeWithMapping> = withContext(Dispatchers.IO) {
         return@withContext try {
-            applyRateLimit()
-
-            // 作品ページから最初のエピソードIDを取得
-            val workUrl = "https://kakuyomu.jp/works/$workId"
-            val workHtml = performHttpRequest(workUrl)
-            val workDoc = Jsoup.parse(workHtml)
-
-            // 最初のエピソードのリンクを取得（複数のパターンを試行）
-            var firstEpisodeLink: String? = null
-
-            // パターン1: 古い構造（widget-toc-episode-episodeTitle）
-            if (firstEpisodeLink == null) {
-                firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
-                if (firstEpisodeLink != null) {
-                    AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (widget-toc-episode-episodeTitle)")
-                }
-            }
-
-            // パターン2: 新しい構造（WorkTocSection_link）
-            if (firstEpisodeLink == null) {
-                firstEpisodeLink = workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
-                if (firstEpisodeLink != null) {
-                    AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (WorkTocSection_link)")
-                }
-            }
-
-            // パターン3: エピソードへのリンク全般（フォールバック）
-            if (firstEpisodeLink == null) {
-                firstEpisodeLink = workDoc.select("a[href*='/episodes/']").firstOrNull()?.attr("href")
-                if (firstEpisodeLink != null) {
-                    AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク取得成功 (a[href*='/episodes/'])")
-                }
-            }
-
-            if (firstEpisodeLink.isNullOrEmpty()) {
+            if (firstEpisodeLink.isEmpty()) {
                 AppLogger.w("KakuyomuAdapter", "最初のエピソードが見つかりません")
                 return@withContext emptyList()
             }
 
+            AppLogger.d("KakuyomuAdapter", "最初のエピソードリンク使用: $firstEpisodeLink")
+
             applyRateLimit()
 
             // エピソードページを取得（目次が含まれる）
-            val episodeUrl = "https://kakuyomu.jp$firstEpisodeLink"
+            val episodeUrl = if (firstEpisodeLink.startsWith("http")) firstEpisodeLink else "https://kakuyomu.jp$firstEpisodeLink"
             AppLogger.d("KakuyomuAdapter", "エピソードページを取得: $episodeUrl")
 
             val episodeHtml = performHttpRequest(episodeUrl)

@@ -736,26 +736,26 @@ fun EpisodeListScreen(
                     val generalAllNoValue: Int
 
                     if (targetNovel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                        // カクヨムの場合、HTMLスクレイピングで取得
+                        // カクヨムの場合、軽量な更新確認APIで話数のみ取得（全話DLは不要）
                         updateProgress = 0.2f
-                        updateMessage = "HTMLスクレイピングで最新情報を確認中..."
+                        updateMessage = "更新情報を確認中..."
 
-                        val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                        val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                         val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(it.ncode)
 
-                        val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
-                        generalAllNoValue = allEpisodes.size
+                        val updateSummary = kakuyomuAdapter.fetchUpdateSummary(workId)
+                        generalAllNoValue = updateSummary.latestEpisodeCount
 
                         // 小説情報を更新
                         val updatedNovel = it.copy(
                             general_all_no = generalAllNoValue,
-                            updated_at = updatedNovelDesc.updated_at,
-                            title = updatedNovelDesc.title,
-                            author = updatedNovelDesc.author,
-                            Synopsis = updatedNovelDesc.Synopsis,
-                            main_tag = updatedNovelDesc.main_tag,
-                            sub_tag = updatedNovelDesc.sub_tag,
-                            last_update_date = updatedNovelDesc.last_update_date
+                            updated_at = updateSummary.novelDesc.updated_at,
+                            title = updateSummary.novelDesc.title,
+                            author = updateSummary.novelDesc.author,
+                            Synopsis = updateSummary.novelDesc.Synopsis,
+                            main_tag = updateSummary.novelDesc.main_tag,
+                            sub_tag = updateSummary.novelDesc.sub_tag,
+                            last_update_date = updateSummary.novelDesc.last_update_date
                         )
                         repository.updateNovel(updatedNovel)
                     } else {

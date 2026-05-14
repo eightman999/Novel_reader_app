@@ -16,8 +16,8 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 203
-        versionName = "2.0.3"
+        versionCode = 204
+        versionName = "2.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -60,6 +60,9 @@ dependencies {
 
 // Jsoup for HTML parsing
     implementation("org.jsoup:jsoup:1.18.3")
+
+// AndroidX ViewPager for vjap vertical text library
+    implementation("androidx.viewpager:viewpager:1.0.0")
 
 // Markdown rendering for Compose
     implementation("com.github.jeziellago:compose-markdown:0.5.8")
