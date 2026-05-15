@@ -101,6 +101,11 @@ fun EpisodeListScreen(
     var showDeleteNovelDialog by remember { mutableStateOf(false) }
     var isDeletingNovel by remember { mutableStateOf(false) }
 
+    // カクヨム目次復帰用
+    var showTocRecoveryBanner by remember { mutableStateOf(false) }
+    var tocRecoveryMappings by remember { mutableStateOf<List<com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity>>(emptyList()) }
+    var isRecoveringToc by remember { mutableStateOf(false) }
+
     // データの取得
     LaunchedEffect(ncode) {
         // 小説情報の取得
@@ -122,6 +127,23 @@ fun EpisodeListScreen(
             mainTag = it.main_tag
             subTag = it.sub_tag
         }
+
+        // カクヨム目次復帰チェック（エピソードFlowが最初のemitをするまで待機）
+        val currentNovel = novel
+        if (currentNovel != null &&
+            currentNovel.site_type == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU &&
+            currentNovel.general_all_no > 0) {
+            delay(500) // Flowの初回emitを待つ
+            if (episodes.size < currentNovel.general_all_no) {
+                val mappings = withContext(Dispatchers.IO) {
+                    repository.getEpisodeMappings(ncode)
+                }
+                if (mappings.size > episodes.size) {
+                    tocRecoveryMappings = mappings
+                    showTocRecoveryBanner = true
+                }
+            }
+        }
     }
 
     LaunchedEffect(ncode) {
@@ -139,6 +161,42 @@ fun EpisodeListScreen(
         while (true) {
             isNovelUpdating = NovelUpdateCoordinator.isUpdating(ncode)
             delay(1000) // 1秒ごとにチェック
+        }
+    }
+
+    // カクヨム目次復帰：mappingテーブルからエピソードスタブを生成
+    fun performTocRecovery() {
+        val mappings = tocRecoveryMappings
+        if (mappings.isEmpty()) return
+        isRecoveringToc = true
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                val existingNos = episodes.map { it.episode_no }.toSet()
+                val stubs = mappings
+                    .filter { it.episode_no.toString() !in existingNos }
+                    .map { mapping ->
+                        EpisodeEntity(
+                            ncode = ncode,
+                            episode_no = mapping.episode_no.toString(),
+                            body = "",
+                            e_title = "第${mapping.episode_no}話",
+                            update_time = ""
+                        )
+                    }
+                stubs.forEach { repository.insertEpisode(it) }
+                val currentNovel = novel
+                if (currentNovel != null && currentNovel.total_ep < mappings.size) {
+                    repository.updateNovel(currentNovel.copy(total_ep = mappings.size))
+                    novel = repository.getNovelByNcode(ncode)
+                }
+            }
+            isRecoveringToc = false
+            showTocRecoveryBanner = false
+            Toast.makeText(
+                context,
+                "${mappings.size}件のエピソードを復元しました。「エラー修正」で本文を再取得してください。",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -1737,13 +1795,83 @@ fun EpisodeListScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
+                // 目次復帰バナー（mappingテーブルにデータがあるが episodesが不足している場合）
+                if (showTocRecoveryBanner) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "目次が不完全です（DB: ${episodes.size}件 / マッピング: ${tocRecoveryMappings.size}件）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "DL中断などによりエピソード一覧が保存されていません。マッピング情報から目次を再構築できます。再構築後に「エラー修正」で本文を再取得してください。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { performTocRecovery() },
+                                    enabled = !isRecoveringToc,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    if (isRecoveringToc) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("目次を再構築", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = { showTocRecoveryBanner = false },
+                                    enabled = !isRecoveringToc,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("無視", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // エピソード一覧
                 if (episodes.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator()
+                        if (showTocRecoveryBanner) {
+                            Text(
+                                text = "上のバナーから目次を再構築できます",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        } else {
+                            CircularProgressIndicator()
+                        }
                     }
                 } else {
                     LazyColumn(

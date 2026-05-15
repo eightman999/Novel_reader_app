@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📖 Quick Reference
 
 ### Current State (2026-05-15)
-- **Version**: 2.0.4 (versionCode: 204)
+- **Version**: 2.0.5 (versionCode: 205)
 - **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -346,6 +346,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Advanced filtering: 未読/完結/媒体フィルターを NovelListScreen・RecentlyReadScreen に追加
 - Error fix options: 欠落修正にオプションダイアログ追加（期間・短編除外・完結除外・媒体・挿絵エラー検知）
 - Download status screen: ダウンロード状況画面にフィルターチップと一括削除ボタンを追加
+- ToC recovery: カクヨムDL中断時の復帰策 - episode_mappingテーブルからエピソードスタブを再構築するバナーをEpisodeListScreenに追加（エラー修正で本文を再取得）
 
 ### Performance Optimizations
 

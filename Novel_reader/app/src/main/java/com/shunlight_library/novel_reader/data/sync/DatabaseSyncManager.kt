@@ -143,13 +143,16 @@ class DatabaseSyncManager(private val context: Context) {
             } 
             
             // 小説説明の同期
-            syncNovelDescs(externalDb) 
-            
+            try { syncNovelDescs(externalDb) }
+            catch (e: Exception) { Log.e(TAG, "[Step1/3] 小説説明の同期に失敗", e); throw e }
+
             // エピソードの同期（設定を反映）
-            syncEpisodes(externalDb, dbSyncSettings.preserveExistingEpisodes) 
-            
+            try { syncEpisodes(externalDb, dbSyncSettings.preserveExistingEpisodes) }
+            catch (e: Exception) { Log.e(TAG, "[Step2/3] エピソードの同期に失敗", e); throw e }
+
             // 最後に読んだ記録の同期
-            syncLastReadNovels(externalDb) 
+            try { syncLastReadNovels(externalDb) }
+            catch (e: Exception) { Log.e(TAG, "[Step3/3] 読書履歴の同期に失敗", e); throw e }
             
             return true
         } catch (e: Exception) {
@@ -257,13 +260,17 @@ class DatabaseSyncManager(private val context: Context) {
                 // バッチサイズに達したら保存
                 if (novels.size >= batchSize) {
                     repository.insertNovels(novels)
+                    repository.insertURLs(urlEntities)
                     novels.clear()
+                    urlEntities.clear()
                 }
             }
 
             // 残りのデータを保存
             if (novels.isNotEmpty()) {
                 repository.insertNovels(novels)
+            }
+            if (urlEntities.isNotEmpty()) {
                 repository.insertURLs(urlEntities)
             }
 

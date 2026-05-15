@@ -6,6 +6,9 @@
 package com.shunlight_library.novel_reader
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.net.Uri
@@ -2256,15 +2259,39 @@ fun SettingsDeveloperScreen(onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = {
-                        scope.launch {
-                            errorLogStore.deleteErrorLog(log.id)
-                            errorLogs = errorLogStore.getAllErrorLogs()
-                        }
-                        selectedErrorLog = null
-                    }) { Text("削除") }
-                    TextButton(onClick = { selectedErrorLog = null }) { Text("閉じる") }
+                Column(horizontalAlignment = Alignment.End) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            val text = buildString {
+                                append("日時: ${dateFormat.format(java.util.Date(log.timestamp))}\n")
+                                append("小説名: ${log.novelTitle}\n")
+                                append("Nコード: ${log.ncode}\n")
+                                append("エピソード: ${log.episodeTitle ?: "第${log.episodeNo}話"}\n")
+                                append("種類: ${log.errorType}\n")
+                                append("メッセージ: ${log.errorMessage}\n")
+                                log.stackTrace?.let { append("スタックトレース:\n$it") }
+                            }
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("エラーログ", text))
+                            Toast.makeText(context, "クリップボードにコピーしました", Toast.LENGTH_SHORT).show()
+                        }) { Text("コピー") }
+                        TextButton(onClick = {
+                            val tag = "NovelReader_Dev"
+                            Log.e(tag, "[${log.errorType}] ${log.novelTitle} (${log.ncode}) - ${log.errorMessage}")
+                            log.stackTrace?.let { Log.e(tag, it) }
+                            Toast.makeText(context, "Logcatに出力しました", Toast.LENGTH_SHORT).show()
+                        }) { Text("Logcat") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            scope.launch {
+                                errorLogStore.deleteErrorLog(log.id)
+                                errorLogs = errorLogStore.getAllErrorLogs()
+                            }
+                            selectedErrorLog = null
+                        }) { Text("削除") }
+                        TextButton(onClick = { selectedErrorLog = null }) { Text("閉じる") }
+                    }
                 }
             }
         )
@@ -2426,6 +2453,33 @@ fun SettingsDeveloperScreen(onBack: () -> Unit) {
                         enabled = errorLogs.isNotEmpty(),
                         modifier = Modifier.weight(1f)
                     ) { Text("全削除", fontSize = 12.sp) }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val text = errorLogStore.formatErrorLogsForEmail(filteredLogs)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("エラーログ", text))
+                                Toast.makeText(context, "${filteredLogs.size}件をクリップボードにコピーしました", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = filteredLogs.isNotEmpty(),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("コピー", fontSize = 12.sp) }
+                    OutlinedButton(
+                        onClick = {
+                            val tag = "NovelReader_Dev"
+                            filteredLogs.forEach { log ->
+                                Log.e(tag, "[${log.errorType}] ${log.novelTitle} (${log.ncode}) ${log.episodeTitle ?: "第${log.episodeNo}話"} - ${log.errorMessage}")
+                                log.stackTrace?.let { Log.e(tag, it) }
+                            }
+                            Toast.makeText(context, "Logcatに${filteredLogs.size}件出力しました", Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = filteredLogs.isNotEmpty(),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Logcat送信", fontSize = 12.sp) }
                 }
             }
 

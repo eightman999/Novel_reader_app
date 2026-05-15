@@ -596,9 +596,10 @@ class UpdateService : Service() {
                     generalAllNoValue = episodeListWithoutBody.size
                     newUpdatedAt = updatedNovelDesc.updated_at
 
-                    // 小説情報を更新
+                    // 小説情報を更新（total_epは削除後に0にリセット）
                     val updatedNovel = novel.copy(
                         general_all_no = generalAllNoValue,
+                        total_ep = 0,
                         updated_at = newUpdatedAt,
                         title = updatedNovelDesc.title,
                         author = updatedNovelDesc.author,
@@ -614,24 +615,11 @@ class UpdateService : Service() {
                         return@launch
                     }
 
-                    // 既存のエピソードを取得
-                    val existingEpisodes = repository.getEpisodesByNcode(ncode).first()
-                    val existingEpisodeNos = existingEpisodes.map { it.episode_no }.toSet()
+                    // 既存エピソードとマッピングを全削除（再取得なので最初からやり直す）
+                    repository.deleteEpisodesByNcode(ncode)
 
-                    // 本文が空の既存エピソードを特定
-                    val emptyBodyEpisodeNos = existingEpisodes
-                        .filter { it.body.isEmpty() || it.body.startsWith("★HTMLページ読み込みエラー") }
-                        .map { it.episode_no }
-                        .toSet()
-
-                    // 新規エピソードのみを取得（既存エピソードは除外）
-                    val newEpisodes = episodeListWithoutBody.filter { it.episode_no !in existingEpisodeNos }
-
-                    // 本文が空の既存エピソードのみを取得（本文がある既存エピソードは除外）
-                    val emptyBodyEpisodes = episodeListWithoutBody.filter { it.episode_no in emptyBodyEpisodeNos }
-
-                    // 両方を結合（重複除外）
-                    val episodesToDownload = (newEpisodes + emptyBodyEpisodes).distinctBy { it.episode_no }
+                    // 全エピソードを取得対象とする
+                    val episodesToDownload = episodeListWithoutBody
 
                     if (episodesToDownload.isEmpty()) {
                         updateComplete(true, "ダウンロードするエピソードがありません")
@@ -699,31 +687,25 @@ class UpdateService : Service() {
                         return@launch
                     }
 
-                    // 小説のtotal_ep値を更新
-                    if (successCount > 0) {
-                        val updatedNovelAfterDownload = novel.copy(
-                            total_ep = novel.total_ep + successCount,
-                            general_all_no = generalAllNoValue,
-                            updated_at = newUpdatedAt
-                        )
-                        repository.updateNovel(updatedNovelAfterDownload)
-
-                        // マッピング情報も保存（カクヨム用）
-                        if (mappings.isNotEmpty()) {
-                            val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
-                                com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
-                                    ncode = ncode,
-                                    episode_no = episodeNo,
-                                    kakuyomu_episode_id = kakuyomuId
-                                )
-                            }
-                            repository.insertEpisodeMappings(mappingEntities)
+                    // マッピング情報を保存（カクヨム用）
+                    if (mappings.isNotEmpty()) {
+                        val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                            com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                ncode = ncode,
+                                episode_no = episodeNo,
+                                kakuyomu_episode_id = kakuyomuId
+                            )
                         }
+                        repository.insertEpisodeMappings(mappingEntities)
+                    }
 
-                        // 更新キューから削除（全エピソードダウンロード完了時）
-                        if (updatedNovelAfterDownload.total_ep >= generalAllNoValue) {
-                            repository.deleteUpdateQueueByNcode(ncode)
-                        }
+                    // 小説のtotal_ep値を更新（再取得なのでsuccessCountがそのままtotal_ep）
+                    val updatedNovelAfterDownload = updatedNovel.copy(total_ep = successCount)
+                    repository.updateNovel(updatedNovelAfterDownload)
+
+                    // 全話完了なら更新キューから削除
+                    if (successCount >= generalAllNoValue) {
+                        repository.deleteUpdateQueueByNcode(ncode)
                     }
 
                     updateComplete(true, "完了: 成功${successCount}件")
@@ -741,12 +723,16 @@ class UpdateService : Service() {
                     newUpdatedAt = info?.updatedAt ?: novel.updated_at
                     val updatedNovel = novel.copy(
                         general_all_no = generalAllNoValue,
+                        total_ep = 0,
                         updated_at = newUpdatedAt,
                         userid = novel.userid ?: info?.userid,
                         noveltype = novel.noveltype ?: info?.noveltype,
                         length = novel.length ?: info?.length
                     )
                     repository.updateNovel(updatedNovel)
+
+                    // 既存エピソードを全削除（再取得なので最初からやり直す）
+                    repository.deleteEpisodesByNcode(ncode)
                 }
 
                 if (!isRunning || session.isCancelled()) {
@@ -760,9 +746,8 @@ class UpdateService : Service() {
                 var successCount = 0
                 var failCount = 0
 
-                // Get episodes to download
-                val startEpisode = novel.total_ep + 1
-                val episodesToDownload = (startEpisode..generalAllNoValue).toList()
+                // 全話を1話から再取得
+                val episodesToDownload = (1..generalAllNoValue).toList()
 
                 if (episodesToDownload.isEmpty()) {
                     updateComplete(true, "ダウンロードするエピソードがありません")
@@ -802,17 +787,21 @@ class UpdateService : Service() {
                     return@launch
                 }
 
-                // Update novel total_ep value
+                // Update novel total_ep value（再取得なので実DBから再集計）
+                val updatedEpisodesAfterDownload = repository.getEpisodesByNcode(ncode).first()
+                val actualTotalEp = updatedEpisodesAfterDownload.mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: successCount
                 if (successCount > 0) {
-                    val updatedNovelAfterDownload = novel.copy(
-                        total_ep = novel.total_ep + successCount,
+                    val updatedNovelAfterDownload = repository.getNovelByNcode(ncode)?.copy(
+                        total_ep = actualTotalEp,
                         general_all_no = generalAllNoValue,
                         updated_at = newUpdatedAt
                     )
-                    repository.updateNovel(updatedNovelAfterDownload)
+                    if (updatedNovelAfterDownload != null) {
+                        repository.updateNovel(updatedNovelAfterDownload)
+                    }
 
                     // Remove from update queue if all episodes downloaded
-                    if (updatedNovelAfterDownload.total_ep >= generalAllNoValue) {
+                    if (actualTotalEp >= generalAllNoValue) {
                         repository.deleteUpdateQueueByNcode(ncode)
                     }
                 }

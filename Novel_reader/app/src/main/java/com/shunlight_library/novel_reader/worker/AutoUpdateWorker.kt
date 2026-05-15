@@ -82,8 +82,12 @@ class AutoUpdateWorker(
             // 通知チャンネルを作成
             createNotificationChannel()
 
-            // フォアグラウンドサービスとして実行（バックグラウンドでも継続）
-            setForeground(createForegroundInfo("小説更新確認中..."))
+            // フォアグラウンドサービスとして実行（Android 12+ではバックグラウンド起動時に失敗する場合があるため try-catch）
+            try {
+                setForeground(createForegroundInfo("小説更新確認中..."))
+            } catch (e: Exception) {
+                Log.w(TAG, "フォアグラウンドサービス開始に失敗（バックグラウンドで継続）: ${e.message}")
+            }
             AppLogger.logNotification("自動更新開始", "小説更新確認中...")
 
             // 更新確認処理

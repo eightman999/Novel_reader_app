@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.ui.components.VjapVerticalTextView
 import com.shunlight_library.novel_reader.utils.FontUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +83,9 @@ fun EpisodeViewScreen(
     var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
     var isCustomFont by remember { mutableStateOf(false) }
     var customFontPath by remember { mutableStateOf("") }
+
+    // vjap縦書き用: ページ変更で更新される読書進捗率
+    var vjapReadingRate by remember { mutableStateOf(0f) }
 
     // 開発者モード関連の状態
     var titleTapCount by remember { mutableStateOf(0) }
@@ -182,34 +186,26 @@ fun EpisodeViewScreen(
         }
     }
     fun saveReadingRate() {
-        webView?.evaluateJavascript("""
-        (function() {
-            var isVertical = getComputedStyle(document.body).writingMode === 'vertical-rl';
-            var maxScroll;
-            var currentScroll;
-            var scrollRatio;
-
-            if (isVertical) {
-                // 縦書き(vertical-rl): 右端が先頭、左端が末尾
-                // scrollX=maxScroll が先頭(rate=0)、scrollX=0 が末尾(rate=1)
-                maxScroll = document.body.scrollWidth - window.innerWidth;
-                currentScroll = window.scrollX;
-                if (maxScroll <= 0) return 0;
-                scrollRatio = 1.0 - (currentScroll / maxScroll);
-            } else {
-                // 横書き: 縦スクロール
-                maxScroll = document.body.scrollHeight - window.innerHeight;
-                currentScroll = window.scrollY;
-                if (maxScroll <= 0) return 0;
-                scrollRatio = currentScroll / maxScroll;
-            }
-
-            return Math.max(0, Math.min(1, scrollRatio));
-        })();
-    """.trimIndent()) { result ->
-            val readingRate = result.toFloatOrNull() ?: 0f
+        if (textOrientation == "Vertical") {
+            // vjap縦書きモード: ページベースの進捗率を直接保存
             scope.launch(Dispatchers.IO) {
-                repository.updateReadingRate(ncode, episodeNo, readingRate)
+                repository.updateReadingRate(ncode, episodeNo, vjapReadingRate)
+            }
+        } else {
+            // WebView横書きモード: JavaScriptでスクロール位置を取得
+            webView?.evaluateJavascript("""
+            (function() {
+                var maxScroll = document.body.scrollHeight - window.innerHeight;
+                var currentScroll = window.scrollY;
+                if (maxScroll <= 0) return 0;
+                var scrollRatio = currentScroll / maxScroll;
+                return Math.max(0, Math.min(1, scrollRatio));
+            })();
+        """.trimIndent()) { result ->
+                val readingRate = result.toFloatOrNull() ?: 0f
+                scope.launch(Dispatchers.IO) {
+                    repository.updateReadingRate(ncode, episodeNo, readingRate)
+                }
             }
         }
     }
@@ -651,8 +647,24 @@ fun EpisodeViewScreen(
                             )
                             HorizontalDivider()
                         }
+                    } else if (textOrientation == "Vertical") {
+                        // 縦書きモード: vjapライブラリで描画
+                        val bgColor = if (useDefaultBackground) "#FFFFFF" else backgroundColor
+                        key(ncode, episodeNo) {
+                            VjapVerticalTextView(
+                                htmlContent = episode!!.body,
+                                episodeTitle = episode!!.e_title ?: "第${episodeNo}話",
+                                fontSize = fontSize,
+                                fontColor = fontColor,
+                                backgroundColor = bgColor,
+                                customFontPath = if (isCustomFont && customFontPath.isNotEmpty()) customFontPath else null,
+                                savedReadingRate = episode!!.reading_rate,
+                                onReadingRateChanged = { rate -> vjapReadingRate = rate },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     } else {
-                        // 通常モード: WebViewでHTML表示
+                        // 横書きモード: WebViewでHTML表示
                         EnhancedHtmlRubyWebView(
                             htmlContent = episode!!.body,
                             fontSize = fontSize,
@@ -666,11 +678,7 @@ fun EpisodeViewScreen(
                             ncode = ncode,
                             episodeNo = episodeNo,
                             savedReadingRate = episode!!.reading_rate,
-                            modifier = if (textOrientation == "Vertical") {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier.padding(bottom = 32.dp)
-                            },
+                            modifier = Modifier.padding(bottom = 32.dp),
                             onWebViewCreated = { webView = it }
                         )
                     }

@@ -46,9 +46,16 @@ class DatabaseExportManager(private val context: Context) {
                 // データベースのWALをチェックポイントして最新状態を反映
                 val supportDb = NovelDatabase.getDatabase(context).openHelper.writableDatabase
                 try {
-                    supportDb.query("PRAGMA wal_checkpoint(FULL)").use { }
+                    supportDb.query("PRAGMA wal_checkpoint(FULL)").use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val busy = cursor.getInt(0)
+                            if (busy > 0) {
+                                Log.w(TAG, "WALチェックポイントが完全に完了していません (busy=$busy)")
+                            }
+                        }
+                    }
                 } catch (e: Exception) {
-                    Log.w(TAG, "walチェックポイント中にエラー", e)
+                    Log.e(TAG, "walチェックポイント中にエラー", e)
                 }
 
                 val databaseFile = context.getDatabasePath(DATABASE_NAME)

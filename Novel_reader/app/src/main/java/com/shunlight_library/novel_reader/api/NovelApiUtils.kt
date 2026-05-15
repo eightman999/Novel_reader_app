@@ -420,14 +420,14 @@ object NovelApiUtils {
                     if (yamlData.size >= 2) {
                         val novelData = yamlData[1]
 
-                        // 必要なデータを取得
-                        val title = novelData["title"] as String
-                        val author = novelData["writer"] as String
+                        // 必要なデータを取得（SnakeYAMLが数値を Integer で返す場合があるため toString() を使用）
+                        val title = novelData["title"]?.toString() ?: ""
+                        val author = novelData["writer"]?.toString() ?: ""
                         val synopsis = novelData["story"] as? String ?: ""
-                        val generalAllNo = novelData["general_all_no"] as Int
+                        val generalAllNo = (novelData["general_all_no"] as? Number)?.toInt() ?: 0
                         val userid = novelData["userid"]?.toString()
-                        val noveltype = (novelData["noveltype"] as? Int)
-                        val length = (novelData["length"] as? Int)
+                        val noveltype = (novelData["noveltype"] as? Number)?.toInt()
+                        val length = (novelData["length"] as? Number)?.toInt()
                         val keyword = novelData["keyword"] as? String ?: ""
                         // end: 1=連載中, 2=完結済み (APIフィールド)
                         val endApiValue = (novelData["end"] as? Int) ?: 0

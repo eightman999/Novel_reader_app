@@ -325,6 +325,10 @@ class NovelRepository(
         return episodeMappingDao.getEpisodeNo(ncode, kakuyomuEpisodeId)
     }
 
+    suspend fun getEpisodeMappings(ncode: String): List<EpisodeMappingEntity> {
+        return episodeMappingDao.getMappingsByNcode(ncode)
+    }
+
     // LastReadNovel関連メソッド
     val allLastReadNovels: Flow<List<LastReadNovelEntity>> = lastReadNovelDao.getAllLastReadNovels()
 
