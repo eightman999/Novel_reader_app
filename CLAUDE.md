@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-05-15)
-- **Version**: 2.0.5 (versionCode: 205)
+### Current State (2026-06-11)
+- **Version**: 2.0.6 (versionCode: 206)
 - **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -347,6 +347,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Error fix options: 欠落修正にオプションダイアログ追加（期間・短編除外・完結除外・媒体・挿絵エラー検知）
 - Download status screen: ダウンロード状況画面にフィルターチップと一括削除ボタンを追加
 - ToC recovery: カクヨムDL中断時の復帰策 - episode_mappingテーブルからエピソードスタブを再構築するバナーをEpisodeListScreenに追加（エラー修正で本文を再取得）
+- Auto ruby conversion toggle: 「漢字（よみがな）」形式を自動でルビ変換するON/OFF設定（設定画面・DataStore永続化、横書きWebView表示に適用。既存の壊れた<ruby>タグ修正は常時適用）
 
 ### Performance Optimizations
 
