@@ -1353,15 +1353,29 @@ class UpdateService : Service() {
                     successCount += successForNovel
                     failCount += failForNovel
 
-                    // Update novel info
-                    val updatedNovel = novel.copy(
-                        total_ep = endEpisode,
-                        general_all_no = endEpisode
-                    )
-                    repository.updateNovel(updatedNovel)
-
-                    // Remove from update queue
-                    repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                    if (failForNovel == 0) {
+                        // 全話成功: total_ep を確定しキューから削除
+                        val updatedNovel = novel.copy(
+                            total_ep = endEpisode,
+                            general_all_no = endEpisode
+                        )
+                        repository.updateNovel(updatedNovel)
+                        repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                    } else {
+                        // 一部失敗: 実際に保存された最大話数を total_ep に反映し、
+                        // 末尾まで届いていない場合はキューを残して次回リトライ可能にする
+                        val maxSavedEp = repository.getEpisodesByNcode(novel.ncode).first()
+                            .mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: novel.total_ep
+                        repository.updateNovel(novel.copy(
+                            total_ep = maxSavedEp,
+                            general_all_no = endEpisode
+                        ))
+                        if (maxSavedEp >= endEpisode) {
+                            // 末尾まで保存済み（途中の欠番はエラー修正で再取得可能）
+                            repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                        }
+                        Log.w(TAG, "一括更新で${failForNovel}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
+                    }
                 }
 
                 val message = if (skippedNovels.isEmpty()) {

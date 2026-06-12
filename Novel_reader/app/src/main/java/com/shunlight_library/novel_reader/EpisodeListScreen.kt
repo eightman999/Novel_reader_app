@@ -645,14 +645,21 @@ fun EpisodeListScreen(
                     val isKakuyomu = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)
                     
                     if (isKakuyomu) {
-                        // カクヨムの場合は一括取得（マッピング情報付き）
+                        // カクヨムの場合はストリーミング方式（1話取得→保存）で再取得
                         updateMessage = "カクヨムからエピソードを取得中..."
                         val adapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
                         val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                        // マッピング情報を含めて取得（改善版メソッド使用）
-                        val result = adapter.fetchNovelWithEpisodesIncludingMappings(workId)
-                        val episodes = result.episodes
+                        // repository を渡して1話ずつ保存（全話メモリ蓄積を回避）
+                        val result = adapter.fetchNovelWithEpisodesIncludingMappings(
+                            novelId = workId,
+                            repository = repository,
+                            onProgress = { current, total ->
+                                updateProgress = if (total > 0) current.toFloat() / total else 0f
+                                updateMessage = "エピソードを取得中... ($current/$total)"
+                                successCount = current
+                            }
+                        )
                         val mappings = result.episodeMappings
 
                         if (session.isCancelled()) {
@@ -660,17 +667,24 @@ fun EpisodeListScreen(
                             return@launch
                         }
 
-                        // エピソードとマッピングを一括保存（改善版メソッド使用）
-                        updateMessage = "エピソードとマッピングを保存中... (${episodes.size}話)"
-                        withContext(Dispatchers.IO) {
-                            repository.insertKakuyomuEpisodesWithMappings(episodes, mappings)
+                        // マッピング情報を保存（エピソード本体は取得中に1話ずつ保存済み）
+                        if (mappings.isNotEmpty()) {
+                            withContext(Dispatchers.IO) {
+                                val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                                    com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                        ncode = ncode,
+                                        episode_no = episodeNo,
+                                        kakuyomu_episode_id = kakuyomuId
+                                    )
+                                }
+                                repository.insertEpisodeMappings(mappingEntities)
+                            }
                         }
 
-                        successCount = episodes.size
                         updateProgress = 1.0f
-                        updateMessage = "保存完了: ${episodes.size}話"
+                        updateMessage = "保存完了: ${successCount}話"
 
-                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード一括保存完了: ${successCount}話, マッピング: ${mappings.size}件")
+                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード保存完了: ${successCount}話, マッピング: ${mappings.size}件")
                     } else {
                         // 小説家になろうの場合は逐次取得
                         // エピソード番号のリスト

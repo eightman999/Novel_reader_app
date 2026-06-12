@@ -304,10 +304,6 @@ class AutoUpdateWorker(
                                 totalSuccessEpisodes += downloadInfo.successEpisodes.size
                                 totalFailedEpisodes += downloadInfo.failedEpisodes.size
 
-                                // 小説のtotal_ep値を更新
-                                val updatedNovel = novel.copy(total_ep = queueItem.general_all_no)
-                                repository.updateNovel(updatedNovel)
-
                                 // ダウンロードしたエピソードをエラーログに保存（失敗のみ）
                                 downloadInfo.failedEpisodes.forEach { failedEpisode ->
                                     errorLogStore.addErrorLog(
@@ -325,8 +321,23 @@ class AutoUpdateWorker(
                                     )
                                 }
 
-                                // 全エピソードダウンロード完了時は更新キューから削除
-                                repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                if (downloadInfo.failedEpisodes.isEmpty()) {
+                                    // 全話成功時のみ total_ep を確定し更新キューから削除
+                                    val updatedNovel = novel.copy(total_ep = queueItem.general_all_no)
+                                    repository.updateNovel(updatedNovel)
+                                    repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                } else {
+                                    // 一部失敗: 実際に保存された最大話数を total_ep に反映し、
+                                    // キューを残して次回の更新確認でリトライ可能にする
+                                    val maxSavedEp = repository.getEpisodesByNcode(novel.ncode).first()
+                                        .mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: novel.total_ep
+                                    repository.updateNovel(novel.copy(total_ep = maxSavedEp))
+                                    if (maxSavedEp >= queueItem.general_all_no) {
+                                        // 末尾まで保存済み（途中の欠番はエラー修正で再取得可能）
+                                        repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                    }
+                                    Log.w(TAG, "自動DLで${downloadInfo.failedEpisodes.size}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
+                                }
                             }
                         } finally {
                             NovelUpdateCoordinator.finishUpdate(session)

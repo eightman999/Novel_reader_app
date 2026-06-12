@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
@@ -286,10 +287,12 @@ fun UpdateInfoScreen(
 
                                     val generalAllNoValue: Int
                                     if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
-                                        val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU)
+                                        // 軽量サマリー取得（全話本文DLせずに話数とメタデータのみ確認）
+                                        val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as KakuyomuAdapter
                                         val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
-                                        val (updatedNovelDesc, allEpisodes) = adapter.fetchNovelWithEpisodes(workId)
-                                        generalAllNoValue = allEpisodes.size
+                                        val summary = adapter.fetchUpdateSummary(workId)
+                                        generalAllNoValue = summary.latestEpisodeCount
+                                        val updatedNovelDesc = summary.novelDesc
                                         val updatedNovel = novel.copy(
                                             general_all_no = generalAllNoValue,
                                             updated_at = updatedNovelDesc.updated_at,
