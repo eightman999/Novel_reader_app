@@ -67,6 +67,14 @@ object RegistrationQueueManager {
     fun startMonitoring() {
         AppLogger.d(TAG, "キュー監視を開始")
         monitoringJob = scope.launch {
+            // 起動時に STATUS_PROCESSING 残骸をリセット（プロセス強制終了で残ったもの）
+            try {
+                val reset = repository.resetStuckProcessingQueues()
+                if (reset > 0) AppLogger.w(TAG, "STATUS_PROCESSING の残骸 ${reset} 件を PENDING にリセットしました")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "PROCESSING リセット失敗", e)
+            }
+
             while (true) {
                 try {
                     processNextQueue()
@@ -582,7 +590,8 @@ object RegistrationQueueManager {
     private suspend fun updateQueueProgress(id: Long, currentEpisode: Int, totalEpisodes: Int) {
         repository.updateRegistrationQueueProgress(id, currentEpisode)
         if (totalEpisodes > 0) {
-            repository.updateRegistrationQueueNovelInfo(id, "", totalEpisodes)
+            // title は変更しない（空文字で上書きするとDL状況画面が空欄になる）
+            repository.updateRegistrationQueueTotalEpisodes(id, totalEpisodes)
         }
     }
 

@@ -1037,6 +1037,14 @@ class NovelRepository(
         registrationQueueDao.updateNovelInfo(id, title, totalEpisodes)
     }
 
+    suspend fun updateRegistrationQueueTotalEpisodes(id: Long, totalEpisodes: Int) {
+        registrationQueueDao.updateTotalEpisodes(id, totalEpisodes)
+    }
+
+    suspend fun resetStuckProcessingQueues(): Int {
+        return registrationQueueDao.resetStuckProcessingToP()
+    }
+
     suspend fun cancelRegistrationQueue(id: Long) {
         val queue = registrationQueueDao.getById(id)
         if (queue != null && queue.status == RegistrationQueueEntity.STATUS_PENDING) {

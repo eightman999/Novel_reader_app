@@ -858,7 +858,9 @@ fun UpdateInfoScreen(
                                                                 val adapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                                                                 val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
-                                                                // カクヨムのエピソード一覧再取得フラグ（小説ごとに1回のみ再取得）
+                                                                // 全話を事前に1回だけ取得してMapに（ループ内での都度全話ロードを防ぐ）
+                                                                var episodeMap = repository.getEpisodesByNcode(novel.ncode).first()
+                                                                    .associateBy { it.episode_no }
                                                                 var mappingRefreshed = false
 
                                                                 for (episodeNo in episodesList) {
@@ -871,9 +873,7 @@ fun UpdateInfoScreen(
                                                                     syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
 
                                                                     try {
-                                                                        // データベースから既存のエピソード情報を取得（メタデータ取得時に保存されている）
-                                                                        var existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
-                                                                        var existingEpisode = existingEpisodes.find { it.episode_no == episodeNoStr }
+                                                                        var existingEpisode = episodeMap[episodeNoStr]
 
                                                                         // エピソード情報が見つからない場合、mapping情報が古い可能性があるため再取得
                                                                         if (existingEpisode == null && !mappingRefreshed) {
@@ -908,9 +908,10 @@ fun UpdateInfoScreen(
                                                                                 // 再取得フラグを立てる（小説ごとに1回のみ）
                                                                                 mappingRefreshed = true
 
-                                                                                // 再度エピソード情報を取得
-                                                                                existingEpisodes = repository.getEpisodesByNcode(novel.ncode).first()
-                                                                                existingEpisode = existingEpisodes.find { it.episode_no == episodeNoStr }
+                                                                                // Mapを再構築して以降のループで使用
+                                                                                episodeMap = repository.getEpisodesByNcode(novel.ncode).first()
+                                                                                    .associateBy { it.episode_no }
+                                                                                existingEpisode = episodeMap[episodeNoStr]
 
                                                                                 syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
                                                                             } catch (refreshError: Exception) {
