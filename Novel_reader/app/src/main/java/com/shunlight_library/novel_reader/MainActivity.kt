@@ -343,7 +343,7 @@ fun NovelReaderApp(
 
         is Screen.NovelList -> {
             NovelListScreen(
-                onBack = { navigationManager.navigateTo(Screen.Main) },
+                onBack = { navigationManager.navigateBack() },
                 onNovelClick = { ncode ->
                     navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
                 },
@@ -355,7 +355,7 @@ fun NovelReaderApp(
         EpisodeListScreen(
             ncode = currentScreen.ncode,
             onBack = {
-                navigationManager.navigateTo(Screen.NovelList())
+                navigationManager.navigateBack()
             },
             onEpisodeClick = { ncode, episodeNo ->
                 navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo, currentScreen))

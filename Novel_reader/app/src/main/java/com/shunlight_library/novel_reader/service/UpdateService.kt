@@ -20,8 +20,10 @@ import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.data.entity.UpdateQueueEntity
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import kotlinx.coroutines.*
@@ -1240,47 +1242,98 @@ class UpdateService : Service() {
                     var cancelledForNovel = false
 
                     try {
-                        for (episodeNo in episodesToDownload) {
-                            if (!isRunning) {
-                                updateComplete(false, "更新処理が中断されました")
-                                return@launch
+                        if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                            // カクヨム: mapping を更新してから本文取得
+                            val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(
+                                NovelSiteAdapter.SITE_TYPE_KAKUYOMU
+                            ) as KakuyomuAdapter
+                            val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
+
+                            val (_, episodeList) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
+                            val mappings = kakuyomuAdapter.getCachedMappings()
+
+                            if (mappings.isNotEmpty()) {
+                                val mappingEntities = mappings.map { (epNo, kakuyomuId) ->
+                                    EpisodeMappingEntity(novel.ncode, epNo, kakuyomuId)
+                                }
+                                repository.insertEpisodeMappings(mappingEntities)
                             }
 
-                            if (session.isCancelled()) {
-                                cancelledForNovel = true
-                                break
+                            val episodeTitles = episodeList.associate {
+                                it.episode_no.toIntOrNull() to (it.e_title ?: "第${it.episode_no}話")
                             }
 
-                            val episode = NovelApiUtils.fetchEpisodeWithRetry(
-                                novel.ncode,
-                                episodeNo.toString(),
-                                novel.rating == 1,
-                                novel.noveltype
-                            )
+                            for (episodeNo in episodesToDownload) {
+                                if (!isRunning) { updateComplete(false, "更新処理が中断されました"); return@launch }
+                                if (session.isCancelled()) { cancelledForNovel = true; break }
 
-                            if (episode != null) {
-                                repository.insertEpisode(episode)
-                                successForNovel++
-                            } else {
-                                failForNovel++
+                                val kakuyomuId = mappings[episodeNo]
+                                if (kakuyomuId == null) { failForNovel++; processedForNovel++; processedEpisodes++; continue }
+
+                                val body = kakuyomuAdapter.fetchEpisodeContent(workId, kakuyomuId)
+                                if (body.isNotEmpty() && !body.startsWith("★HTMLページ読み込みエラー")) {
+                                    val ep = com.shunlight_library.novel_reader.data.entity.EpisodeEntity(
+                                        ncode = novel.ncode,
+                                        episode_no = episodeNo.toString(),
+                                        e_title = episodeTitles[episodeNo] ?: "第${episodeNo}話",
+                                        body = body,
+                                        update_time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                                    )
+                                    repository.insertEpisode(ep)
+                                    successForNovel++
+                                } else {
+                                    failForNovel++
+                                }
+                                processedForNovel++
+                                processedEpisodes++
+
+                                val denom = maxOf(totalEpisodes, processedEpisodes, 1)
+                                updateProgress(0.3f + (0.7f * processedEpisodes.toFloat() / denom), "エピソードをダウンロード中... ($processedEpisodes/$denom)")
+                                delay(500)
                             }
+                        } else {
+                            // なろう（Syosetu）
+                            for (episodeNo in episodesToDownload) {
+                                if (!isRunning) {
+                                    updateComplete(false, "更新処理が中断されました")
+                                    return@launch
+                                }
 
-                            processedForNovel++
-                            processedEpisodes++
+                                if (session.isCancelled()) {
+                                    cancelledForNovel = true
+                                    break
+                                }
 
-                            val denominator = if (totalEpisodes <= 0) {
-                                if (processedEpisodes == 0) 1 else processedEpisodes
-                            } else {
-                                maxOf(totalEpisodes, processedEpisodes)
+                                val episode = NovelApiUtils.fetchEpisodeWithRetry(
+                                    novel.ncode,
+                                    episodeNo.toString(),
+                                    novel.rating == 1,
+                                    novel.noveltype
+                                )
+
+                                if (episode != null) {
+                                    repository.insertEpisode(episode)
+                                    successForNovel++
+                                } else {
+                                    failForNovel++
+                                }
+
+                                processedForNovel++
+                                processedEpisodes++
+
+                                val denominator = if (totalEpisodes <= 0) {
+                                    if (processedEpisodes == 0) 1 else processedEpisodes
+                                } else {
+                                    maxOf(totalEpisodes, processedEpisodes)
+                                }
+                                val fraction = processedEpisodes.toFloat() / denominator.toFloat()
+                                updateProgress(
+                                    0.3f + (0.7f * fraction),
+                                    "エピソードをダウンロード中... ($processedEpisodes/$denominator)"
+                                )
+
+                                delay(200)
                             }
-                            val fraction = processedEpisodes.toFloat() / denominator.toFloat()
-                            updateProgress(
-                                0.3f + (0.7f * fraction),
-                                "エピソードをダウンロード中... ($processedEpisodes/$denominator)"
-                            )
-
-                            // Avoid server overload
-                            delay(200)
                         }
                     } finally {
                         NovelUpdateCoordinator.finishUpdate(session)

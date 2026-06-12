@@ -35,6 +35,7 @@ import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
@@ -498,6 +499,23 @@ class AutoUpdateWorker(
         val mappings = kakuyomuAdapter.getCachedMappings()
         val episodeTitles = episodeListFromWeb.associate {
             it.episode_no.toIntOrNull() to (it.e_title ?: "第${it.episode_no}話")
+        }
+
+        // episode_mapping テーブルに最新マッピングを保存（CLAUDE.md ルール14）
+        if (mappings.isNotEmpty()) {
+            try {
+                val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                    EpisodeMappingEntity(
+                        ncode = novel.ncode,
+                        episode_no = episodeNo,
+                        kakuyomu_episode_id = kakuyomuId
+                    )
+                }
+                repository.insertEpisodeMappings(mappingEntities)
+                Log.d(TAG, "episode_mapping 保存完了: ${novel.ncode}, ${mappingEntities.size}件")
+            } catch (e: Exception) {
+                Log.w(TAG, "episode_mapping 保存失敗: ${novel.ncode}", e)
+            }
         }
 
         episodeNos.forEach { episodeNo ->
