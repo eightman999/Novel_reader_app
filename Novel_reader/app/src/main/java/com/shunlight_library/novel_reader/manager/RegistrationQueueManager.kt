@@ -13,6 +13,7 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
 import com.shunlight_library.novel_reader.data.entity.TempEpisodeEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
+import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,8 +98,15 @@ object RegistrationQueueManager {
         return withContext(Dispatchers.IO) {
             try {
                 // URLからアダプターと小説IDを取得
-                val (adapter, novelId) = NovelSiteAdapterFactory.getAdapterByUrl(url)
+                val (adapter, rawNovelId) = NovelSiteAdapterFactory.getAdapterByUrl(url)
                     ?: throw Exception("サポート対象外のURLです: $url")
+
+                // カクヨムは疑似Ncodeに変換（workId数値列のままだと temp→main のマージが失敗する）
+                val novelId = if (adapter.getSiteType() == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    PseudoNcodeGenerator.generateKakuyomuNcode(rawNovelId)
+                } else {
+                    rawNovelId
+                }
 
                 // 既に登録済みの場合
                 val existingNovel = repository.getNovelByNcode(novelId)

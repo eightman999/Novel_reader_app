@@ -28,6 +28,14 @@ class AutoUpdateScheduler(private val context: Context) {
      * @param timeString 時刻文字列 (例: "03:00")
      */
     fun scheduleAutoUpdate(enabled: Boolean, timeString: String) {
+        scheduleAutoUpdateInternal(enabled, timeString, ExistingPeriodicWorkPolicy.KEEP)
+    }
+
+    private fun scheduleAutoUpdateInternal(
+        enabled: Boolean,
+        timeString: String,
+        existingWorkPolicy: ExistingPeriodicWorkPolicy
+    ) {
         if (!enabled) {
             cancelAutoUpdate()
             return
@@ -36,8 +44,8 @@ class AutoUpdateScheduler(private val context: Context) {
         try {
             val (hour, minute) = parseTimeString(timeString)
             val delay = calculateInitialDelay(hour, minute)
-            
-            Log.d(TAG, "自動更新スケジュール設定: ${timeString} (${delay}分後に開始)")
+
+            Log.d(TAG, "自動更新スケジュール設定: ${timeString} (${delay}分後に開始, policy=$existingWorkPolicy)")
 
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -52,7 +60,7 @@ class AutoUpdateScheduler(private val context: Context) {
 
             workManager.enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.REPLACE,
+                existingWorkPolicy,
                 workRequest
             )
 
@@ -129,11 +137,8 @@ class AutoUpdateScheduler(private val context: Context) {
      * @param timeString 時刻文字列 (例: "03:00")
      */
     fun resetSchedule(enabled: Boolean, timeString: String) {
-        // 既存のワークをキャンセル
-        cancelAutoUpdate()
-
-        // 再スケジュール
-        scheduleAutoUpdate(enabled, timeString)
+        // 設定変更時は REPLACE で強制的に再スケジュール（起動時の KEEP とは区別）
+        scheduleAutoUpdateInternal(enabled, timeString, ExistingPeriodicWorkPolicy.REPLACE)
 
         Log.d(TAG, "スケジュールをリセットしました")
     }

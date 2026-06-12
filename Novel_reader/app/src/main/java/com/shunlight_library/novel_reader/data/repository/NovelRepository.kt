@@ -163,27 +163,33 @@ class NovelRepository(
             if (episodes.isEmpty()) {
                 return@withContext
             }
-            
+
             if (preserveExisting) {
-                val ncode = episodes.first().ncode
-                val existingEpisodes = episodeDao.getEpisodesByNcode(ncode).first()
-                val existingMap = existingEpisodes.associateBy { it.episode_no }
-                
-                val mergedEpisodes = episodes.map { newEpisode ->
-                    val existing = existingMap[newEpisode.episode_no]
-                    if (existing != null) {
-                        newEpisode.copy(
-                            body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
-                            is_read = existing.is_read,
-                            is_bookmark = existing.is_bookmark,
-                            reading_rate = existing.reading_rate
-                        )
-                    } else {
-                        newEpisode
+                // ncode 単位でグループ化して処理（複数 ncode をまたぐバッチでも既読情報が正しく保持される）
+                val grouped = episodes.groupBy { it.ncode }
+                val mergedAll = mutableListOf<EpisodeEntity>()
+
+                for ((ncode, group) in grouped) {
+                    val existingEpisodes = episodeDao.getEpisodesByNcode(ncode).first()
+                    val existingMap = existingEpisodes.associateBy { it.episode_no }
+
+                    val merged = group.map { newEpisode ->
+                        val existing = existingMap[newEpisode.episode_no]
+                        if (existing != null) {
+                            newEpisode.copy(
+                                body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
+                                is_read = existing.is_read,
+                                is_bookmark = existing.is_bookmark,
+                                reading_rate = existing.reading_rate
+                            )
+                        } else {
+                            newEpisode
+                        }
                     }
+                    mergedAll.addAll(merged)
                 }
-                
-                episodeDao.insertEpisodes(mergedEpisodes)
+
+                episodeDao.insertEpisodes(mergedAll)
             } else {
                 episodeDao.insertEpisodes(episodes)
             }

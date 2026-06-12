@@ -114,8 +114,9 @@ class UpdateService : Service() {
 
                 if (!isRunning) {
                     isRunning = true
-                    currentNcode = ncode
-                    updateType = requestedUpdateType
+
+                    // キューに追加してから処理を開始（空キューで即完了するバグを防ぐ）
+                    operationQueue.add(UpdateOperation(ncode, requestedUpdateType))
 
                     // 通知の作成
                     val notification = createNotification("更新処理を開始しています...")
@@ -132,7 +133,7 @@ class UpdateService : Service() {
                         startForeground(NOTIFICATION_ID, notification)
                     }
 
-                    // 最初のオペレーションを開始
+                    // キューから最初のオペレーションを取り出して実行
                     processNextOperation()
                 } else {
                     // 実行中の場合もキューに追加（次に処理される）

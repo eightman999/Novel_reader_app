@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.CancellationException
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
@@ -108,6 +109,9 @@ class AutoUpdateWorker(
 
             Log.d(TAG, "自動更新処理完了")
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkManager による正常キャンセル（REPLACE, 10分制限等）はエラー通知しない
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "自動更新処理中にエラーが発生", e)
             val errorMsg = e.message ?: "不明なエラー"
@@ -204,8 +208,8 @@ class AutoUpdateWorker(
                                         if (latestEpisodeCount > novel.total_ep) {
                                             updateQueueItem = UpdateQueueEntity(
                                                 ncode = novel.ncode,
-                                                total_ep = latestEpisodeCount,
-                                                general_all_no = novel.total_ep,
+                                                total_ep = novel.total_ep,
+                                                general_all_no = latestEpisodeCount,
                                                 update_time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
                                             )
 
@@ -293,14 +297,14 @@ class AutoUpdateWorker(
                                 return@forEach
                             }
 
-                            val downloadInfo = downloadEpisodesForNovel(novel, queueItem.general_all_no, queueItem.total_ep)
+                            val downloadInfo = downloadEpisodesForNovel(novel, queueItem.total_ep, queueItem.general_all_no)
                             if (downloadInfo != null) {
                                 downloadDetails.add(downloadInfo)
                                 totalSuccessEpisodes += downloadInfo.successEpisodes.size
                                 totalFailedEpisodes += downloadInfo.failedEpisodes.size
 
                                 // 小説のtotal_ep値を更新
-                                val updatedNovel = novel.copy(total_ep = queueItem.total_ep)
+                                val updatedNovel = novel.copy(total_ep = queueItem.general_all_no)
                                 repository.updateNovel(updatedNovel)
 
                                 // ダウンロードしたエピソードをエラーログに保存（失敗のみ）
