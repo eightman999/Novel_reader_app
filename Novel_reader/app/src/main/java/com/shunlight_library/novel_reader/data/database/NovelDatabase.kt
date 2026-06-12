@@ -302,7 +302,7 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         TempEpisodeEntity::class
     ],
     version = 16,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class NovelDatabase : RoomDatabase() {
     abstract fun episodeDao(): EpisodeDao

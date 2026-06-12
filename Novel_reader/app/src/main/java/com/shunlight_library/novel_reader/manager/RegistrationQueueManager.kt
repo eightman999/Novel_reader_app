@@ -18,6 +18,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -167,15 +168,17 @@ object RegistrationQueueManager {
      */
     suspend fun cancelQueue(id: Long) {
         withContext(Dispatchers.IO) {
+            // 先に処理中のジョブを停止して完了を待つ
+            // （削除後にジョブが temp_episodes へ書き込み、孤児データが残る競合を防ぐ）
+            processingQueues[id]?.cancelAndJoin()
+            processingQueues.remove(id)
+            pausedQueueIds.remove(id)
+
             val queue = repository.getRegistrationQueueById(id)
             if (queue != null) {
                 // 一時エピソードも削除
                 repository.deleteTempEpisodesByNcode(queue.ncode)
             }
-            // 処理中のジョブがあればキャンセル
-            processingQueues[id]?.cancel()
-            processingQueues.remove(id)
-            pausedQueueIds.remove(id)
             // キューを削除
             repository.deleteRegistrationQueue(id)
             AppLogger.d(TAG, "キューを削除: id=$id")
