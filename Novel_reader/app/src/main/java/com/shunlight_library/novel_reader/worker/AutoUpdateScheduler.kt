@@ -90,7 +90,7 @@ class AutoUpdateScheduler(private val context: Context) {
     }
 
     /**
-     * 手動で更新チェックを即座に実行
+     * 手動で更新チェックを即座に実行（二重起動を防ぐため enqueueUniqueWork を使用）
      */
     fun runManualUpdate() {
         val constraints = Constraints.Builder()
@@ -102,7 +102,11 @@ class AutoUpdateScheduler(private val context: Context) {
             .addTag("manual_update")
             .build()
 
-        workManager.enqueue(workRequest)
+        workManager.enqueueUniqueWork(
+            "manual_update_work",
+            ExistingWorkPolicy.KEEP,
+            workRequest
+        )
         Log.d(TAG, "手動更新を実行")
     }
 

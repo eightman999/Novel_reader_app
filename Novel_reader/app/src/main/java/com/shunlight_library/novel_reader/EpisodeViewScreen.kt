@@ -654,7 +654,7 @@ fun EpisodeViewScreen(
                         val bgColor = if (useDefaultBackground) "#FFFFFF" else backgroundColor
                         key(ncode, episodeNo) {
                             VjapVerticalTextView(
-                                htmlContent = episode!!.body,
+                                htmlContent = applyRubyFixes(episode!!.body, autoRubyEnabled),
                                 episodeTitle = episode!!.e_title ?: "第${episodeNo}話",
                                 fontSize = fontSize,
                                 fontColor = fontColor,
@@ -701,6 +701,23 @@ fun EpisodeViewScreen(
         }
     }
 
+}
+
+// Applies broken ruby-tag repair and optional auto-ruby conversion.
+// Extracted from EnhancedHtmlRubyWebView so the vertical path can use the same logic.
+private fun applyRubyFixes(html: String, autoRubyEnabled: Boolean): String {
+    var fixed = html.replace("<ruby>([^<]*?)</rb>\\(([^)]*?)\\)".toRegex()) {
+        "<ruby>${it.groupValues[1]}<rt>${it.groupValues[2]}</rt></ruby>"
+    }
+    fixed = fixed.replace("<ruby>([^<(]*?)\\(([^)]*?)\\)".toRegex()) {
+        "<ruby>${it.groupValues[1]}<rt>${it.groupValues[2]}</rt></ruby>"
+    }
+    if (autoRubyEnabled) {
+        fixed = fixed.replace("([^<>\\s]+?)\\(([^)]+?)\\)".toRegex()) {
+            "<ruby>${it.groupValues[1]}<rt>${it.groupValues[2]}</rt></ruby>"
+        }
+    }
+    return fixed
 }
 
 // Add these utility functions
@@ -764,33 +781,8 @@ fun EnhancedHtmlRubyWebView(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // HTMLを修正する関数
-    fun fixRubyTags(html: String): String {
-        // パターン1: <ruby>対象</rb>(ルビ) の修正（既存タグの修正なので常に適用）
-        var fixed = html.replace("<ruby>([^<]*?)</rb>\\(([^)]*?)\\)".toRegex()) {
-            val base = it.groupValues[1]
-            val ruby = it.groupValues[2]
-            "<ruby>$base<rt>$ruby</rt></ruby>"
-        }
-
-        // パターン2: <ruby>対象(ルビ) の修正（既存タグの修正なので常に適用）
-        fixed = fixed.replace("<ruby>([^<(]*?)\\(([^)]*?)\\)".toRegex()) {
-            val base = it.groupValues[1]
-            val ruby = it.groupValues[2]
-            "<ruby>$base<rt>$ruby</rt></ruby>"
-        }
-
-        // パターン3: 漢字（よみがな）→ <ruby> 自動変換（autoRubyEnabled がONのときのみ適用）
-        if (autoRubyEnabled) {
-            fixed = fixed.replace("([^<>\\s]+?)\\(([^)]+?)\\)".toRegex()) {
-                val base = it.groupValues[1]
-                val ruby = it.groupValues[2]
-                "<ruby>$base<rt>$ruby</rt></ruby>"
-            }
-        }
-
-        return fixed
-    }
+    // HTMLを修正する関数（共通実装は applyRubyFixes に委譲）
+    fun fixRubyTags(html: String): String = applyRubyFixes(html, autoRubyEnabled)
 
     // 背景色の設定（デフォルトの場合はテーマの色）
     val bgColor = backgroundColor ?: "#FFFFFF"
@@ -1009,6 +1001,10 @@ fun EnhancedHtmlRubyWebView(
                 WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
             }
             view.loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
+        },
+        onRelease = { view ->
+            view.stopLoading()
+            view.destroy()
         },
         modifier = modifier.fillMaxSize()
     )

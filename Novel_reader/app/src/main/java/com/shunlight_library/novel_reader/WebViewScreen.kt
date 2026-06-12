@@ -455,6 +455,10 @@ fun WebViewScreen(
                         currentLoadingUrl = url
                         currentUrl = url
                     }
+                },
+                onRelease = { view ->
+                    view.stopLoading()
+                    view.destroy()
                 }
             )
         }
