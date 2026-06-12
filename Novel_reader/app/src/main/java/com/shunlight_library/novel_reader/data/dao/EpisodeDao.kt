@@ -7,12 +7,24 @@ package com.shunlight_library.novel_reader.data.dao
 
 import androidx.room.*
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMeta
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE ncode = :ncode ORDER BY episode_no")
     fun getEpisodesByNcode(ncode: String): Flow<List<EpisodeEntity>>
+
+    /**
+     * 一覧表示用の軽量メタデータを取得（本文を含まない）
+     * 1000話超の作品でも本文をメモリにロードせずに一覧表示できる
+     */
+    @Query(
+        "SELECT ncode, episode_no, e_title, update_time, is_read, is_bookmark, reading_rate, " +
+                "CASE WHEN body = '' THEN 1 ELSE 0 END AS body_empty " +
+                "FROM episodes WHERE ncode = :ncode ORDER BY episode_no"
+    )
+    fun getEpisodeMetasByNcode(ncode: String): Flow<List<EpisodeMeta>>
 
     @Query("SELECT * FROM episodes WHERE ncode = :ncode AND episode_no = :episodeNo")
     suspend fun getEpisode(ncode: String, episodeNo: String): EpisodeEntity?

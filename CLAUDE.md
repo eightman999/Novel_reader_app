@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📖 Quick Reference
 
 ### Current State (2026-06-12)
-- **Version**: 2.0.13 (versionCode: 213)
+- **Version**: 2.0.14 (versionCode: 214)
 - **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -359,6 +359,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - DB transactions: deleteNovelWithRelations・insertKakuyomuEpisodesWithMappings・deleteEpisodesByNcode を withTransaction でアトミック化（NovelRepository に RoomDatabase 参照を追加）
 - Schema export: exportSchema=true + room.schemaLocation 設定（v16以降のマイグレーションテスト基盤）
 - Cancel race fix: RegistrationQueueManager.cancelQueue でジョブを cancelAndJoin してから一時データ削除（孤児 temp_episodes 防止）
+- Episode list lightweight loading: EpisodeMeta DTO（本文なし射影 + body_empty フラグ）と getEpisodeMetasByNcode により、EpisodeListScreen が全話の本文をメモリにロードせず一覧表示（1000話超でも軽量）
 
 ### Performance Optimizations
 

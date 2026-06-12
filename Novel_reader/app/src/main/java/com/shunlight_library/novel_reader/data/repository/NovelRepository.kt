@@ -129,6 +129,11 @@ class NovelRepository(
         return episodeDao.getEpisodesByNcode(ncode)
     }
 
+    /** 一覧表示用の軽量メタデータ（本文なし）を取得 */
+    fun getEpisodeMetasByNcode(ncode: String): Flow<List<com.shunlight_library.novel_reader.data.entity.EpisodeMeta>> {
+        return episodeDao.getEpisodeMetasByNcode(ncode)
+    }
+
     suspend fun getEpisodesByNcodeList(ncode: String): List<EpisodeEntity> {
         return episodeDao.getEpisodesByNcodeList(ncode)
     }
