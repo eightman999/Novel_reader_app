@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-06-11)
-- **Version**: 2.0.6 (versionCode: 206)
+### Current State (2026-06-12)
+- **Version**: 2.0.11 (versionCode: 211)
 - **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -348,6 +348,11 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Download status screen: ダウンロード状況画面にフィルターチップと一括削除ボタンを追加
 - ToC recovery: カクヨムDL中断時の復帰策 - episode_mappingテーブルからエピソードスタブを再構築するバナーをEpisodeListScreenに追加（エラー修正で本文を再取得）
 - Auto ruby conversion toggle: 「漢字（よみがな）」形式を自動でルビ変換するON/OFF設定（設定画面・DataStore永続化、横書きWebView表示に適用。既存の壊れた<ruby>タグ修正は常時適用）
+- Vertical mode ruby parity: applyRubyFixes() をトップレベル関数として抽出。縦書きモード（VjapVerticalTextView）にも破損タグ修復と autoRubyEnabled 変換を適用
+- WebView resource cleanup: AndroidView の onRelease コールバックで stopLoading/destroy を呼び出しネイティブリソースリークを防止（EpisodeViewScreen・WebViewScreen）
+- Read-status preservation on re-download: 全話再DL（UPDATE_TYPE_DOWNLOAD）時にエピソードを削除せず insertEpisode のマージで is_read/is_bookmark/reading_rate を保持
+- Revision date fix: fetchEpisodeRevisionsFromToc で改稿日時を span[title] 属性から正しく取得（従来は公開日時を誤取得）
+- Error-body prevention: カクヨムエピソード取得失敗時にエラー文字列 ★HTMLページ読み込みエラー を本文として保存しないよう修正
 
 ### Performance Optimizations
 
