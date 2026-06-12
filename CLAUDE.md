@@ -131,15 +131,15 @@ All Gradle commands should be run from the `Novel_reader/` directory.
 Novel_reader_app/
 ├── Novel_reader/                    # Main Android project
 │   ├── app/
-│   │   ├── build.gradle.kts        # App build config (version: 2.0.4, code: 204)
+│   │   ├── build.gradle.kts        # App build config (version: 2.0.14, code: 214)
 │   │   └── src/
 │   │       ├── main/java/com/shunlight_library/novel_reader/
 │   │       │   ├── *.kt            # Top-level screens and application
 │   │       │   ├── data/
 │   │       │   │   ├── adapter/    # Site-specific adapters (Syosetu, Kakuyomu)
-│   │       │   │   ├── dao/        # Room DAOs (7 total)
-│   │       │   │   ├── database/   # NovelDatabase.kt (v11)
-│   │       │   │   ├── entity/     # Room entities (7 total)
+│   │       │   │   ├── dao/        # Room DAOs (9 total)
+│   │       │   │   ├── database/   # NovelDatabase.kt (v16)
+│   │       │   │   ├── entity/     # Room entities (9 total)
 │   │       │   │   ├── repository/ # NovelRepository.kt
 │   │       │   │   └── sync/       # Database sync utilities
 │   │       │   ├── api/            # API utilities (NovelApiUtils)
@@ -172,10 +172,10 @@ Novel_reader_app/
 - `MainActivity.kt` - Single Activity with Compose, navigation, back handling
 - `AppInfo.kt` - Application information
 
-#### Data Layer (7 Entities, 7 DAOs, 1 Repository)
-- **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity
+#### Data Layer (9 Entities, 9 DAOs, 1 Repository)
+- **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity, RegistrationQueueEntity, TempEpisodeEntity
 - **DAOs**: Matching DAOs for each entity
-- **Database**: NovelDatabase.kt (v11 with full migration chain)
+- **Database**: NovelDatabase.kt (v16 with full migration chain)
 - **Repository**: NovelRepository.kt (single source of data access)
 
 #### Adapters (Multi-Site Support)
@@ -207,7 +207,7 @@ This is an Android novel reader application built with modern Android architectu
 ### Core Architecture
 - **Pattern**: Clean Architecture + MVVM + Repository Pattern + Adapter Pattern (for multi-site support)
 - **UI**: Jetpack Compose with single Activity pattern
-- **Database**: Room with migration support (currently v11)
+- **Database**: Room with migration support (currently v16)
 - **Navigation**: Custom NavigationManager with screen stack and scroll position preservation
 - **Background Work**: WorkManager for scheduled updates
 - **State**: Flow-based reactive programming
@@ -220,9 +220,9 @@ This is an Android novel reader application built with modern Android architectu
 - `MainActivity.kt` - Single Activity hosting all Compose screens
 
 #### Data Layer
-- `NovelDatabase.kt` - Room database with 7 tables and proper migrations (v11)
+- `NovelDatabase.kt` - Room database with 9 tables and proper migrations (v16)
 - `NovelRepository.kt` - Single repository managing all data access via DAOs
-- **Entities** (7 total):
+- **Entities** (9 total):
   - `NovelDescEntity` - Novel metadata with R18 support, favorite flag, site type, registration date
   - `EpisodeEntity` - Episode content with reading progress, bookmarks, and reading rate
   - `LastReadNovelEntity` - Reading history tracking
@@ -230,7 +230,9 @@ This is an Android novel reader application built with modern Android architectu
   - `URLEntity` - API/Web URLs with R18 site support
   - `ImageCacheEntity` - Image caching for novel covers (v7+)
   - `EpisodeMappingEntity` - Episode ID mapping for Kakuyomu (v10+)
-- **DAOs** (7 total): NovelDescDao, EpisodeDao, LastReadNovelDao, UpdateQueueDao, URLEntityDao, ImageCacheDao, EpisodeMappingDao
+  - `RegistrationQueueEntity` - New novel registration queue (v14+)
+  - `TempEpisodeEntity` - Download staging table (v15+)
+- **DAOs** (9 total): NovelDescDao, EpisodeDao, LastReadNovelDao, UpdateQueueDao, URLEntityDao, ImageCacheDao, EpisodeMappingDao, RegistrationQueueDao, TempEpisodeDao
 - **Adapter Pattern** for multi-site support:
   - `NovelSiteAdapter` - Interface for site-specific implementations
   - `SyosetuAdapter` - なろう小説 (Syosetu) implementation
@@ -292,7 +294,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - v12→v15: Various feature additions (see git history)
 - v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; initialized sub_site for existing records
 
-#### Tables (7 total)
+#### Tables (9 total)
 1. **`novels_descs`** - Novel metadata
    - Basic info: ncode, title, author, synopsis, tags, rating
    - Stats: total_ep, general_all_no, length, noveltype
@@ -325,6 +327,19 @@ Use `SettingsStore` for persistent configuration with DataStore.
    - Mapping: ncode, episode_no, kakuyomu_episode_id
    - Composite PK: (ncode, episode_no)
    - Indices: (ncode, episode_no), (ncode, kakuyomu_episode_id)
+
+8. **`registration_queue`** - New novel registration queue (v14+)
+   - Queue: id (PK, autoincrement), ncode, site_type, title, url, is_r18
+   - Status: status, current_episode, total_episodes, error_message
+   - Dates: created_at, started_at, completed_at
+   - Indices: status, ncode, created_at
+
+9. **`temp_episodes`** - Download staging table (v15+)
+   - Content: ncode, episode_no, body, e_title, update_time
+   - Progress: is_read, is_bookmark, reading_rate
+   - Link: queue_id
+   - Composite PK: (ncode, episode_no)
+   - Indices: (ncode, episode_no), queue_id
 
 ### Special Features
 - Custom font loading and CSS generation for WebView
@@ -415,8 +430,8 @@ The application uses the Adapter pattern to support multiple novel sites with si
 
 2. **`KakuyomuAdapter`** - カクヨム (Kakuyomu)
    - HTML scraping (no official API)
-   - 1-second rate limiting between requests
-   - Pseudo-ncode format: "KK-{Base62(workId)}" for compatibility
+   - 0.5-second rate limiting between requests
+   - Pseudo-ncode format: "K{Base62(workId)}" for compatibility (例: "K9zXYt1A2B3")
    - Episode ID mapping table for internal episode numbering
    - Multiple fallback patterns for robust HTML parsing
 
@@ -438,7 +453,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 
 #### Core Utilities
 - **`Base62Converter`** - Base62 encoding/decoding for Kakuyomu work IDs
-- **`PseudoNcodeGenerator`** - Generates pseudo-ncodes for Kakuyomu (KK-{Base62})
+- **`PseudoNcodeGenerator`** - Generates pseudo-ncodes for Kakuyomu (K{Base62})
 - **`AppLogger`** - Centralized logging with BuildConfig-based enable/disable
 - **`FontUtils`** - Custom font loading and CSS generation for WebView
 - **`ImageCacheUtils`** - Image caching management for novel covers
@@ -481,13 +496,13 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 - Work Testing for WorkManager tests
 
 ### Development Guidelines
-1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 11.
+1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 16.
 2. **Compose State**: Use proper Compose state management with state hoisting
 3. **Repository Pattern**: Follow the Repository pattern for all data operations. Never access DAOs directly.
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.4 (versionCode 204).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.14 (versionCode 214).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.
@@ -1180,7 +1195,7 @@ val episodeUrl = "https://kakuyomu.jp/works/{workId}/episodes/{episodeId}"
 **重要なルール**:
 - 作品IDとエピソードIDは独立した19桁の数値
 - 連番ではないため、目次から全エピソードIDを取得する必要がある
-- Pseudo-Ncode形式（`KK-{workId}`）でデータベースに格納
+- Pseudo-Ncode形式（`K{Base62(workId)}`）でデータベースに格納
 
 ### エラーハンドリング
 
