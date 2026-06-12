@@ -76,6 +76,7 @@ fun SettingsScreenUpdated(
     var textOrientation by remember { mutableStateOf("Horizontal") }
     var swipeEnabled by remember { mutableStateOf(true) }
     var tapEnabled by remember { mutableStateOf(false) }
+    var autoRubyEnabled by remember { mutableStateOf(true) }
     var selfServerPath by remember { mutableStateOf("") }
     var imageSaveLocation by remember { mutableStateOf("") }
 
@@ -220,6 +221,7 @@ fun SettingsScreenUpdated(
             textOrientation = settingsStore.textOrientation.first()
             swipeEnabled = settingsStore.swipeEnabled.first()
             tapEnabled = settingsStore.tapEnabled.first()
+            autoRubyEnabled = settingsStore.autoRubyEnabled.first()
             selfServerPath = settingsStore.selfServerPath.first()
             imageSaveLocation = settingsStore.imageSaveLocation.first()
 
@@ -527,6 +529,7 @@ fun SettingsScreenUpdated(
                                 // 左右スワイプ設定を保存
                                 settingsStore.saveSwipeEnabled(swipeEnabled)
                                 settingsStore.saveTapEnabled(tapEnabled)
+                                settingsStore.saveAutoRubyEnabled(autoRubyEnabled)
 
                                 // 表示設定を保存
                                 settingsStore.saveDisplaySettings(
@@ -1033,6 +1036,27 @@ fun SettingsScreenUpdated(
                     Switch(
                         checked = tapEnabled,
                         onCheckedChange = { tapEnabled = it }
+                    )
+                }
+
+                // ルビ自動変換
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("漢字（よみがな）をルビとして表示")
+                        Text(
+                            text = "本文中の「漢字（よみがな）」形式を自動でルビに変換します",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoRubyEnabled,
+                        onCheckedChange = { autoRubyEnabled = it }
                     )
                 }
             }

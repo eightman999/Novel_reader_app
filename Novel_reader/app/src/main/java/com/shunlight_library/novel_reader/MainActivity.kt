@@ -47,7 +47,11 @@ import com.shunlight_library.novel_reader.data.NotificationType
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import android.Manifest
+import android.content.pm.PackageManager
 import com.shunlight_library.novel_reader.metadata.MetadataUpdateManager
 import com.shunlight_library.novel_reader.metadata.MetadataUpdateResult
 import com.shunlight_library.novel_reader.ui.components.IndicatorLampGroup
@@ -61,6 +65,10 @@ import kotlinx.coroutines.flow.first
 class MainActivity : ComponentActivity() {
     private lateinit var navigationManager: NavigationManager
     private lateinit var backPressedCallback: OnBackPressedCallback
+
+    // Android 13+ の通知権限要求
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 結果は無視 */ }
     
     // R18ダイアログの表示状態
     private val _showR18Dialog = mutableStateOf(false)
@@ -81,6 +89,14 @@ class MainActivity : ComponentActivity() {
 
         // ナビゲーションマネージャーの作成
         navigationManager = NavigationManager()
+
+        // Android 13+ で通知権限をリクエスト（POST_NOTIFICATIONS）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         // OnBackPressedCallback を設定
         backPressedCallback = object : OnBackPressedCallback(true) {
@@ -327,7 +343,7 @@ fun NovelReaderApp(
 
         is Screen.NovelList -> {
             NovelListScreen(
-                onBack = { navigationManager.navigateTo(Screen.Main) },
+                onBack = { navigationManager.navigateBack() },
                 onNovelClick = { ncode ->
                     navigationManager.navigateTo(Screen.EpisodeList(ncode, currentScreen))
                 },
@@ -339,7 +355,7 @@ fun NovelReaderApp(
         EpisodeListScreen(
             ncode = currentScreen.ncode,
             onBack = {
-                navigationManager.navigateTo(Screen.NovelList())
+                navigationManager.navigateBack()
             },
             onEpisodeClick = { ncode, episodeNo ->
                 navigationManager.navigateTo(Screen.EpisodeView(ncode, episodeNo, currentScreen))

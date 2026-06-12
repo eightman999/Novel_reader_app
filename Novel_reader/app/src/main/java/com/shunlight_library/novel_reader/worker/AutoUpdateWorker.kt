@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.CancellationException
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
@@ -34,6 +35,7 @@ import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
@@ -108,6 +110,9 @@ class AutoUpdateWorker(
 
             Log.d(TAG, "自動更新処理完了")
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkManager による正常キャンセル（REPLACE, 10分制限等）はエラー通知しない
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "自動更新処理中にエラーが発生", e)
             val errorMsg = e.message ?: "不明なエラー"
@@ -204,8 +209,8 @@ class AutoUpdateWorker(
                                         if (latestEpisodeCount > novel.total_ep) {
                                             updateQueueItem = UpdateQueueEntity(
                                                 ncode = novel.ncode,
-                                                total_ep = latestEpisodeCount,
-                                                general_all_no = novel.total_ep,
+                                                total_ep = novel.total_ep,
+                                                general_all_no = latestEpisodeCount,
                                                 update_time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
                                             )
 
@@ -293,15 +298,11 @@ class AutoUpdateWorker(
                                 return@forEach
                             }
 
-                            val downloadInfo = downloadEpisodesForNovel(novel, queueItem.general_all_no, queueItem.total_ep)
+                            val downloadInfo = downloadEpisodesForNovel(novel, queueItem.total_ep, queueItem.general_all_no)
                             if (downloadInfo != null) {
                                 downloadDetails.add(downloadInfo)
                                 totalSuccessEpisodes += downloadInfo.successEpisodes.size
                                 totalFailedEpisodes += downloadInfo.failedEpisodes.size
-
-                                // 小説のtotal_ep値を更新
-                                val updatedNovel = novel.copy(total_ep = queueItem.total_ep)
-                                repository.updateNovel(updatedNovel)
 
                                 // ダウンロードしたエピソードをエラーログに保存（失敗のみ）
                                 downloadInfo.failedEpisodes.forEach { failedEpisode ->
@@ -320,8 +321,23 @@ class AutoUpdateWorker(
                                     )
                                 }
 
-                                // 全エピソードダウンロード完了時は更新キューから削除
-                                repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                if (downloadInfo.failedEpisodes.isEmpty()) {
+                                    // 全話成功時のみ total_ep を確定し更新キューから削除
+                                    val updatedNovel = novel.copy(total_ep = queueItem.general_all_no)
+                                    repository.updateNovel(updatedNovel)
+                                    repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                } else {
+                                    // 一部失敗: 実際に保存された最大話数を total_ep に反映し、
+                                    // キューを残して次回の更新確認でリトライ可能にする
+                                    val maxSavedEp = repository.getEpisodesByNcode(novel.ncode).first()
+                                        .mapNotNull { it.episode_no.toIntOrNull() }.maxOrNull() ?: novel.total_ep
+                                    repository.updateNovel(novel.copy(total_ep = maxSavedEp))
+                                    if (maxSavedEp >= queueItem.general_all_no) {
+                                        // 末尾まで保存済み（途中の欠番はエラー修正で再取得可能）
+                                        repository.deleteUpdateQueueByNcode(queueItem.ncode)
+                                    }
+                                    Log.w(TAG, "自動DLで${downloadInfo.failedEpisodes.size}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
+                                }
                             }
                         } finally {
                             NovelUpdateCoordinator.finishUpdate(session)
@@ -494,6 +510,23 @@ class AutoUpdateWorker(
         val mappings = kakuyomuAdapter.getCachedMappings()
         val episodeTitles = episodeListFromWeb.associate {
             it.episode_no.toIntOrNull() to (it.e_title ?: "第${it.episode_no}話")
+        }
+
+        // episode_mapping テーブルに最新マッピングを保存（CLAUDE.md ルール14）
+        if (mappings.isNotEmpty()) {
+            try {
+                val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                    EpisodeMappingEntity(
+                        ncode = novel.ncode,
+                        episode_no = episodeNo,
+                        kakuyomu_episode_id = kakuyomuId
+                    )
+                }
+                repository.insertEpisodeMappings(mappingEntities)
+                Log.d(TAG, "episode_mapping 保存完了: ${novel.ncode}, ${mappingEntities.size}件")
+            } catch (e: Exception) {
+                Log.w(TAG, "episode_mapping 保存失敗: ${novel.ncode}", e)
+            }
         }
 
         episodeNos.forEach { episodeNo ->

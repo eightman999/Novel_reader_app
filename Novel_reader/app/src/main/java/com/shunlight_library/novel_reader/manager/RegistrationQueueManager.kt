@@ -13,10 +13,12 @@ import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
 import com.shunlight_library.novel_reader.data.entity.TempEpisodeEntity
 import com.shunlight_library.novel_reader.utils.AppLogger
+import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -66,6 +68,14 @@ object RegistrationQueueManager {
     fun startMonitoring() {
         AppLogger.d(TAG, "キュー監視を開始")
         monitoringJob = scope.launch {
+            // 起動時に STATUS_PROCESSING 残骸をリセット（プロセス強制終了で残ったもの）
+            try {
+                val reset = repository.resetStuckProcessingQueues()
+                if (reset > 0) AppLogger.w(TAG, "STATUS_PROCESSING の残骸 ${reset} 件を PENDING にリセットしました")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "PROCESSING リセット失敗", e)
+            }
+
             while (true) {
                 try {
                     processNextQueue()
@@ -97,8 +107,15 @@ object RegistrationQueueManager {
         return withContext(Dispatchers.IO) {
             try {
                 // URLからアダプターと小説IDを取得
-                val (adapter, novelId) = NovelSiteAdapterFactory.getAdapterByUrl(url)
+                val (adapter, rawNovelId) = NovelSiteAdapterFactory.getAdapterByUrl(url)
                     ?: throw Exception("サポート対象外のURLです: $url")
+
+                // カクヨムは疑似Ncodeに変換（workId数値列のままだと temp→main のマージが失敗する）
+                val novelId = if (adapter.getSiteType() == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    PseudoNcodeGenerator.generateKakuyomuNcode(rawNovelId)
+                } else {
+                    rawNovelId
+                }
 
                 // 既に登録済みの場合
                 val existingNovel = repository.getNovelByNcode(novelId)
@@ -151,15 +168,17 @@ object RegistrationQueueManager {
      */
     suspend fun cancelQueue(id: Long) {
         withContext(Dispatchers.IO) {
+            // 先に処理中のジョブを停止して完了を待つ
+            // （削除後にジョブが temp_episodes へ書き込み、孤児データが残る競合を防ぐ）
+            processingQueues[id]?.cancelAndJoin()
+            processingQueues.remove(id)
+            pausedQueueIds.remove(id)
+
             val queue = repository.getRegistrationQueueById(id)
             if (queue != null) {
                 // 一時エピソードも削除
                 repository.deleteTempEpisodesByNcode(queue.ncode)
             }
-            // 処理中のジョブがあればキャンセル
-            processingQueues[id]?.cancel()
-            processingQueues.remove(id)
-            pausedQueueIds.remove(id)
             // キューを削除
             repository.deleteRegistrationQueue(id)
             AppLogger.d(TAG, "キューを削除: id=$id")
@@ -574,7 +593,8 @@ object RegistrationQueueManager {
     private suspend fun updateQueueProgress(id: Long, currentEpisode: Int, totalEpisodes: Int) {
         repository.updateRegistrationQueueProgress(id, currentEpisode)
         if (totalEpisodes > 0) {
-            repository.updateRegistrationQueueNovelInfo(id, "", totalEpisodes)
+            // title は変更しない（空文字で上書きするとDL状況画面が空欄になる）
+            repository.updateRegistrationQueueTotalEpisodes(id, totalEpisodes)
         }
     }
 

@@ -50,7 +50,10 @@ class NovelRepositoryTest {
             updateQueueDao = database.updateQueueDao(),
             urlEntityDao = database.urlEntityDao(),
             imageCacheDao = database.imageCacheDao(),
-            episodeMappingDao = database.episodeMappingDao()
+            episodeMappingDao = database.episodeMappingDao(),
+            registrationQueueDao = database.registrationQueueDao(),
+            tempEpisodeDao = database.tempEpisodeDao(),
+            database = database
         )
     }
 

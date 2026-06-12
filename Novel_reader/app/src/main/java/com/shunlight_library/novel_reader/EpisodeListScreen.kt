@@ -66,7 +66,7 @@ fun EpisodeListScreen(
 
     // 状態変数
     var novel by remember { mutableStateOf<NovelDescEntity?>(null) }
-    var episodes by remember { mutableStateOf<List<EpisodeEntity>>(emptyList()) }
+    var episodes by remember { mutableStateOf<List<com.shunlight_library.novel_reader.data.entity.EpisodeMeta>>(emptyList()) }
     var lastRead by remember { mutableStateOf<LastReadNovelEntity?>(null) }
 
     // 更新中チェック用の状態変数
@@ -147,8 +147,8 @@ fun EpisodeListScreen(
     }
 
     LaunchedEffect(ncode) {
-        // エピソード一覧の取得（Flow型なのでLaunchedEffectで直接collect可能）
-        repository.getEpisodesByNcode(ncode).collect { episodeList ->
+        // エピソード一覧の取得（本文を含まない軽量メタデータ — 大量話数でもメモリ効率良好）
+        repository.getEpisodeMetasByNcode(ncode).collect { episodeList ->
             // エピソードリストを数値順にソート
             episodes = episodeList.sortedWith(compareBy {
                 it.episode_no.toIntOrNull() ?: Int.MAX_VALUE
@@ -645,14 +645,21 @@ fun EpisodeListScreen(
                     val isKakuyomu = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.isKakuyomuNcode(ncode)
                     
                     if (isKakuyomu) {
-                        // カクヨムの場合は一括取得（マッピング情報付き）
+                        // カクヨムの場合はストリーミング方式（1話取得→保存）で再取得
                         updateMessage = "カクヨムからエピソードを取得中..."
                         val adapter = com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter()
                         val workId = com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                        // マッピング情報を含めて取得（改善版メソッド使用）
-                        val result = adapter.fetchNovelWithEpisodesIncludingMappings(workId)
-                        val episodes = result.episodes
+                        // repository を渡して1話ずつ保存（全話メモリ蓄積を回避）
+                        val result = adapter.fetchNovelWithEpisodesIncludingMappings(
+                            novelId = workId,
+                            repository = repository,
+                            onProgress = { current, total ->
+                                updateProgress = if (total > 0) current.toFloat() / total else 0f
+                                updateMessage = "エピソードを取得中... ($current/$total)"
+                                successCount = current
+                            }
+                        )
                         val mappings = result.episodeMappings
 
                         if (session.isCancelled()) {
@@ -660,17 +667,24 @@ fun EpisodeListScreen(
                             return@launch
                         }
 
-                        // エピソードとマッピングを一括保存（改善版メソッド使用）
-                        updateMessage = "エピソードとマッピングを保存中... (${episodes.size}話)"
-                        withContext(Dispatchers.IO) {
-                            repository.insertKakuyomuEpisodesWithMappings(episodes, mappings)
+                        // マッピング情報を保存（エピソード本体は取得中に1話ずつ保存済み）
+                        if (mappings.isNotEmpty()) {
+                            withContext(Dispatchers.IO) {
+                                val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
+                                    com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                                        ncode = ncode,
+                                        episode_no = episodeNo,
+                                        kakuyomu_episode_id = kakuyomuId
+                                    )
+                                }
+                                repository.insertEpisodeMappings(mappingEntities)
+                            }
                         }
 
-                        successCount = episodes.size
                         updateProgress = 1.0f
-                        updateMessage = "保存完了: ${episodes.size}話"
+                        updateMessage = "保存完了: ${successCount}話"
 
-                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード一括保存完了: ${successCount}話, マッピング: ${mappings.size}件")
+                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード保存完了: ${successCount}話, マッピング: ${mappings.size}件")
                     } else {
                         // 小説家になろうの場合は逐次取得
                         // エピソード番号のリスト
@@ -782,13 +796,13 @@ fun EpisodeListScreen(
 
         scope.launch {
             try {
-                // エピソードを取得
+                // エピソードを取得（本文なしメタデータ — エラー判定は body_empty フラグで行う）
                 novel?.let {
-                    val episodesList = repository.getEpisodesByNcode(it.ncode).first()
+                    val episodesList = repository.getEpisodeMetasByNcode(it.ncode).first()
 
                     // エラーのあるエピソードを見つける
                     val errorEpisodes = episodesList.filter { episode ->
-                        episode.body.isEmpty() || episode.e_title.isEmpty()
+                        episode.body_empty == 1 || episode.e_title.isEmpty()
                     }
 
                     val generalAllNoValue: Int
@@ -1055,9 +1069,8 @@ fun EpisodeListScreen(
                         return@launch
                     }
 
-                    // 小説のtotal_epを更新
-                    val updatedEpisodes = repository.getEpisodesByNcode(targetNovel.ncode).first()
-                    val maxEpisodeNo = updatedEpisodes.mapNotNull { episode -> episode.episode_no.toIntOrNull() }.maxOrNull() ?: 0
+                    // 小説のtotal_epを更新（最大話数のみ取得 — 全話本文ロードを回避）
+                    val maxEpisodeNo = repository.getMainMaxEpisodeNo(targetNovel.ncode) ?: 0
 
                     if (maxEpisodeNo > targetNovel.total_ep) {
                         val updatedNovel = targetNovel.copy(total_ep = maxEpisodeNo)
@@ -1898,7 +1911,7 @@ fun EpisodeListScreen(
 
 @Composable
 fun EpisodeItem(
-    episode: EpisodeEntity,
+    episode: com.shunlight_library.novel_reader.data.entity.EpisodeMeta,
     onClick: () -> Unit
 ) {
     Row(

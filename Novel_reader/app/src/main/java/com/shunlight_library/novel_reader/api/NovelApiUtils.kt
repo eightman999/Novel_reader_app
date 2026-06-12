@@ -965,12 +965,19 @@ object NovelApiUtils {
                         val title = element.select("a.p-eplist__subtitle").text()
 
                         // 更新日時を取得
+                        // 改稿済みエピソードは <span title="yyyy/MM/dd HH:mm 改稿"> で最終改稿日時を保持する。
+                        // .text() は公開日時を返すため、span[title] を優先して読む。
                         val updateElement = element.select("div.p-eplist__update")
-                        var updateTimeStr = updateElement.text()
-                            .replace("（改）", "")
-                            .replace("（改稿）", "")
-                            .replace(Regex("\\(\\s*<u>改</u>\\s*\\)"), "")  // HTMLタグ付き改稿マークを除去
-                            .trim()
+                        val revisionSpan = updateElement.select("span[title]").firstOrNull()
+                        val updateTimeStr = if (revisionSpan != null) {
+                            // title 例: "2024/01/02 15:00 改稿"
+                            revisionSpan.attr("title").replace("改稿", "").trim()
+                        } else {
+                            updateElement.text()
+                                .replace("（改）", "")
+                                .replace("（改稿）", "")
+                                .trim()
+                        }
 
                         // 日時フォーマットを変換: "2024/01/01 12:00" -> "2024-01-01 12:00:00"
                         val updateTime = try {

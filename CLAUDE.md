@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-05-15)
-- **Version**: 2.0.5 (versionCode: 205)
+### Current State (2026-06-12)
+- **Version**: 2.0.14 (versionCode: 214)
 - **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -347,6 +347,19 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Error fix options: 欠落修正にオプションダイアログ追加（期間・短編除外・完結除外・媒体・挿絵エラー検知）
 - Download status screen: ダウンロード状況画面にフィルターチップと一括削除ボタンを追加
 - ToC recovery: カクヨムDL中断時の復帰策 - episode_mappingテーブルからエピソードスタブを再構築するバナーをEpisodeListScreenに追加（エラー修正で本文を再取得）
+- Auto ruby conversion toggle: 「漢字（よみがな）」形式を自動でルビ変換するON/OFF設定（設定画面・DataStore永続化、横書きWebView表示に適用。既存の壊れた<ruby>タグ修正は常時適用）
+- Vertical mode ruby parity: applyRubyFixes() をトップレベル関数として抽出。縦書きモード（VjapVerticalTextView）にも破損タグ修復と autoRubyEnabled 変換を適用
+- WebView resource cleanup: AndroidView の onRelease コールバックで stopLoading/destroy を呼び出しネイティブリソースリークを防止（EpisodeViewScreen・WebViewScreen）
+- Read-status preservation on re-download: 全話再DL（UPDATE_TYPE_DOWNLOAD）時にエピソードを削除せず insertEpisode のマージで is_read/is_bookmark/reading_rate を保持
+- Revision date fix: fetchEpisodeRevisionsFromToc で改稿日時を span[title] 属性から正しく取得（従来は公開日時を誤取得）
+- Error-body prevention: カクヨムエピソード取得失敗時にエラー文字列 ★HTMLページ読み込みエラー を本文として保存しないよう修正
+- Lightweight error scan: 欠落修正スキャンのカクヨム話数確認を fetchUpdateSummary（軽量サマリー）に変更（全話本文DLを排除）
+- Streaming re-download: EpisodeListScreen のカクヨム再DLをストリーミング方式（repository 渡しで1話取得→保存）に変更
+- Gap prevention on partial failure: 一括更新・自動DLで一部失敗時は total_ep を保存済み最大話数に留め、更新キューを残してリトライ可能に（全話成功時のみ確定）
+- DB transactions: deleteNovelWithRelations・insertKakuyomuEpisodesWithMappings・deleteEpisodesByNcode を withTransaction でアトミック化（NovelRepository に RoomDatabase 参照を追加）
+- Schema export: exportSchema=true + room.schemaLocation 設定（v16以降のマイグレーションテスト基盤）
+- Cancel race fix: RegistrationQueueManager.cancelQueue でジョブを cancelAndJoin してから一時データ削除（孤児 temp_episodes 防止）
+- Episode list lightweight loading: EpisodeMeta DTO（本文なし射影 + body_empty フラグ）と getEpisodeMetasByNcode により、EpisodeListScreen が全話の本文をメモリにロードせず一覧表示（1000話超でも軽量）
 
 ### Performance Optimizations
 

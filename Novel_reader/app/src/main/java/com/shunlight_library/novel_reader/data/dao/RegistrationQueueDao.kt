@@ -60,6 +60,12 @@ interface RegistrationQueueDao {
     @Query("UPDATE registration_queue SET title = :title, total_episodes = :totalEpisodes WHERE id = :id")
     suspend fun updateNovelInfo(id: Long, title: String, totalEpisodes: Int)
 
+    @Query("UPDATE registration_queue SET total_episodes = :totalEpisodes WHERE id = :id")
+    suspend fun updateTotalEpisodes(id: Long, totalEpisodes: Int)
+
     @Query("UPDATE registration_queue SET current_episode = :currentEpisode WHERE id = :id")
     suspend fun updateProgress(id: Long, currentEpisode: Int)
+
+    @Query("UPDATE registration_queue SET status = 0, error_message = NULL WHERE status = 1")
+    suspend fun resetStuckProcessingToP(): Int
 }

@@ -140,8 +140,8 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                     progress = 0.2f
                 ))
 
-                // 必要なテーブルの存在確認
-                val requiredTables = listOf("novels_descs", "episodes", "rast_read_novel")
+                // 必要なテーブルの存在確認（reading history は命名揺れを許容）
+                val requiredTables = listOf("novels_descs", "episodes")
                 for (table in requiredTables) {
                     if (!sqliteHelper.isTableExists(db, table)) {
                         // 存在するテーブル一覧を取得してログ出力
@@ -325,17 +325,44 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
             val columnLength = getColumnIndexSafely(cursor, "length")
             val columnUpdatedAt = getColumnIndexSafely(cursor, "updated_at")
             val columnRegisteredAt = getColumnIndexSafely(cursor, "registered_at")
+            // 外部DBにこれらカラムがあれば読む（v8+以降のエクスポート）
+            val columnIsFavorite = getColumnIndexSafely(cursor, "is_favorite")
+            val columnSiteType = getColumnIndexSafely(cursor, "site_type")
+            val columnSubSite = getColumnIndexSafely(cursor, "sub_site")
+            val columnEndFlag = getColumnIndexSafely(cursor, "end_flag")
 
             val batchSize = 50
             val novels = mutableListOf<NovelDescEntity>()
 
             // データの読み取りとバッチ処理
             while (cursor.moveToNext()) {
+                val ncode = getStringSafely(cursor, columnNcode)
                 val userid = getStringSafely(cursor, columnUserid)
                 val noveltype = getIntSafely(cursor, columnNoveltype, -1)
                 val length = getIntSafely(cursor, columnLength, -1)
+
+                // 既存の内部レコードを取得し、外部DBに無いフィールドを保持する
+                val existing = repository.getNovelByNcode(ncode)
+
+                val isFavorite = when {
+                    columnIsFavorite != null -> getIntSafely(cursor, columnIsFavorite)
+                    else -> existing?.is_favorite ?: 0
+                }
+                val siteType = when {
+                    columnSiteType != null -> getIntSafely(cursor, columnSiteType, 1)
+                    else -> existing?.site_type ?: 1
+                }
+                val subSite = when {
+                    columnSubSite != null -> getIntSafely(cursor, columnSubSite, 0)
+                    else -> existing?.sub_site ?: 0
+                }
+                val endFlag = when {
+                    columnEndFlag != null -> getIntSafely(cursor, columnEndFlag, 0)
+                    else -> existing?.end_flag ?: 0
+                }
+
                 val novel = NovelDescEntity(
-                    ncode = getStringSafely(cursor, columnNcode),
+                    ncode = ncode,
                     title = getStringSafely(cursor, columnTitle),
                     author = getStringSafely(cursor, columnAuthor),
                     Synopsis = getStringSafely(cursor, columnSynopsis),
@@ -352,7 +379,11 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                     updated_at = getStringSafely(cursor, columnUpdatedAt,
                         DatabaseSyncUtils.getCurrentDateTimeString()),
                     registered_at = getStringSafely(cursor, columnRegisteredAt,
-                        DatabaseSyncUtils.getCurrentDateTimeString())
+                        DatabaseSyncUtils.getCurrentDateTimeString()),
+                    is_favorite = isFavorite,
+                    site_type = siteType,
+                    sub_site = subSite,
+                    end_flag = endFlag
                 )
 
                 novels.add(novel)
@@ -562,9 +593,16 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
         var count = 0
         var totalCount = 0
 
+        // テーブル名の揺れに対応（旧アプリは "rast_read_novel" の誤記名で作られたDBが存在する）
+        val lastReadTable = when {
+            sqliteHelper.isTableExists(externalDb, "last_read_novel") -> "last_read_novel"
+            sqliteHelper.isTableExists(externalDb, "rast_read_novel") -> "rast_read_novel"
+            else -> return 0
+        }
+
         try {
             // 総レコード数を取得
-            totalCount = sqliteHelper.getTableCount(externalDb, "last_read_novel")
+            totalCount = sqliteHelper.getTableCount(externalDb, lastReadTable)
 
             // 進捗初期化の報告
             updateProgress(syncCallback, SyncProgress(
@@ -577,7 +615,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
 
             // 外部DBから最終読書記録を取得
             cursor = externalDb.query(
-                "last_read_novel",
+                lastReadTable,
                 null,
                 null,
                 null,

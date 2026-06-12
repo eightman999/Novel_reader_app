@@ -67,7 +67,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
     companion object {
         private const val BASE_URL = "https://kakuyomu.jp"
         private const val RATE_LIMIT_DELAY_MS = 500L  // 0.5秒（スクレイピング時の推奨間隔）
-        private var lastAccessTime = 0L
+        @Volatile private var lastAccessTime = 0L
 
         // PC版User-Agentを使用（モバイル版では目次が省略される可能性があるため）
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -803,6 +803,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * @param workDoc 呼び出し元で取得済みの作品ページDocument（再フェッチ防止）
      */
     private suspend fun parseEpisodeList(workId: String, pseudoNcode: String, workDoc: Document): List<EpisodeEntity> {
+        // 各呼び出し開始時にキャッシュをリセットして別作品の残留を防ぐ
+        cachedMappings = emptyMap()
+
         // 呼び出し元の取得済みdocから最初のエピソードリンクを抽出（重複フェッチ防止）
         val firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
             ?: workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
@@ -923,13 +926,12 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 getCurrentDate()
             }
 
-            // episode_noには実際のカクヨムエピソードIDを格納
-            // これによりURLの生成が正確になる
+            val sequentialNo = index + 1
             episodes.add(
                 EpisodeEntity(
                     ncode = pseudoNcode,
-                    episode_no = episodeId,  // カクヨムの実際のエピソードIDを使用
-                    body = "",  // TOCページには本文がないため空（後でfetchEpisodeContentで取得）
+                    episode_no = sequentialNo.toString(),  // 連番（他メソッドと統一）
+                    body = "",
                     e_title = episodeTitle,
                     update_time = publishedDate,
                     is_read = 0,
@@ -939,7 +941,26 @@ class KakuyomuAdapter : NovelSiteAdapter {
             )
         }
 
-        AppLogger.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML): ${episodes.size}話")
+        // 方法3 でも cachedMappings を構築（連番→カクヨムID）
+        val fallbackMappings = mutableMapOf<Int, String>()
+        var idx = 0
+        val allElements = if (doc.select("a.WorkTocSection_link__ocg9K").isNotEmpty())
+            doc.select("a.WorkTocSection_link__ocg9K")
+        else
+            doc.select("ol.widget-toc-items li.widget-toc-episode")
+        allElements.forEach { elem ->
+            val link = elem.attr("href").ifEmpty { elem.select("a").attr("href") }
+            val eid = link.substringAfterLast("/")
+            if (eid.isNotEmpty()) {
+                idx++
+                fallbackMappings[idx] = eid
+            }
+        }
+        if (fallbackMappings.isNotEmpty()) {
+            cachedMappings = fallbackMappings
+        }
+
+        AppLogger.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML方法3): ${episodes.size}話")
         return episodes
     }
 
