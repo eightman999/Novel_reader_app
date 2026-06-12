@@ -618,8 +618,7 @@ class UpdateService : Service() {
                         return@launch
                     }
 
-                    // 既存エピソードとマッピングを全削除（再取得なので最初からやり直す）
-                    repository.deleteEpisodesByNcode(ncode)
+                    // 既存エピソードは削除しない。insertEpisode が is_read/is_bookmark/reading_rate を保持してマージする。
 
                     // 全エピソードを取得対象とする
                     val episodesToDownload = episodeListWithoutBody
@@ -667,16 +666,16 @@ class UpdateService : Service() {
 
                             if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
                                 Log.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: ${episode.episode_no}")
+                                // エラー文字列で既存の本文を上書きしない
+                            } else {
+                                // 正常取得できた場合のみ保存
+                                val episodeWithBody = episode.copy(body = episodeBody)
+                                repository.insertEpisode(episodeWithBody)
+                                successCount++
                             }
-
-                            // 本文を含めてエピソードを保存（1話ずつ）
-                            val episodeWithBody = episode.copy(body = episodeBody)
-                            repository.insertEpisode(episodeWithBody)
-                            successCount++
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to fetch episode ${episode.episode_no}: ${e.message}")
-                            // エラーでも処理を継続（本文なしで保存）
-                            repository.insertEpisode(episode)
+                            // エラー発生時も既存データを保持（本文なしでの上書き禁止）
                         }
 
                         val progress = (index + 1).toFloat() / episodesToDownload.size
@@ -734,8 +733,7 @@ class UpdateService : Service() {
                     )
                     repository.updateNovel(updatedNovel)
 
-                    // 既存エピソードを全削除（再取得なので最初からやり直す）
-                    repository.deleteEpisodesByNcode(ncode)
+                    // 既存エピソードは削除しない。insertEpisode が is_read/is_bookmark/reading_rate を保持してマージする。
                 }
 
                 if (!isRunning || session.isCancelled()) {
@@ -984,12 +982,12 @@ class UpdateService : Service() {
 
                                 if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
                                     Log.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: $episodeNoInt")
+                                } else {
+                                    // 正常取得できた場合のみ保存（エラー文字列で上書きしない）
+                                    val episodeWithBody = episodeInfo.copy(body = episodeBody)
+                                    repository.insertEpisode(episodeWithBody)
+                                    successCount++
                                 }
-
-                                // 本文を含めてエピソードを保存（1話ずつ）
-                                val episodeWithBody = episodeInfo.copy(body = episodeBody)
-                                repository.insertEpisode(episodeWithBody)
-                                successCount++
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to fetch episode $episodeNoInt: ${e.message}")

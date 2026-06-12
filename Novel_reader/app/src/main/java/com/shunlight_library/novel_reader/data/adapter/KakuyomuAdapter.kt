@@ -67,7 +67,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
     companion object {
         private const val BASE_URL = "https://kakuyomu.jp"
         private const val RATE_LIMIT_DELAY_MS = 500L  // 0.5秒（スクレイピング時の推奨間隔）
-        private var lastAccessTime = 0L
+        @Volatile private var lastAccessTime = 0L
 
         // PC版User-Agentを使用（モバイル版では目次が省略される可能性があるため）
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
