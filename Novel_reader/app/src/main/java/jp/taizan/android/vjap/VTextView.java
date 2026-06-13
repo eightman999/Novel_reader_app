@@ -19,9 +19,21 @@ import android.view.View;
 public class VTextView extends View {
 
     private static final int FONT_COLOR = Color.BLACK;
-    private static final int TOP_SPACE = 18;
-    private static final int BOTTOM_SPACE = 18;
+    private static final int TOP_SPACE = 18;     // dp
+    private static final int BOTTOM_SPACE = 18;  // dp
     public static final int MAX_PAGE = 1024;
+
+    // 行頭禁則文字（行頭に来てはならない文字。前の文字での改行を抑止し、ぶら下げで処理する）
+    private static final String LINE_HEAD_PROHIBITED =
+            "。、，．」』）)］]｝}〉》】〕＞>！？!?‼⁇⁈⁉…‥ーｰ～〜ゝゞヽヾ々" +
+            "ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ：；:;.,";
+
+    // 行末禁則文字（行末に来てはならない文字。先に改行してから描画する）
+    private static final String LINE_END_PROHIBITED = "「『（(［[｛{〈《【〔＜<“";
+
+    // 密度スケール済み余白（init で設定）
+    private float topSpace = TOP_SPACE;
+    private float bottomSpace = BOTTOM_SPACE;
 
     int TITLE_SIZE = 48;
     int FONT_SIZE = 32;
@@ -66,6 +78,9 @@ public class VTextView extends View {
 
     private void init(Context context) {
         mContext = context;
+        float density = context.getResources().getDisplayMetrics().density;
+        topSpace = TOP_SPACE * density;
+        bottomSpace = BOTTOM_SPACE * density;
         mFace = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL);
         setFontSize(FONT_SIZE);
         rubyStyle.lineSpace = bodyStyle.lineSpace;
@@ -197,7 +212,7 @@ public class VTextView extends View {
     boolean goNextLine(PointF pos, TextStyle type, float spaceRate) {
         if (virtical) {
             pos.x -= type.lineSpace * spaceRate;
-            pos.y = TOP_SPACE + type.fontSpace;
+            pos.y = topSpace + type.fontSpace;
             if (pos.x > 0) {
                 return true;
             } else {
@@ -205,8 +220,8 @@ public class VTextView extends View {
             }
         } else {
             pos.y += type.lineSpace * spaceRate;
-            pos.x = TOP_SPACE;
-            if (pos.y < height - TOP_SPACE) {
+            pos.x = topSpace;
+            if (pos.y < height - topSpace) {
                 return true;
             } else {
                 return false;
@@ -214,17 +229,26 @@ public class VTextView extends View {
         }
     }
 
-    boolean goNext(String s, PointF pos, TextStyle type, boolean lineChangable) {
-        boolean newLine = false;
+    /** 現在位置が行の最終マスか（この位置に描いた次の文字は行内に収まらない） */
+    boolean isLineFull(PointF pos, TextStyle type) {
         if (virtical) {
-            if (pos.y + type.fontSpace > height - BOTTOM_SPACE) {
-                newLine = true;
-            }
+            return pos.y + type.fontSpace > height - bottomSpace;
         } else {
-            if (pos.x + type.fontSpace > width - BOTTOM_SPACE - type.fontSpace) {
-                newLine = true;
-            }
+            return pos.x + type.fontSpace > width - bottomSpace - type.fontSpace;
         }
+    }
+
+    /** ページ内に次の行を確保できるか（goNextLine が成功するか） */
+    boolean canGoNextLine(PointF pos, TextStyle type, float spaceRate) {
+        if (virtical) {
+            return pos.x - type.lineSpace * spaceRate > 0;
+        } else {
+            return pos.y + type.lineSpace * spaceRate < height - topSpace;
+        }
+    }
+
+    boolean goNext(String s, PointF pos, TextStyle type, boolean lineChangable) {
+        boolean newLine = isLineFull(pos, type);
 
         if (newLine && lineChangable) {
             return goNextLine(pos, type, 1);
@@ -242,9 +266,9 @@ public class VTextView extends View {
     void initPos(PointF pos) {
         if (virtical) {
             pos.x = width - bodyStyle.lineSpace;
-            pos.y = TOP_SPACE + bodyStyle.fontSpace;
+            pos.y = topSpace + bodyStyle.fontSpace;
         } else {
-            pos.x = TOP_SPACE;
+            pos.x = topSpace;
             pos.y = bodyStyle.lineSpace;
         }
     }
@@ -269,7 +293,7 @@ public class VTextView extends View {
             if (state.pos.y - state.rubyStart.y > 0) {
                 res.y -= 0.5 * (state.rubyText.length() * rubyStyle.fontSpace - (state.pos.y - state.rubyStart.y));
             }
-            if (res.y < TOP_SPACE) res.y = TOP_SPACE;
+            if (res.y < topSpace) res.y = topSpace;
         } else {
             res.x = state.rubyStart.x;
             res.y = state.rubyStart.y - bodyStyle.fontSpace;
@@ -455,6 +479,13 @@ public class VTextView extends View {
         if (state.str.equals("\n")) {
             return this.goNextLine(state.pos, style, 1);
         }
+
+        // 行末禁則: 開き括弧等が行の最終マスに来る場合は先に改行してから描画する
+        if (LINE_END_PROHIBITED.contains(state.str)
+                && isLineFull(state.pos, style) && canGoNextLine(state.pos, style, 1)) {
+            goNextLine(state.pos, style, 1);
+        }
+
         this.drawChar(canvas, state.str, state.pos, style, state.isDrawEnable);
 
         if (!this.goNext(state.str, state.pos, style, checkLineChangable(state))) {
@@ -471,15 +502,8 @@ public class VTextView extends View {
     boolean checkLineChangable(CurrentState state) {
         if (!state.lineChangable) {
             state.lineChangable = true;
-        } else if (state.sAfter.equals("。") || state.sAfter.equals("、")
-                || state.sAfter.equals("」") || state.sAfter.equals("』")
-                || state.sAfter.equals(")") || state.sAfter.equals("）")
-                || state.sAfter.equals("]") || state.sAfter.equals("］")
-                || state.sAfter.equals("}") || state.sAfter.equals("｝")
-                || state.sAfter.equals("〉") || state.sAfter.equals("】")
-                || state.sAfter.equals("〕")
-                || state.sAfter.equals("，") || state.sAfter.equals("．")
-                || state.sAfter.equals(".") || state.sAfter.equals(",")) {
+        } else if (!state.sAfter.isEmpty() && LINE_HEAD_PROHIBITED.contains(state.sAfter)) {
+            // 行頭禁則文字が次に来る場合は改行を抑止（ぶら下げ処理）
             state.lineChangable = false;
         }
         return state.lineChangable;

@@ -41,6 +41,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.shunlight_library.novel_reader.api.NovelApiUtils
 import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchEpisodeWithRetry
 import com.shunlight_library.novel_reader.api.NovelApiUtils.fetchNovelInfo
 import android.content.Intent
@@ -1008,21 +1009,27 @@ fun EpisodeListScreen(
                                 // 実際のIDで本文を取得
                                 val episodeBody = adapter.fetchEpisodeContent(workId, kakuyomuEpisodeId)
 
-                                // 既存エピソードを取得して更新
-                                val existingEpisode = withContext(Dispatchers.IO) {
-                                    repository.getEpisode(targetNovel.ncode, episodeNoStr)
-                                }
-
-                                if (existingEpisode != null) {
-                                    val updatedEpisode = existingEpisode.copy(body = episodeBody)
-                                    withContext(Dispatchers.IO) {
-                                        repository.insertEpisode(updatedEpisode)
-                                    }
-                                    successCount++
-                                    android.util.Log.d("EpisodeListScreen", "カクヨムエピソード修正成功: episode_no=$episodeNo, kakuyomu_id=$kakuyomuEpisodeId")
-                                } else {
-                                    android.util.Log.w("EpisodeListScreen", "既存エピソードが見つかりません: episode_no=$episodeNo")
+                                // 取得失敗・エラー本文は保存しない（エラー文の本文保存による恒久化防止）
+                                if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
+                                    android.util.Log.w("EpisodeListScreen", "本文取得失敗のため保存をスキップ: episode_no=$episodeNo")
                                     failCount++
+                                } else {
+                                    // 既存エピソードを取得して更新
+                                    val existingEpisode = withContext(Dispatchers.IO) {
+                                        repository.getEpisode(targetNovel.ncode, episodeNoStr)
+                                    }
+
+                                    if (existingEpisode != null) {
+                                        val updatedEpisode = existingEpisode.copy(body = episodeBody)
+                                        withContext(Dispatchers.IO) {
+                                            repository.insertEpisode(updatedEpisode)
+                                        }
+                                        successCount++
+                                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード修正成功: episode_no=$episodeNo, kakuyomu_id=$kakuyomuEpisodeId")
+                                    } else {
+                                        android.util.Log.w("EpisodeListScreen", "既存エピソードが見つかりません: episode_no=$episodeNo")
+                                        failCount++
+                                    }
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("EpisodeListScreen", "カクヨムエピソード取得エラー: episode_no=$episodeNo", e)
@@ -1619,16 +1626,20 @@ fun EpisodeListScreen(
                             .clickable(enabled = novel != null && !isNovelUpdating) {
                                 if (!isNovelUpdating) {
                                     novel?.let { novelEntity ->
-                                        val userId = novelEntity.userid
-                                        if (userId != null) {
-                                            val url = if (novelEntity.rating == 1) {
-                                                "https://xmypage.syosetu.com/$userId/"
-                                            } else {
-                                                "https://mypage.syosetu.com/$userId/"
+                                        scope.launch {
+                                            if (authorPageNeedsFetch(novelEntity)) {
+                                                Toast.makeText(context, "作者情報を取得中...", Toast.LENGTH_SHORT).show()
                                             }
-                                            onAuthorClick(url)
-                                        } else {
-                                            Toast.makeText(context, "すでになろうにいません", Toast.LENGTH_SHORT).show()
+                                            val result = withContext(Dispatchers.IO) {
+                                                resolveAuthorPageUrl(novelEntity, repository)
+                                            }
+                                            if (result != null) {
+                                                // 新規取得したIDはローカル状態にも反映（次回はネットワーク不要）
+                                                result.updatedNovel?.let { novel = it }
+                                                onAuthorClick(result.url)
+                                            } else {
+                                                Toast.makeText(context, "作者ページを取得できませんでした", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 }
@@ -2038,3 +2049,67 @@ fun EpisodeItem(
 //        }
 //    }
 //}
+
+/** 作者ページ解決結果（userid を新規取得した場合は updatedNovel に反映済みエンティティが入る） */
+private data class AuthorPageResult(val url: String, val updatedNovel: NovelDescEntity?)
+
+/** 作者ページURLの解決にネットワークアクセスが必要かどうか */
+private fun authorPageNeedsFetch(novel: NovelDescEntity): Boolean {
+    val userid = novel.userid
+    return when {
+        novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> userid.isNullOrEmpty()
+        novel.rating == 1 -> userid.isNullOrEmpty() || !userid.startsWith("x")
+        else -> userid.isNullOrEmpty()
+    }
+}
+
+/**
+ * 作者ページURLを解決する。
+ * - カクヨム: userid（スクリーンネーム）から https://kakuyomu.jp/users/{name}。
+ *   未保存なら作品ページから取得してDBへ保存。
+ * - なろうR18: useridにキャッシュ済みのxid（x始まり）から https://xmypage.syosetu.com/{xid}/。
+ *   未取得なら作品ページからxidをスクレイプしてDBへ保存（novel18apiはuseridを返さず、
+ *   数値useridではxmypageは404になるため）。
+ * - なろう一般: userid から https://mypage.syosetu.com/{userid}/。未保存ならAPIから取得して保存。
+ */
+private suspend fun resolveAuthorPageUrl(
+    novel: NovelDescEntity,
+    repository: com.shunlight_library.novel_reader.data.repository.NovelRepository
+): AuthorPageResult? {
+    val userid = novel.userid
+    return when {
+        novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
+            if (!userid.isNullOrEmpty()) {
+                AuthorPageResult("https://kakuyomu.jp/users/$userid", null)
+            } else {
+                KakuyomuAdapter().fetchAuthorUserName(novel.ncode)?.let { name ->
+                    val updated = novel.copy(userid = name)
+                    repository.updateNovel(updated)
+                    AuthorPageResult("https://kakuyomu.jp/users/$name", updated)
+                }
+            }
+        }
+        novel.rating == 1 -> {
+            if (!userid.isNullOrEmpty() && userid.startsWith("x")) {
+                AuthorPageResult("https://xmypage.syosetu.com/$userid/", null)
+            } else {
+                NovelApiUtils.fetchR18AuthorId(novel.ncode)?.let { xid ->
+                    val updated = novel.copy(userid = xid)
+                    repository.updateNovel(updated)
+                    AuthorPageResult("https://xmypage.syosetu.com/$xid/", updated)
+                }
+            }
+        }
+        else -> {
+            if (!userid.isNullOrEmpty()) {
+                AuthorPageResult("https://mypage.syosetu.com/$userid/", null)
+            } else {
+                fetchNovelInfo(novel.ncode, isR18 = false)?.userid?.let { fetched ->
+                    val updated = novel.copy(userid = fetched)
+                    repository.updateNovel(updated)
+                    AuthorPageResult("https://mypage.syosetu.com/$fetched/", updated)
+                }
+            }
+        }
+    }
+}

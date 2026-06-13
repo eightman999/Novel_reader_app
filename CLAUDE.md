@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📖 Quick Reference
 
 ### Current State (2026-06-12)
-- **Version**: 2.0.14 (versionCode: 214)
+- **Version**: 2.0.15 (versionCode: 215)
 - **Database**: Version 16 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -131,7 +131,7 @@ All Gradle commands should be run from the `Novel_reader/` directory.
 Novel_reader_app/
 ├── Novel_reader/                    # Main Android project
 │   ├── app/
-│   │   ├── build.gradle.kts        # App build config (version: 2.0.4, code: 204)
+│   │   ├── build.gradle.kts        # App build config (version: 2.0.15, code: 215)
 │   │   └── src/
 │   │       ├── main/java/com/shunlight_library/novel_reader/
 │   │       │   ├── *.kt            # Top-level screens and application
@@ -360,6 +360,13 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Schema export: exportSchema=true + room.schemaLocation 設定（v16以降のマイグレーションテスト基盤）
 - Cancel race fix: RegistrationQueueManager.cancelQueue でジョブを cancelAndJoin してから一時データ削除（孤児 temp_episodes 防止）
 - Episode list lightweight loading: EpisodeMeta DTO（本文なし射影 + body_empty フラグ）と getEpisodeMetasByNcode により、EpisodeListScreen が全話の本文をメモリにロードせず一覧表示（1000話超でも軽量）
+- Author page navigation (v2.0.15): 作者ボタンをサイト対応化。なろう一般=mypage.syosetu.com/{userid}/、R18=xmypage.syosetu.com/{xid}/（novel18apiはuseridを返さず数値IDでは404のため、作品ページからxidをスクレイプしuseridにキャッシュ。NovelApiUtils.fetchR18AuthorId）、カクヨム=kakuyomu.jp/users/{スクリーンネーム}（Apollo stateのUserAccount.nameから取得。KakuyomuAdapter.fetchAuthorUserName、parseNovelInfoでもuserid保存）。解決したIDはrepository.updateNovelで永続化し次回以降ネットワーク不要
+- Vertical mode page progress (v2.0.15): VTextLayoutにOnPageChangedListener追加。縦書きでページをめくるたびに進捗率（page/totalPage）を保存できるようになった（従来は開いた時点と読了時のみ）
+- Vertical mode position preservation (v2.0.15): VjapVerticalTextViewのupdateで設定の差分適用（無条件setFontSize/setColorによる再レイアウト・ページ喪失を防止）。フォントサイズ変更時はrestoreRateで直前の読書位置を復元
+- Vertical kinsoku (v2.0.15): VTextViewの行頭禁則文字を拡充（小書き仮名・ー〜…‥！？：；等、ぶら下げ処理）、開き括弧の行末禁則を追加（行の最終マスなら先に改行）、余白を密度スケール化（18dp）
+- Episode navigation fix (v2.0.15): 前後話ナビでLaunchedEffect先頭にepisode=nullリセットを追加（旧話の本文が表示され続けるバグ修正）。EnhancedHtmlRubyWebViewをkey(ncode, episodeNo)で再生成（JSブリッジが古いepisodeNoで別話の進捗を上書きするバグ修正）。WebViewのHTML再ロードはタグ比較で変更時のみ
+- Error-body prevention (adapter paths, v2.0.15): KakuyomuAdapter内部の保存経路（一括DL・ストリーミング・旧方式）でnormalizeEpisodeBodyによりエラー文字列を空文字に正規化。EpisodeListScreenのエラー修正（カクヨム）、RegistrationQueueManager（初回登録ストリーミング）、NovelApiUtils（カクヨム単話取得）にもガード追加（全fetchEpisodeContent保存経路でエラー文字列の本文化を防止）
+- WebViewScreen fixes (v2.0.15): AndroidView updateでの再ロードを廃止（再コンポーズのたびにページがリロードされるバグ修正）。mailto:等の非http(s)スキームは外部アプリへ委譲。xmypage.syosetu.comにもover18 Cookieを事前設定
 
 ### Performance Optimizations
 
@@ -487,7 +494,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.4 (versionCode 204).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.15 (versionCode 215).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.
