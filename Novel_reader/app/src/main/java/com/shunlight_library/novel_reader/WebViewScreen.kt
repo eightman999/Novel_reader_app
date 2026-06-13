@@ -52,7 +52,6 @@ fun WebViewScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
-    var currentLoadingUrl by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf(url) }
 
     // ダイアログの表示状態
@@ -125,7 +124,6 @@ fun WebViewScreen(
                 super.onPageFinished(view, loadedUrl)
                 canGoBack = view.canGoBack()
                 canGoForward = view.canGoForward()
-                currentLoadingUrl = loadedUrl
                 currentUrl = loadedUrl
 
                 // target="_blank"リンクを修正するJavaScriptを実行
@@ -221,6 +219,16 @@ fun WebViewScreen(
 
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
                 Log.d("WebViewScreen", "shouldOverrideUrlLoading called with URL: $url")
+                // http(s)以外のスキーム（mailto:, intent://等）は外部アプリへ委譲
+                // （WebViewで読み込むと net::ERR_UNKNOWN_URL_SCHEME になるため）
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    try {
+                        view.context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                    } catch (e: Exception) {
+                        Log.w("WebViewScreen", "外部スキームを開けません: $url")
+                    }
+                    return true
+                }
                 view.loadUrl(url)
                 return true
             }
@@ -231,6 +239,7 @@ fun WebViewScreen(
 
                 // R18サイトへのアクセス時にCookieを設定
                 if (url.contains("novel18.syosetu.com") ||
+                    url.contains("xmypage.syosetu.com") ||
                     url.contains("noc.syosetu.com") ||
                     url.contains("mid.syosetu.com") ||
                     url.contains("mnlt.syosetu.com") ||
@@ -439,6 +448,7 @@ fun WebViewScreen(
                         val cookieManager = CookieManager.getInstance()
                         cookieManager.setAcceptCookie(true)
                         cookieManager.setCookie("https://novel18.syosetu.com", "over18=yes")
+                        cookieManager.setCookie("https://xmypage.syosetu.com", "over18=yes")
                         cookieManager.setCookie("https://noc.syosetu.com", "over18=yes")
                         cookieManager.setCookie("https://mid.syosetu.com", "over18=yes")
                         cookieManager.setCookie("https://mnlt.syosetu.com", "over18=yes")
@@ -449,13 +459,9 @@ fun WebViewScreen(
                         webView = this
                     }
                 },
-                update = { view ->
-                    if (currentLoadingUrl.isEmpty() || currentLoadingUrl == url) {
-                        view.loadUrl(url)
-                        currentLoadingUrl = url
-                        currentUrl = url
-                    }
-                },
+                // 初期ロードはfactoryで実施済み。updateで再ロードすると
+                // 再コンポーズのたびにページがリロードされるため何もしない
+                update = { },
                 onRelease = { view ->
                     view.stopLoading()
                     view.destroy()

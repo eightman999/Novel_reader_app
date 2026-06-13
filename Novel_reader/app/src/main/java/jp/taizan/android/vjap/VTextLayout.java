@@ -56,6 +56,7 @@ public class VTextLayout extends RelativeLayout {
 
     OnPageEndListener onPageEndListener = null;
     OnReadyListener onReadyListener = null;
+    OnPageChangedListener onPageChangedListener = null;
 
     private float density;
 
@@ -204,6 +205,10 @@ public class VTextLayout extends RelativeLayout {
             public void onPageSelected(int position) {
                 currentPage = position;
                 updatePageText();
+
+                if (onPageChangedListener != null) {
+                    onPageChangedListener.onPageChanged(position, vTextView.getTotalPage());
+                }
 
                 if (position >= viewPager.totalPage && onPageEndListener != null) {
                     onPageEndListener.onPageEnd();
@@ -375,6 +380,18 @@ public class VTextLayout extends RelativeLayout {
 
     public void setOnReadyListener(OnReadyListener listener) {
         this.onReadyListener = listener;
+    }
+
+    /**
+     * Called whenever the visible page changes (1-indexed).
+     * totalPage may be -1 while page calculation is in progress.
+     */
+    public interface OnPageChangedListener {
+        void onPageChanged(int page, int totalPage);
+    }
+
+    public void setOnPageChangedListener(OnPageChangedListener listener) {
+        this.onPageChangedListener = listener;
     }
 
     public void setVirtical(boolean isVirtical) {

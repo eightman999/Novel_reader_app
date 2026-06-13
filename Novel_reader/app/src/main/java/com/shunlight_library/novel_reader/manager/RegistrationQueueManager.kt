@@ -484,7 +484,10 @@ object RegistrationQueueManager {
             val actualEpisodeId = mappings[epNo] ?: episode.episode_no
 
             // エピソード本文を取得
-            val episodeBody = adapter.fetchEpisodeContent(workId, actualEpisodeId)
+            // 取得失敗時のエラー文字列は空文字に正規化（body_empty ベースの
+            // エラースキャンで後から検出・再取得できるようにする）
+            val rawBody = adapter.fetchEpisodeContent(workId, actualEpisodeId)
+            val episodeBody = if (rawBody.startsWith("★HTMLページ読み込みエラー")) "" else rawBody
             val episodeWithBody = episode.copy(body = episodeBody)
 
             // 一時テーブルに保存

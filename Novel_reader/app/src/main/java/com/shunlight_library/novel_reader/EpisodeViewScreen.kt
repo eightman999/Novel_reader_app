@@ -126,6 +126,9 @@ fun EpisodeViewScreen(
     }
 
     LaunchedEffect(ncode, episodeNo) {
+        // 前後話ナビゲーション時に旧話の本文で描画されるのを防ぐ
+        // （nullの間はローディング表示になり、新データ到着時にWebView/縦書きViewが再生成される）
+        episode = null
 
         scrollState.scrollTo(0)
         scope.launch {
@@ -133,6 +136,10 @@ fun EpisodeViewScreen(
                 // エピソード情報の取得
                 episode = repository.getEpisode(ncode, episodeNo)
                 novel = repository.getNovelByNcode(ncode)
+
+                // 縦書き進捗の初期値を保存済みの値に合わせる
+                // （開いた直後に戻った場合に0で上書きされるのを防ぐ）
+                vjapReadingRate = episode?.reading_rate ?: 0f
 
                 // 削除済み作品の検出
                 if (novel == null) {
@@ -667,23 +674,27 @@ fun EpisodeViewScreen(
                         }
                     } else {
                         // 横書きモード: WebViewでHTML表示
-                        EnhancedHtmlRubyWebView(
-                            htmlContent = episode!!.body,
-                            fontSize = fontSize,
-                            rubyFontSize = (fontSize * 0.6).toInt(),
-                            backgroundColor = if (useDefaultBackground) null else backgroundColor,
-                            fontColor = fontColor,
-                            fontFamily = fontFamily,
-                            isCustomFont = isCustomFont,
-                            customFontPath = customFontPath,
-                            textOrientation = textOrientation,
-                            autoRubyEnabled = autoRubyEnabled,
-                            ncode = ncode,
-                            episodeNo = episodeNo,
-                            savedReadingRate = episode!!.reading_rate,
-                            modifier = Modifier.padding(bottom = 32.dp),
-                            onWebViewCreated = { webView = it }
-                        )
+                        // key()で話ごとにWebViewを再生成し、JSブリッジ（WebViewScrollInterface）が
+                        // 古いepisodeNoを保持して別の話の進捗を上書きするのを防ぐ
+                        key(ncode, episodeNo) {
+                            EnhancedHtmlRubyWebView(
+                                htmlContent = episode!!.body,
+                                fontSize = fontSize,
+                                rubyFontSize = (fontSize * 0.6).toInt(),
+                                backgroundColor = if (useDefaultBackground) null else backgroundColor,
+                                fontColor = fontColor,
+                                fontFamily = fontFamily,
+                                isCustomFont = isCustomFont,
+                                customFontPath = customFontPath,
+                                textOrientation = textOrientation,
+                                autoRubyEnabled = autoRubyEnabled,
+                                ncode = ncode,
+                                episodeNo = episodeNo,
+                                savedReadingRate = episode!!.reading_rate,
+                                modifier = Modifier.padding(bottom = 32.dp),
+                                onWebViewCreated = { webView = it }
+                            )
+                        }
                     }
                 }
             }
@@ -991,6 +1002,7 @@ fun EnhancedHtmlRubyWebView(
                 )
                 // HTMLをロード
                 loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
+                tag = formattedHtml
             }
         },
         update = { view ->
@@ -1000,7 +1012,12 @@ fun EnhancedHtmlRubyWebView(
             } else {
                 WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
             }
-            view.loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
+            // HTMLが実際に変わった場合のみ再ロード
+            // （無条件に再ロードすると再コンポーズのたびにスクロール位置がリセットされる）
+            if (view.tag != formattedHtml) {
+                view.loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
+                view.tag = formattedHtml
+            }
         },
         onRelease = { view ->
             view.stopLoading()
