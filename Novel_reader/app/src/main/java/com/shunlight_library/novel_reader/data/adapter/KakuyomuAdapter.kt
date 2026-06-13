@@ -124,7 +124,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         val episodesWithBody = episodesWithoutBody.map { episode ->
             // episode.episode_no は連番（1, 2, 3...）なので、キャッシュから実際のIDを取得
             val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
-            val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
+            val episodeBody = normalizeEpisodeBody(fetchEpisodeContent(workId, actualEpisodeId))
             episode.copy(body = episodeBody)
         }
 
@@ -192,7 +192,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             // 1話ずつ取得→保存（メモリリーク防止）
             episodesWithoutBody.forEachIndexed { index, episode ->
                 val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
-                val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
+                val episodeBody = normalizeEpisodeBody(fetchEpisodeContent(workId, actualEpisodeId))
                 val episodeWithBody = episode.copy(body = episodeBody)
 
                 // 1話ずつ保存
@@ -231,7 +231,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             // 旧方式：全話をメモリに保持（後方互換性のため残す）
             val episodesWithBody = episodesWithoutBody.map { episode ->
                 val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
-                val episodeBody = fetchEpisodeContent(workId, actualEpisodeId)
+                val episodeBody = normalizeEpisodeBody(fetchEpisodeContent(workId, actualEpisodeId))
                 episode.copy(body = episodeBody)
             }
 
@@ -591,6 +591,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
             }
         }
 
+        // 作者スクリーンネーム（作者ページURL https://kakuyomu.jp/users/{name} 用）
+        val authorUserName = extractAuthorUserName(apolloState, workData, doc)
+
         if (author.isEmpty()) {
             // 新しいHTML構造: partialGiftWidgetActivityName
             author = doc.select("div.partialGiftWidgetActivityName a").text()
@@ -784,7 +787,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             last_update_date = lastUpdateDate,  // サイト上の最終更新日
             total_ep = totalEp,
             general_all_no = 0,  // カクヨムにはこの情報がない
-            userid = null,  // HTMLから抽出困難
+            userid = authorUserName,  // 作者スクリーンネーム（kakuyomu.jp/users/{name}）
             noveltype = if (totalEp == 1) 2 else 1,  // 1話のみなら短編、それ以外は連載
             length = null,  // HTMLから抽出困難
             updated_at = lastUpdateDate,  // サイト上の最終更新日時
@@ -795,6 +798,61 @@ class KakuyomuAdapter : NovelSiteAdapter {
             end_flag = endFlag
         )
     }
+
+    /**
+     * 作者スクリーンネーム（kakuyomu.jp/users/{name} のname部分）を抽出する
+     */
+    private fun extractAuthorUserName(apolloState: JSONObject?, workData: JSONObject?, doc: Document): String? {
+        // Apollo state（最優先）: Work の author 参照から UserAccount の name を取得
+        if (workData != null && apolloState != null) {
+            val refKey = workData.optJSONObject("author")?.optString("__ref") ?: ""
+            if (refKey.isNotEmpty()) {
+                val name = apolloState.optJSONObject(refKey)?.optString("name") ?: ""
+                if (name.isNotEmpty()) return name
+            }
+        }
+        // フォールバック: 作品ページの作者リンク（href="/users/{name}"）
+        val href = doc.select("a[href^=/users/]").firstOrNull()?.attr("href")
+        if (href != null) {
+            val name = href.removePrefix("/users/").substringBefore("/").substringBefore("?")
+            if (name.isNotEmpty()) return name
+        }
+        return null
+    }
+
+    /**
+     * 作品ページから作者スクリーンネームを取得する（作者ページ遷移用）
+     *
+     * @param novelId カクヨムの作品IDまたはPseudo-Ncode
+     * @return スクリーンネーム（取得失敗時はnull）
+     */
+    suspend fun fetchAuthorUserName(novelId: String): String? = withContext(Dispatchers.IO) {
+        val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
+            PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)
+        } else {
+            novelId
+        }
+        try {
+            applyRateLimit()
+            val html = performHttpRequest(generateWebUrl(workId))
+            val doc = Jsoup.parse(html)
+            val (apolloState, workData) = extractNextDataJson(doc, workId)
+            extractAuthorUserName(apolloState, workData, doc)
+        } catch (e: Exception) {
+            AppLogger.e("KakuyomuAdapter", "作者スクリーンネーム取得エラー: $workId", e)
+            null
+        }
+    }
+
+    /**
+     * 取得失敗時のエラー文字列を空文字に正規化する
+     *
+     * エラー文を本文として保存すると body が非空になり、body_empty ベースの
+     * エラースキャンを恒久的にすり抜ける。空文字にすることで insertEpisode の
+     * マージが既存本文を保護し、欠落スキャンでも検出可能になる。
+     */
+    private fun normalizeEpisodeBody(body: String): String =
+        if (body.startsWith("★HTMLページ読み込みエラー")) "" else body
 
     /**
      * HTMLからエピソード一覧を抽出（TOC情報のみ、本文は含まない）

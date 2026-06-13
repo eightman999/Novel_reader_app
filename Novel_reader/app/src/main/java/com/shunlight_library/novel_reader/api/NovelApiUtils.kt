@@ -237,6 +237,38 @@ object NovelApiUtils {
         return null
     }
 
+    /**
+     * R18作品の作者マイページID（xid、例: "x9360cn"）を取得する
+     *
+     * novel18api は userid を返さず、R18作者ページは
+     * https://xmypage.syosetu.com/{xid}/ 形式（数値useridでは404）のため、
+     * 作品ページの作者リンクから xid を抽出する。
+     *
+     * @param ncode R18小説のNコード
+     * @return xid（取得失敗時はnull）
+     */
+    suspend fun fetchR18AuthorId(ncode: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://novel18.syosetu.com/${ncode.lowercase()}/"
+            val doc = Jsoup.connect(url)
+                .userAgent(API_USER_AGENTS.random())
+                .cookie("over18", "yes")
+                .timeout(15000)
+                .get()
+            val href = doc.select("a[href*=xmypage.syosetu.com]").firstOrNull()?.attr("href")
+            if (href == null) {
+                Log.w(TAG, "R18作者リンクが見つかりません: $ncode")
+                return@withContext null
+            }
+            Regex("xmypage\\.syosetu\\.com/([^/?#]+)").find(href)?.groupValues?.get(1)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "R18作者ID取得エラー: $ncode - ${e.message}")
+            null
+        }
+    }
+
     private suspend fun requestNovelInfo(url: String, userAgent: String): NovelApiInfo? {
         // レート制限を適用
         applyApiRateLimit()
@@ -541,7 +573,7 @@ object NovelApiUtils {
 
                     val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
-                    return@withContext if (body.isNotEmpty()) {
+                    return@withContext if (body.isNotEmpty() && !body.startsWith("★HTMLページ読み込みエラー")) {
                         EpisodeEntity(
                             ncode = ncode,
                             episode_no = episodeNo,
@@ -552,7 +584,7 @@ object NovelApiUtils {
                             is_bookmark = 0
                         )
                     } else {
-                        Log.e(TAG, "カクヨムエピソード本文が空です: workId=$workId, episodeId=$kakuyomuEpisodeId")
+                        Log.e(TAG, "カクヨムエピソード本文が空またはエラーです: workId=$workId, episodeId=$kakuyomuEpisodeId")
                         null
                     }
                 }
