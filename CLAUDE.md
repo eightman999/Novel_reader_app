@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Key Numbers
 - **Entities**: 9 (NovelDesc, Episode, LastReadNovel, UpdateQueue, URL, ImageCache, EpisodeMapping, RegistrationQueue, TempEpisode)
 - **DAOs**: 9 (matching entities)
-- **Screens**: 8 main screens + 1 sync activity
+- **Screens**: 9 main screens (incl. SettingsMenuScreen hub) + 1 sync activity (DatabaseSyncActivity)
 - **Adapters**: 2 (SyosetuAdapter, KakuyomuAdapter)
 - **Migrations**: v1→v16 (15 migrations)
 - **Database Indices**: 20+ (including composite indices for performance)
@@ -137,20 +137,21 @@ Novel_reader_app/
 │   │       │   ├── *.kt            # Top-level screens and application
 │   │       │   ├── data/
 │   │       │   │   ├── adapter/    # Site-specific adapters (Syosetu, Kakuyomu)
-│   │       │   │   ├── dao/        # Room DAOs (7 total)
-│   │       │   │   ├── database/   # NovelDatabase.kt (v11)
-│   │       │   │   ├── entity/     # Room entities (7 total)
+│   │       │   │   ├── dao/        # Room DAOs (9 total)
+│   │       │   │   ├── database/   # NovelDatabase.kt (v16)
+│   │       │   │   ├── entity/     # Room entities (9 total) + EpisodeMeta DTO
 │   │       │   │   ├── repository/ # NovelRepository.kt
 │   │       │   │   └── sync/       # Database sync utilities
 │   │       │   ├── api/            # API utilities (NovelApiUtils)
 │   │       │   ├── navigation/     # NavigationManager
 │   │       │   ├── ui/             # UI components and screens
-│   │       │   │   ├── components/ # Reusable UI components
+│   │       │   │   ├── components/ # Reusable UI components (incl. VjapVerticalTextView)
 │   │       │   │   └── theme/      # App theme
 │   │       │   ├── utils/          # Utility classes
 │   │       │   ├── worker/         # WorkManager workers (AutoUpdate)
-│   │       │   ├── service/        # Background services
+│   │       │   ├── service/        # Background services (UpdateService, FCM)
 │   │       │   ├── receiver/       # Broadcast receivers
+│   │       │   ├── manager/        # RegistrationQueueManager (download queue)
 │   │       │   └── metadata/       # Metadata management
 │   │       ├── test/               # Unit tests
 │   │       └── androidTest/        # Instrumented tests
@@ -172,11 +173,12 @@ Novel_reader_app/
 - `MainActivity.kt` - Single Activity with Compose, navigation, back handling
 - `AppInfo.kt` - Application information
 
-#### Data Layer (7 Entities, 7 DAOs, 1 Repository)
-- **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity
-- **DAOs**: Matching DAOs for each entity
-- **Database**: NovelDatabase.kt (v11 with full migration chain)
-- **Repository**: NovelRepository.kt (single source of data access)
+#### Data Layer (9 Entities, 9 DAOs, 1 Repository)
+- **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity, RegistrationQueueEntity, TempEpisodeEntity
+- **DTO**: EpisodeMeta (本文なし射影 + body_empty フラグ、エピソード一覧の軽量ロード用)
+- **DAOs**: Matching DAOs for each entity (9 total)
+- **Database**: NovelDatabase.kt (v16 with full migration chain, exportSchema=true)
+- **Repository**: NovelRepository.kt (single source of data access, withTransaction 対応)
 
 #### Adapters (Multi-Site Support)
 - `NovelSiteAdapter.kt` - Interface
@@ -184,21 +186,22 @@ Novel_reader_app/
 - `KakuyomuAdapter.kt` - Kakuyomu implementation (HTML scraping)
 - `NovelSiteAdapterFactory.kt` - Factory pattern
 
-#### Screens (8 total)
+#### Screens (9 total)
 - NovelListScreen, EpisodeListScreen, EpisodeViewScreen, WebViewScreen
 - RecentlyReadNovelsScreen, RecentlyUpdatedNovelsScreen
-- UpdateInfoScreen, SettingsScreen
-- DatabaseSyncActivity (Activity for sync UI)
+- UpdateInfoScreen, SettingsScreen, SettingsMenuScreen (設定ハブ)
 
 #### Utilities
 - Base62Converter, PseudoNcodeGenerator, AppLogger
-- FontUtils, ImageCacheUtils, NovelUpdateCoordinator
-- DatabaseSync*, MetadataUpdateManager, NotificationStore
+- FontUtils, ImageCacheUtils, NovelUpdateCoordinator, ReleaseUtils
+- VjapTextConverter (縦書きテキスト変換)
+- DatabaseSync*, MetadataUpdateManager, RegistrationQueueManager
 
 #### Background Work
 - `AutoUpdateWorker.kt` - WorkManager worker for scheduled updates
 - `AutoUpdateScheduler.kt` - Update scheduling logic
 - `UpdateService.kt` - Update service
+- `MyFirebaseMessagingService.kt` - FCM push messaging service
 
 ## Architecture Overview
 
@@ -207,7 +210,7 @@ This is an Android novel reader application built with modern Android architectu
 ### Core Architecture
 - **Pattern**: Clean Architecture + MVVM + Repository Pattern + Adapter Pattern (for multi-site support)
 - **UI**: Jetpack Compose with single Activity pattern
-- **Database**: Room with migration support (currently v11)
+- **Database**: Room with migration support (currently v16)
 - **Navigation**: Custom NavigationManager with screen stack and scroll position preservation
 - **Background Work**: WorkManager for scheduled updates
 - **State**: Flow-based reactive programming
@@ -220,17 +223,20 @@ This is an Android novel reader application built with modern Android architectu
 - `MainActivity.kt` - Single Activity hosting all Compose screens
 
 #### Data Layer
-- `NovelDatabase.kt` - Room database with 7 tables and proper migrations (v11)
-- `NovelRepository.kt` - Single repository managing all data access via DAOs
-- **Entities** (7 total):
-  - `NovelDescEntity` - Novel metadata with R18 support, favorite flag, site type, registration date
+- `NovelDatabase.kt` - Room database with 9 tables and proper migrations (v16, exportSchema=true)
+- `NovelRepository.kt` - Single repository managing all data access via DAOs (withTransaction でアトミック操作)
+- **Entities** (9 total):
+  - `NovelDescEntity` - Novel metadata with R18 support, favorite flag, site type, sub_site, end_flag, registration date
   - `EpisodeEntity` - Episode content with reading progress, bookmarks, and reading rate
   - `LastReadNovelEntity` - Reading history tracking
   - `UpdateQueueEntity` - Update notifications queue
   - `URLEntity` - API/Web URLs with R18 site support
   - `ImageCacheEntity` - Image caching for novel covers (v7+)
   - `EpisodeMappingEntity` - Episode ID mapping for Kakuyomu (v10+)
-- **DAOs** (7 total): NovelDescDao, EpisodeDao, LastReadNovelDao, UpdateQueueDao, URLEntityDao, ImageCacheDao, EpisodeMappingDao
+  - `RegistrationQueueEntity` - Download/registration queue for novels
+  - `TempEpisodeEntity` - Temporary episode storage for timeout-resumable downloads
+  - (`EpisodeMeta` - body-less DTO projection for lightweight episode list loading)
+- **DAOs** (9 total): NovelDescDao, EpisodeDao, LastReadNovelDao, UpdateQueueDao, URLEntityDao, ImageCacheDao, EpisodeMappingDao, RegistrationQueueDao, TempEpisodeDao
 - **Adapter Pattern** for multi-site support:
   - `NovelSiteAdapter` - Interface for site-specific implementations
   - `SyosetuAdapter` - なろう小説 (Syosetu) implementation
@@ -250,7 +256,8 @@ This is an Android novel reader application built with modern Android architectu
 - `RecentlyUpdatedNovelsScreen.kt` - Recently updated novels with update notifications
 - `UpdateInfoScreen.kt` - Update information and notification management
 - `SettingsScreen.kt` - Application settings with DataStore persistence
-- `DatabaseSyncActivity.kt` - External SQLite database synchronization
+- `SettingsMenuScreen.kt` - Settings hub navigating to detailed settings sections
+- `DatabaseSyncActivity.kt` - External SQLite database synchronization (in `ui/`)
 
 ### Important Patterns
 
@@ -292,7 +299,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - v12→v15: Various feature additions (see git history)
 - v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; initialized sub_site for existing records
 
-#### Tables (7 total)
+#### Tables (9 total)
 1. **`novels_descs`** - Novel metadata
    - Basic info: ncode, title, author, synopsis, tags, rating
    - Stats: total_ep, general_all_no, length, noveltype
@@ -325,6 +332,13 @@ Use `SettingsStore` for persistent configuration with DataStore.
    - Mapping: ncode, episode_no, kakuyomu_episode_id
    - Composite PK: (ncode, episode_no)
    - Indices: (ncode, episode_no), (ncode, kakuyomu_episode_id)
+
+8. **`registration_queue`** - Download/registration queue
+   - Queue management for novel downloads (pending/in-progress/completed状態管理)
+
+9. **`temp_episodes`** - Temporary episode storage
+   - Timeout-resumable downloads: タイムアウト時に一時データを保持し、リトライ時に続きから再開
+   - Cleared atomically when registration completes or is cancelled
 
 ### Special Features
 - Custom font loading and CSS generation for WebView
@@ -451,6 +465,10 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 - **`ImageCacheUtils`** - Image caching management for novel covers
 - **`NovelUpdateCoordinator`** - Coordinates novel update operations
 - **`ReleaseUtils`** - Release-related utilities
+- **`VjapTextConverter`** - Vertical text (縦書き) conversion for VjapVerticalTextView
+
+#### Download Queue Management
+- **`RegistrationQueueManager`** - Manages the download/registration queue; cancels jobs with `cancelAndJoin` before clearing temp data (orphan temp_episodes 防止)
 
 #### Synchronization and Database
 - **`DatabaseSyncManager`** - SQLite database synchronization
@@ -488,7 +506,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 - Work Testing for WorkManager tests
 
 ### Development Guidelines
-1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 11.
+1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 16.
 2. **Compose State**: Use proper Compose state management with state hoisting
 3. **Repository Pattern**: Follow the Repository pattern for all data operations. Never access DAOs directly.
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
