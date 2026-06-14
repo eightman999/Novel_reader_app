@@ -238,6 +238,167 @@ object NovelApiUtils {
     }
 
     /**
+     * なろう小説APIの一括取得（OR検索 ncode=n1-n2-n3）。
+     *
+     * 複数のNコードを1リクエストにまとめて取得し、APIリクエスト数を大幅に削減する。
+     * （従来は1作品=1リクエスト → 本メソッドでは chunkSize 件=1リクエスト）
+     *
+     * R18作品と一般作品は別API（novelapi / novel18api）のため、
+     * 呼び出し側で rating により振り分け、同一R18種別のNコードのみを渡すこと。
+     * 取得できなかったNコード（検索除外作品・通信失敗等）は戻り値に含まれないため、
+     * 呼び出し側で「マップに無ければ更新なし」としてフォールバックすること。
+     *
+     * @param ncodes 取得対象のNコード（すべて同一のR18種別であること）
+     * @param isR18 R18小説か（true=novel18api）
+     * @param chunkSize 1リクエストあたりの最大件数（URL長・lim上限500に配慮、既定100）
+     * @param maxRetries 最大再試行回数
+     * @param retryDelayMillis 再試行時の待機時間（ミリ秒）
+     * @return 小文字Nコード -> NovelApiInfo のマップ
+     */
+    suspend fun fetchNovelInfoBatch(
+        ncodes: List<String>,
+        isR18: Boolean = false,
+        chunkSize: Int = 100,
+        maxRetries: Int = 3,
+        retryDelayMillis: Long = 1000L
+    ): Map<String, NovelApiInfo> {
+        val distinct = ncodes.map { it.lowercase() }.filter { it.isNotEmpty() }.distinct()
+        if (distinct.isEmpty()) return emptyMap()
+
+        val result = HashMap<String, NovelApiInfo>()
+        val baseUrl = if (isR18) {
+            "https://api.syosetu.com/novel18api/api/"
+        } else {
+            "https://api.syosetu.com/novelapi/api/"
+        }
+
+        for (chunk in distinct.chunked(chunkSize)) {
+            val joinedNcodes = chunk.joinToString("-")
+            // n=ncode（結果の突合に必須）, ga=general_all_no, ua=updated_at, u=userid, nt=noveltype, l=length
+            val url = "$baseUrl?of=n-ga-ua-u-nt-l&ncode=$joinedNcodes&lim=${chunk.size}&gzip=5"
+
+            var chunkResult: Map<String, NovelApiInfo>? = null
+            for (attempt in 1..maxRetries) {
+                val userAgent = API_USER_AGENTS.random()
+                try {
+                    chunkResult = requestNovelInfoBatch(url, userAgent)
+                    if (chunkResult != null) break
+                    Log.w(TAG, "一括API応答からデータを取得できませんでした (attempt=$attempt/$maxRetries, 件数=${chunk.size})")
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (e: Exception) {
+                    if (!isRetryableNetworkException(e)) {
+                        Log.e(TAG, "一括API取得エラー(非再試行): ${e.message}", e)
+                        break
+                    }
+                    Log.w(TAG, "一括API取得エラー (attempt=$attempt/$maxRetries): ${e.message}", e)
+                }
+                if (attempt < maxRetries) {
+                    delay(retryDelayMillis * attempt)
+                }
+            }
+            chunkResult?.let { result.putAll(it) }
+        }
+
+        return result
+    }
+
+    private suspend fun requestNovelInfoBatch(url: String, userAgent: String): Map<String, NovelApiInfo>? {
+        // レート制限を適用
+        applyApiRateLimit()
+
+        return withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10000
+                    readTimeout = 15000
+                    setRequestProperty("User-Agent", userAgent)
+                    setRequestProperty("Accept-Encoding", "gzip")
+                    instanceFollowRedirects = true
+                }
+
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    Log.w(TAG, "HTTP ${connection.responseCode} 応答(一括): $url")
+                    return@withContext null
+                }
+
+                val useGzip = url.contains("gzip=", ignoreCase = true) ||
+                              connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
+
+                val inputStream = try {
+                    if (useGzip) {
+                        try {
+                            GZIPInputStream(connection.inputStream)
+                        } catch (gzipError: Exception) {
+                            Log.w(TAG, "GZIP解凍エラー、非圧縮として再試行(一括): ${gzipError.message}")
+                            connection.inputStream
+                        }
+                    } else {
+                        connection.inputStream
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "InputStream取得エラー(一括): ${e.message}", e)
+                    throw e
+                }
+
+                inputStream.buffered().use { bufferedStream ->
+                    val responseContent = InputStreamReader(bufferedStream, Charsets.UTF_8).use { reader ->
+                        reader.readText()
+                    }
+
+                    if (responseContent.isBlank()) {
+                        Log.w(TAG, "一括APIレスポンスが空です: $url")
+                        return@withContext null
+                    }
+
+                    try {
+                        val fixedYaml = fixYamlFoldedScalarIndentation(responseContent)
+                        val yaml = Yaml()
+                        val yamlData = yaml.load<List<Map<String, Any>>>(fixedYaml)
+
+                        // 0番目はメタデータ（allcount）、1番目以降が各作品。
+                        // 該当作品が無い場合は allcount のみ（size<2）→ 空マップを返す
+                        if (yamlData == null || yamlData.size < 2) {
+                            return@withContext emptyMap<String, NovelApiInfo>()
+                        }
+
+                        val map = HashMap<String, NovelApiInfo>()
+                        for (i in 1 until yamlData.size) {
+                            val novelData = yamlData[i]
+                            val ncodeKey = novelData["ncode"]?.toString()?.lowercase()?.takeIf { it.isNotBlank() }
+                                ?: continue
+                            val generalAllNo = (novelData["general_all_no"] as? Number)?.toInt() ?: continue
+                            val updatedAt = novelData["updated_at"]?.toString()
+                            val userid = novelData["userid"]?.toString()
+                            val noveltype = (novelData["noveltype"] as? Number)?.toInt()
+                            val length = (novelData["length"] as? Number)?.toInt()
+                            val normalizedUpdatedAt = updatedAt?.takeIf { it.isNotBlank() }
+                                ?: DatabaseSyncUtils.getCurrentDateTimeString()
+
+                            map[ncodeKey] = NovelApiInfo(
+                                generalAllNo = generalAllNo,
+                                updatedAt = normalizedUpdatedAt,
+                                userid = userid,
+                                noveltype = noveltype,
+                                length = length
+                            )
+                        }
+                        Log.d(TAG, "一括YAML解析成功: 要素${yamlData.size}件 -> ${map.size}件突合")
+                        map
+                    } catch (e: Exception) {
+                        Log.e(TAG, "一括YAMLパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
+                        throw e
+                    }
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }
+    }
+
+    /**
      * R18作品の作者マイページID（xid、例: "x9360cn"）を取得する
      *
      * novel18api は userid を返さず、R18作者ページは

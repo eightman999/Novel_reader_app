@@ -145,6 +145,9 @@ class SettingsStore(private val context: Context) {
 
         // ルビ自動変換設定のキー
         val AUTO_RUBY_ENABLED = booleanPreferencesKey("auto_ruby_enabled")
+
+        // 短編を更新確認から除外する設定
+        val EXCLUDE_SHORT_FROM_UPDATE = booleanPreferencesKey("exclude_short_from_update")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -201,6 +204,7 @@ class SettingsStore(private val context: Context) {
 
     // ルビ自動変換のデフォルト値
     val defaultAutoRubyEnabled = true  // デフォルトは有効
+    val defaultExcludeShortFromUpdate = true  // デフォルトは短編を更新確認から除外（短編は新規話が増えないため）
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -814,6 +818,26 @@ class SettingsStore(private val context: Context) {
     suspend fun saveAutoRubyEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_RUBY_ENABLED] = enabled
+        }
+    }
+
+    // 短編を更新確認から除外する設定の取得
+    val excludeShortFromUpdate: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[EXCLUDE_SHORT_FROM_UPDATE] ?: defaultExcludeShortFromUpdate
+        }
+
+    // 短編を更新確認から除外する設定の保存
+    suspend fun saveExcludeShortFromUpdate(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[EXCLUDE_SHORT_FROM_UPDATE] = enabled
         }
     }
     

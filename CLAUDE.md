@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-06-12)
-- **Version**: 2.0.15 (versionCode: 215)
-- **Database**: Version 16 with 9 tables + performance indices
+### Current State (2026-06-14)
+- **Version**: 2.0.17 (versionCode: 217)
+- **Database**: Version 17 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
 - **Testing**: Unit tests + Instrumented tests available
@@ -17,12 +17,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **DAOs**: 9 (matching entities)
 - **Screens**: 8 main screens + 1 sync activity
 - **Adapters**: 2 (SyosetuAdapter, KakuyomuAdapter)
-- **Migrations**: v1→v16 (15 migrations)
+- **Migrations**: v1→v17 (16 migrations)
 - **Database Indices**: 20+ (including composite indices for performance)
 
 ### Common Tasks
 - **Add new feature**: Update version in build.gradle.kts, write Japanese commit message
-- **Database change**: Create new migration, update version to v17
+- **Database change**: Create new migration, update version to v18
 - **Add new site**: Implement NovelSiteAdapter interface, add to factory
 - **Fetching episodes**: Always use incremental saving (fetch 1 → save → fetch 2 → save)
 - **Site detection**: Check `novel.site_type` (1=Syosetu, 2=Kakuyomu)
@@ -131,14 +131,14 @@ All Gradle commands should be run from the `Novel_reader/` directory.
 Novel_reader_app/
 ├── Novel_reader/                    # Main Android project
 │   ├── app/
-│   │   ├── build.gradle.kts        # App build config (version: 2.0.15, code: 215)
+│   │   ├── build.gradle.kts        # App build config (version: 2.0.17, code: 217)
 │   │   └── src/
 │   │       ├── main/java/com/shunlight_library/novel_reader/
 │   │       │   ├── *.kt            # Top-level screens and application
 │   │       │   ├── data/
 │   │       │   │   ├── adapter/    # Site-specific adapters (Syosetu, Kakuyomu)
 │   │       │   │   ├── dao/        # Room DAOs (7 total)
-│   │       │   │   ├── database/   # NovelDatabase.kt (v11)
+│   │       │   │   ├── database/   # NovelDatabase.kt (v17)
 │   │       │   │   ├── entity/     # Room entities (7 total)
 │   │       │   │   ├── repository/ # NovelRepository.kt
 │   │       │   │   └── sync/       # Database sync utilities
@@ -175,7 +175,7 @@ Novel_reader_app/
 #### Data Layer (7 Entities, 7 DAOs, 1 Repository)
 - **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity
 - **DAOs**: Matching DAOs for each entity
-- **Database**: NovelDatabase.kt (v11 with full migration chain)
+- **Database**: NovelDatabase.kt (v17 with full migration chain)
 - **Repository**: NovelRepository.kt (single source of data access)
 
 #### Adapters (Multi-Site Support)
@@ -207,7 +207,7 @@ This is an Android novel reader application built with modern Android architectu
 ### Core Architecture
 - **Pattern**: Clean Architecture + MVVM + Repository Pattern + Adapter Pattern (for multi-site support)
 - **UI**: Jetpack Compose with single Activity pattern
-- **Database**: Room with migration support (currently v11)
+- **Database**: Room with migration support (currently v17)
 - **Navigation**: Custom NavigationManager with screen stack and scroll position preservation
 - **Background Work**: WorkManager for scheduled updates
 - **State**: Flow-based reactive programming
@@ -220,7 +220,7 @@ This is an Android novel reader application built with modern Android architectu
 - `MainActivity.kt` - Single Activity hosting all Compose screens
 
 #### Data Layer
-- `NovelDatabase.kt` - Room database with 7 tables and proper migrations (v11)
+- `NovelDatabase.kt` - Room database with 9 tables and proper migrations (v17)
 - `NovelRepository.kt` - Single repository managing all data access via DAOs
 - **Entities** (7 total):
   - `NovelDescEntity` - Novel metadata with R18 support, favorite flag, site type, registration date
@@ -275,7 +275,7 @@ navigationManager.navigateTo(NavigationScreen.EpisodeList(novelId))
 #### Settings Management
 Use `SettingsStore` for persistent configuration with DataStore.
 
-### Database Schema (Version 16)
+### Database Schema (Version 17)
 
 #### Migration History
 - v1→v2: Added `update_queue` table
@@ -291,6 +291,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - v11→v12: **Performance optimization** - Added indices for sorting/filtering (total_ep, author, title, is_read, is_bookmark) and composite indices (site_type+is_favorite, ncode+is_read, ncode+is_bookmark)
 - v12→v15: Various feature additions (see git history)
 - v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; initialized sub_site for existing records
+- v16→v17: ImageCacheEntityのインデックス定義同期（物理スキーマ変更なし、identity hash修正）
 
 #### Tables (7 total)
 1. **`novels_descs`** - Novel metadata
@@ -367,6 +368,8 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Episode navigation fix (v2.0.15): 前後話ナビでLaunchedEffect先頭にepisode=nullリセットを追加（旧話の本文が表示され続けるバグ修正）。EnhancedHtmlRubyWebViewをkey(ncode, episodeNo)で再生成（JSブリッジが古いepisodeNoで別話の進捗を上書きするバグ修正）。WebViewのHTML再ロードはタグ比較で変更時のみ
 - Error-body prevention (adapter paths, v2.0.15): KakuyomuAdapter内部の保存経路（一括DL・ストリーミング・旧方式）でnormalizeEpisodeBodyによりエラー文字列を空文字に正規化。EpisodeListScreenのエラー修正（カクヨム）、RegistrationQueueManager（初回登録ストリーミング）、NovelApiUtils（カクヨム単話取得）にもガード追加（全fetchEpisodeContent保存経路でエラー文字列の本文化を防止）
 - WebViewScreen fixes (v2.0.15): AndroidView updateでの再ロードを廃止（再コンポーズのたびにページがリロードされるバグ修正）。mailto:等の非http(s)スキームは外部アプリへ委譲。xmypage.syosetu.comにもover18 Cookieを事前設定
+- Batch update check (v2.0.17): なろう作品の更新確認を `?ncode=n1-n2-n3&of=n-ga-ua-u-nt-l&lim=N&gzip=5` のOR検索で一括取得（`NovelApiUtils.fetchNovelInfoBatch`、最大100件/リクエスト、R18は novel18api に分離、小文字ncodeで突合）。AutoUpdateWorker と UpdateInfoScreen の全更新確認で「1作品=1リクエスト→100作品=1リクエスト」に削減。一括取得で取れなかった作品（検索除外・通信失敗）は個別 `fetchNovelInfo` にフォールバック。YAMLパースを `yamlData.drop(1)` ループ化（従来の単発 `yamlData[1]` を維持しつつ一括用を追加）
+- Short-novel update exclusion (v2.0.17): 短編（noveltype=2）は新規エピソードが増えないため、設定 `excludeShortFromUpdate`（DataStore、デフォルトON）で更新確認の対象から除外。AutoUpdateWorker・UpdateInfoScreen全更新確認に適用、設定画面「自動更新設定」にトグル追加（noveltype=null は除外しない安全側）
 
 ### Performance Optimizations
 
@@ -488,13 +491,13 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 - Work Testing for WorkManager tests
 
 ### Development Guidelines
-1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 11.
+1. **Database Migrations**: Always create Room migrations for schema changes. Current version is 17.
 2. **Compose State**: Use proper Compose state management with state hoisting
 3. **Repository Pattern**: Follow the Repository pattern for all data operations. Never access DAOs directly.
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.15 (versionCode 215).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.17 (versionCode 217).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.
