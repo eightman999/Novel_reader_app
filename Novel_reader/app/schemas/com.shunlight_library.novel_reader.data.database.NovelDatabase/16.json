@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 16,
-    "identityHash": "424294516e23467832eeffd6e28dfd64",
+    "identityHash": "743ab6feac5258ae9dd919926e293838",
     "entities": [
       {
         "tableName": "episodes",
@@ -547,18 +547,7 @@
           "columnNames": [
             "hash"
           ]
-        },
-        "indices": [
-          {
-            "name": "idx_image_cache_hash",
-            "unique": false,
-            "columnNames": [
-              "hash"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `idx_image_cache_hash` ON `${TABLE_NAME}` (`hash`)"
-          }
-        ]
+        }
       },
       {
         "tableName": "episode_mapping",
@@ -820,7 +809,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '424294516e23467832eeffd6e28dfd64')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '743ab6feac5258ae9dd919926e293838')"
     ]
   }
 }

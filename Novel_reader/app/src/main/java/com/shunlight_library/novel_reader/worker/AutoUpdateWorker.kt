@@ -162,11 +162,14 @@ class AutoUpdateWorker(
                 // 更新対象の小説を取得（全ての小説）
                 val allNovels = repository.getNovelsForUpdate()
                 // 短編は新規エピソードが増えないため、設定により更新確認から除外
+                // ※カクヨムの noveltype は「登録時の話数==1」で短編判定する推定値のため、
+                //   1話だけの連載作品を恒久的に除外してしまう。短編除外は noveltype が
+                //   API由来で確実なSyosetu作品にのみ適用する。
                 val excludeShort = settingsStore.excludeShortFromUpdate.first()
                 // 完結作品も設定により更新確認から除外（end_flag: 1=完結）
                 val excludeCompleted = settingsStore.excludeCompletedFromUpdate.first()
                 val novels = allNovels.filter { novel ->
-                    (!excludeShort || novel.noveltype != 2) &&
+                    (!excludeShort || novel.site_type != NovelSiteAdapter.SITE_TYPE_SYOSETU || novel.noveltype != 2) &&
                     (!excludeCompleted || novel.end_flag != 1)
                 }
                 Log.d(TAG, "更新対象小説数: ${novels.size} (全${allNovels.size}件, 短編除外=$excludeShort, 完結除外=$excludeCompleted)")

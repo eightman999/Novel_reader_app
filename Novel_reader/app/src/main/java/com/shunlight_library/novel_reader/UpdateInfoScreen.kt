@@ -541,9 +541,13 @@ fun UpdateInfoScreen(
                                 // 更新対象の小説を取得
                                 var novelsForUpdate = repository.getNovelsForUpdate()
                                 // 短編は新規エピソードが増えないため、設定により更新確認から除外
+                                // ※カクヨムの noveltype は登録時話数==1の推定値のため、短編除外は
+                                //   noveltype がAPI由来で確実なSyosetu作品にのみ適用する。
                                 val excludeShortUpdate = settingsStore.excludeShortFromUpdate.first()
                                 if (excludeShortUpdate) {
-                                    novelsForUpdate = novelsForUpdate.filter { it.noveltype != 2 }
+                                    novelsForUpdate = novelsForUpdate.filter {
+                                        it.site_type != NovelSiteAdapter.SITE_TYPE_SYOSETU || it.noveltype != 2
+                                    }
                                 }
                                 // 完結作品も設定により更新確認から除外（end_flag: 1=完結）
                                 val excludeCompletedUpdate = settingsStore.excludeCompletedFromUpdate.first()
@@ -603,7 +607,11 @@ fun UpdateInfoScreen(
                                                             Synopsis = updateSummary.novelDesc.Synopsis,
                                                             main_tag = updateSummary.novelDesc.main_tag,
                                                             sub_tag = updateSummary.novelDesc.sub_tag,
-                                                            last_update_date = updateSummary.novelDesc.last_update_date
+                                                            last_update_date = updateSummary.novelDesc.last_update_date,
+                                                            // 完結状態・作品種別は登録後も変化するため最新値で更新する
+                                                            // （end_flag: 完結除外フィルタ用 / noveltype: 1話のみ作品が連載化した際の短編誤判定の自己修復）
+                                                            end_flag = updateSummary.novelDesc.end_flag,
+                                                            noveltype = updateSummary.novelDesc.noveltype
                                                         )
                                                         repository.updateNovel(updatedNovel)
 
