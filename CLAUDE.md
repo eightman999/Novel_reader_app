@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📖 Quick Reference
 
 ### Current State (2026-06-14)
-- **Version**: 2.0.17 (versionCode: 217)
+- **Version**: 2.0.18 (versionCode: 218)
 - **Database**: Version 17 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -131,7 +131,7 @@ All Gradle commands should be run from the `Novel_reader/` directory.
 Novel_reader_app/
 ├── Novel_reader/                    # Main Android project
 │   ├── app/
-│   │   ├── build.gradle.kts        # App build config (version: 2.0.17, code: 217)
+│   │   ├── build.gradle.kts        # App build config (version: 2.0.18, code: 218)
 │   │   └── src/
 │   │       ├── main/java/com/shunlight_library/novel_reader/
 │   │       │   ├── *.kt            # Top-level screens and application
@@ -384,6 +384,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - WebViewScreen fixes (v2.0.15): AndroidView updateでの再ロードを廃止（再コンポーズのたびにページがリロードされるバグ修正）。mailto:等の非http(s)スキームは外部アプリへ委譲。xmypage.syosetu.comにもover18 Cookieを事前設定
 - Batch update check (v2.0.17): なろう作品の更新確認を `?ncode=n1-n2-n3&of=n-ga-ua-u-nt-l&lim=N&gzip=5` のOR検索で一括取得（`NovelApiUtils.fetchNovelInfoBatch`、最大100件/リクエスト、R18は novel18api に分離、小文字ncodeで突合）。AutoUpdateWorker と UpdateInfoScreen の全更新確認で「1作品=1リクエスト→100作品=1リクエスト」に削減。一括取得で取れなかった作品（検索除外・通信失敗）は個別 `fetchNovelInfo` にフォールバック。YAMLパースを `yamlData.drop(1)` ループ化（従来の単発 `yamlData[1]` を維持しつつ一括用を追加）
 - Short-novel update exclusion (v2.0.17): 短編（noveltype=2）は新規エピソードが増えないため、設定 `excludeShortFromUpdate`（DataStore、デフォルトON）で更新確認の対象から除外。AutoUpdateWorker・UpdateInfoScreen全更新確認に適用、設定画面「自動更新設定」にトグル追加（noveltype=null は除外しない安全側）
+- Completed-novel update exclusion (v2.0.18): 完結作品（end_flag=1）を更新確認から除外する設定 `excludeCompletedFromUpdate`（DataStore、デフォルトOFF＝後日談を見逃さないため）。AutoUpdateWorker・UpdateInfoScreen全更新確認に適用、設定画面「自動更新設定」にトグル追加（短編除外と独立）
 
 ### Performance Optimizations
 
@@ -515,7 +516,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.17 (versionCode 217).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.18 (versionCode 218).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.

@@ -148,6 +148,9 @@ class SettingsStore(private val context: Context) {
 
         // 短編を更新確認から除外する設定
         val EXCLUDE_SHORT_FROM_UPDATE = booleanPreferencesKey("exclude_short_from_update")
+
+        // 完結作品を更新確認から除外する設定
+        val EXCLUDE_COMPLETED_FROM_UPDATE = booleanPreferencesKey("exclude_completed_from_update")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -205,6 +208,7 @@ class SettingsStore(private val context: Context) {
     // ルビ自動変換のデフォルト値
     val defaultAutoRubyEnabled = true  // デフォルトは有効
     val defaultExcludeShortFromUpdate = true  // デフォルトは短編を更新確認から除外（短編は新規話が増えないため）
+    val defaultExcludeCompletedFromUpdate = false  // 完結作品も稀に後日談が付くためデフォルトは除外しない
 
     val themeMode: Flow<String> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -838,6 +842,26 @@ class SettingsStore(private val context: Context) {
     suspend fun saveExcludeShortFromUpdate(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[EXCLUDE_SHORT_FROM_UPDATE] = enabled
+        }
+    }
+
+    // 完結作品を更新確認から除外する設定の取得
+    val excludeCompletedFromUpdate: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[EXCLUDE_COMPLETED_FROM_UPDATE] ?: defaultExcludeCompletedFromUpdate
+        }
+
+    // 完結作品を更新確認から除外する設定の保存
+    suspend fun saveExcludeCompletedFromUpdate(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[EXCLUDE_COMPLETED_FROM_UPDATE] = enabled
         }
     }
     
