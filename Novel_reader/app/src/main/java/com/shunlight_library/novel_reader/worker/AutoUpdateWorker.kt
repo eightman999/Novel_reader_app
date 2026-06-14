@@ -160,8 +160,31 @@ class AutoUpdateWorker(
                 Log.d(TAG, "update_queueをリセットしました")
 
                 // 更新対象の小説を取得（全ての小説）
-                val novels = repository.getNovelsForUpdate()
-                Log.d(TAG, "更新対象小説数: ${novels.size}")
+                val allNovels = repository.getNovelsForUpdate()
+                // 短編は新規エピソードが増えないため、設定により更新確認から除外
+                val excludeShort = settingsStore.excludeShortFromUpdate.first()
+                val novels = if (excludeShort) {
+                    allNovels.filter { it.noveltype != 2 }
+                } else {
+                    allNovels
+                }
+                Log.d(TAG, "更新対象小説数: ${novels.size} (全${allNovels.size}件, 短編除外=$excludeShort)")
+
+                // なろう作品はAPI一括取得（ncode OR検索）でリクエスト数を削減する
+                // （1作品=1リクエスト → 最大100作品=1リクエスト）
+                val syosetuNovels = novels.filter { it.site_type == NovelSiteAdapter.SITE_TYPE_SYOSETU }
+                val syosetuInfoMap = HashMap<String, NovelApiUtils.NovelApiInfo>()
+                try {
+                    val generalNcodes = syosetuNovels.filter { it.rating != 1 }.map { it.ncode }
+                    val r18Ncodes = syosetuNovels.filter { it.rating == 1 }.map { it.ncode }
+                    syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(generalNcodes, isR18 = false))
+                    syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(r18Ncodes, isR18 = true))
+                    Log.d(TAG, "なろう一括取得完了: 対象${syosetuNovels.size}件中 ${syosetuInfoMap.size}件取得")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "なろう一括取得エラー（個別取得にフォールバック）", e)
+                }
 
                 // 更新キュー（エピソード数確認の結果）
                 val updateQueueItems = mutableListOf<UpdateQueueEntity>()
@@ -189,12 +212,18 @@ class AutoUpdateWorker(
                                         val adapter = NovelSiteAdapterFactory.getAdapter(novel.site_type)
                                         val latestEpisodeCount = when (adapter.getSiteType()) {
                                             NovelSiteAdapter.SITE_TYPE_SYOSETU -> {
-                                                val isR18 = novel.rating == 1
-                                                val apiInfo = NovelApiUtils.fetchNovelInfo(
-                                                    ncode = novel.ncode,
-                                                    isR18 = isR18
-                                                )
-                                                apiInfo?.generalAllNo ?: novel.total_ep
+                                                // 一括取得の結果を優先。取れなかった場合のみ個別取得にフォールバック
+                                                val batchInfo = syosetuInfoMap[novel.ncode.lowercase()]
+                                                if (batchInfo != null) {
+                                                    batchInfo.generalAllNo
+                                                } else {
+                                                    val isR18 = novel.rating == 1
+                                                    val apiInfo = NovelApiUtils.fetchNovelInfo(
+                                                        ncode = novel.ncode,
+                                                        isR18 = isR18
+                                                    )
+                                                    apiInfo?.generalAllNo ?: novel.total_ep
+                                                }
                                             }
                                             NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
                                                 val kakuyomuAdapter = adapter as KakuyomuAdapter

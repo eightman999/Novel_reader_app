@@ -287,6 +287,15 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
 }
 
 /**
+ * v16→v17のマイグレーション: ImageCacheEntityにインデックス定義を追加（物理スキーマは変更なし）
+ */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_image_cache_hash ON image_cache (hash)")
+    }
+}
+
+/**
  * アプリ全体で使用するRoomデータベース定義
  */
 @Database(
@@ -301,7 +310,7 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         RegistrationQueueEntity::class,
         TempEpisodeEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -344,7 +353,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_12_13,
                         MIGRATION_13_14,
                         MIGRATION_14_15,
-                        MIGRATION_15_16
+                        MIGRATION_15_16,
+                        MIGRATION_16_17
                     )
                     .build()
                 INSTANCE = instance
