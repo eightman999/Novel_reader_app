@@ -163,12 +163,13 @@ class AutoUpdateWorker(
                 val allNovels = repository.getNovelsForUpdate()
                 // 短編は新規エピソードが増えないため、設定により更新確認から除外
                 val excludeShort = settingsStore.excludeShortFromUpdate.first()
-                val novels = if (excludeShort) {
-                    allNovels.filter { it.noveltype != 2 }
-                } else {
-                    allNovels
+                // 完結作品も設定により更新確認から除外（end_flag: 1=完結）
+                val excludeCompleted = settingsStore.excludeCompletedFromUpdate.first()
+                val novels = allNovels.filter { novel ->
+                    (!excludeShort || novel.noveltype != 2) &&
+                    (!excludeCompleted || novel.end_flag != 1)
                 }
-                Log.d(TAG, "更新対象小説数: ${novels.size} (全${allNovels.size}件, 短編除外=$excludeShort)")
+                Log.d(TAG, "更新対象小説数: ${novels.size} (全${allNovels.size}件, 短編除外=$excludeShort, 完結除外=$excludeCompleted)")
 
                 // なろう作品はAPI一括取得（ncode OR検索）でリクエスト数を削減する
                 // （1作品=1リクエスト → 最大100作品=1リクエスト）

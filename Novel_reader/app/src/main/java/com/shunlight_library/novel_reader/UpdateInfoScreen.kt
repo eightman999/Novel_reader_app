@@ -545,6 +545,11 @@ fun UpdateInfoScreen(
                                 if (excludeShortUpdate) {
                                     novelsForUpdate = novelsForUpdate.filter { it.noveltype != 2 }
                                 }
+                                // 完結作品も設定により更新確認から除外（end_flag: 1=完結）
+                                val excludeCompletedUpdate = settingsStore.excludeCompletedFromUpdate.first()
+                                if (excludeCompletedUpdate) {
+                                    novelsForUpdate = novelsForUpdate.filter { it.end_flag != 1 }
+                                }
                                 totalCount = novelsForUpdate.size  // 総数を設定
 
                                 // なろう作品はAPI一括取得（ncode OR検索）でリクエスト数を削減
