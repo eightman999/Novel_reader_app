@@ -107,6 +107,8 @@ fun SettingsScreenUpdated(
     var autoUpdateEnabled by remember { mutableStateOf(false) }
     var autoUpdateTime by remember { mutableStateOf("03:00") }
     var autoDownloadEnabled by remember { mutableStateOf(true) }
+    var excludeShortFromUpdate by remember { mutableStateOf(true) }
+    var excludeCompletedFromUpdate by remember { mutableStateOf(false) }
 
     // インジケーターランプ設定の状態変数
     var indicatorLampEnabled by remember { mutableStateOf(true) }
@@ -247,6 +249,8 @@ fun SettingsScreenUpdated(
             autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
             autoUpdateTime = settingsStore.autoUpdateTime.first()
             autoDownloadEnabled = settingsStore.autoDownloadEnabled.first()
+            excludeShortFromUpdate = settingsStore.excludeShortFromUpdate.first()
+            excludeCompletedFromUpdate = settingsStore.excludeCompletedFromUpdate.first()
 
             // インジケーターランプ設定の読み込み
             indicatorLampEnabled = settingsStore.indicatorLampEnabled.first()
@@ -1211,6 +1215,58 @@ fun SettingsScreenUpdated(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
+
+                // 短編を更新確認から除外（自動更新・手動更新の両方に適用）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("短編を更新確認から除外")
+                    Spacer(modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = excludeShortFromUpdate,
+                        onCheckedChange = {
+                            excludeShortFromUpdate = it
+                            scope.launch { settingsStore.saveExcludeShortFromUpdate(it) }
+                        }
+                    )
+                }
+
+                // 説明文
+                Text(
+                    text = "短編は新しい話が増えないため、更新確認の対象から外して高速化します。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                // 完結作品を更新確認から除外（自動更新・手動更新の両方に適用）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("完結作品を更新確認から除外")
+                    Spacer(modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = excludeCompletedFromUpdate,
+                        onCheckedChange = {
+                            excludeCompletedFromUpdate = it
+                            scope.launch { settingsStore.saveExcludeCompletedFromUpdate(it) }
+                        }
+                    )
+                }
+
+                // 説明文
+                Text(
+                    text = "完結済みの作品を更新確認の対象から外します。稀に後日談が追加される場合は見逃すことがあります。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
             HorizontalDivider()
 

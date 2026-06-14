@@ -48,6 +48,7 @@ fun UpdateInfoScreen(
     val repository = NovelReaderApplication.getRepository()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val settingsStore = remember { SettingsStore(context) }
 
     // 状態変数
     var updateQueue by remember { mutableStateOf<List<UpdateQueueEntity>>(emptyList()) }
@@ -539,7 +540,27 @@ fun UpdateInfoScreen(
                             try {
                                 // 更新対象の小説を取得
                                 var novelsForUpdate = repository.getNovelsForUpdate()
+                                // 短編は新規エピソードが増えないため、設定により更新確認から除外
+                                val excludeShortUpdate = settingsStore.excludeShortFromUpdate.first()
+                                if (excludeShortUpdate) {
+                                    novelsForUpdate = novelsForUpdate.filter { it.noveltype != 2 }
+                                }
+                                // 完結作品も設定により更新確認から除外（end_flag: 1=完結）
+                                val excludeCompletedUpdate = settingsStore.excludeCompletedFromUpdate.first()
+                                if (excludeCompletedUpdate) {
+                                    novelsForUpdate = novelsForUpdate.filter { it.end_flag != 1 }
+                                }
                                 totalCount = novelsForUpdate.size  // 総数を設定
+
+                                // なろう作品はAPI一括取得（ncode OR検索）でリクエスト数を削減
+                                val syosetuInfoMap = HashMap<String, NovelApiUtils.NovelApiInfo>()
+                                try {
+                                    val syosetuList = novelsForUpdate.filter { it.site_type != NovelSiteAdapter.SITE_TYPE_KAKUYOMU }
+                                    syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuList.filter { it.rating != 1 }.map { it.ncode }, isR18 = false))
+                                    syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuList.filter { it.rating == 1 }.map { it.ncode }, isR18 = true))
+                                } catch (e: Exception) {
+                                    Log.e("UpdateCheck", "なろう一括取得エラー（個別取得にフォールバック）: ${e.message}")
+                                }
 
                                 // 進捗状態の更新関数
                                 val updateProgress = { count: Int, message: String ->
@@ -607,8 +628,9 @@ fun UpdateInfoScreen(
 
                                                     false
                                                 } else {
-                                                    // 小説家になろうの場合、APIから取得
-                                                    val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                                    // 小説家になろうの場合、一括取得の結果を優先（無ければ個別取得にフォールバック）
+                                                    val info = syosetuInfoMap[novel.ncode.lowercase()]
+                                                        ?: NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
 
                                                     if (info != null) {
                                                         // 追加情報が取得できた場合は欠けているメタデータを補完
