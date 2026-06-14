@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-06-14)
-- **Version**: 2.0.18 (versionCode: 218)
+### Current State (2026-06-15)
+- **Version**: 2.0.19 (versionCode: 219)
 - **Database**: Version 17 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Quick Links to Documentation
 - Architecture details → [Architecture Overview](#architecture-overview)
-- Database schema → [Database Schema (Version 16)](#database-schema-version-16)
+- Database schema → [Database Schema (Version 17)](#database-schema-version-17)
 - Performance optimization → [Performance Optimizations](#performance-optimizations)
 - Multi-site support → [Multi-Site Architecture](#multi-site-architecture)
 - API specifications → [なろう小説API仕様](#なろう小説api仕様), [カクヨムダウンロードプロトコル](#カクヨムダウンロードプロトコル)
@@ -298,7 +298,7 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - v11→v12: **Performance optimization** - Added indices for sorting/filtering (total_ep, author, title, is_read, is_bookmark) and composite indices (site_type+is_favorite, ncode+is_read, ncode+is_bookmark)
 - v12→v15: Various feature additions (see git history)
 - v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; initialized sub_site for existing records
-- v16→v17: ImageCacheEntityのインデックス定義同期（物理スキーマ変更なし、identity hash修正）
+- v16→v17: `image_cache`に`idx_image_cache_hash`インデックスを追加（ImageCacheEntityがv2.0.7で宣言済みだったがマイグレーション未整備だった不整合を解消）。エクスポート済み16.jsonはインデックス無しの正しいv16スキーマに再生成
 
 #### Tables (9 total)
 1. **`novels_descs`** - Novel metadata
@@ -516,7 +516,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.18 (versionCode 218).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.19 (versionCode 219).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.
