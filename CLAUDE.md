@@ -137,9 +137,9 @@ Novel_reader_app/
 │   │       │   ├── *.kt            # Top-level screens and application
 │   │       │   ├── data/
 │   │       │   │   ├── adapter/    # Site-specific adapters (Syosetu, Kakuyomu)
-│   │       │   │   ├── dao/        # Room DAOs (7 total)
+│   │       │   │   ├── dao/        # Room DAOs (9 total)
 │   │       │   │   ├── database/   # NovelDatabase.kt (v17)
-│   │       │   │   ├── entity/     # Room entities (7 total)
+│   │       │   │   ├── entity/     # Room entities (9 total) + EpisodeMeta DTO
 │   │       │   │   ├── repository/ # NovelRepository.kt
 │   │       │   │   └── sync/       # Database sync utilities
 │   │       │   ├── api/            # API utilities (NovelApiUtils)
@@ -177,7 +177,7 @@ Novel_reader_app/
 - **Entities**: NovelDescEntity, EpisodeEntity, LastReadNovelEntity, UpdateQueueEntity, URLEntity, ImageCacheEntity, EpisodeMappingEntity, RegistrationQueueEntity, TempEpisodeEntity
 - **DTO**: EpisodeMeta (本文なし射影 + body_empty フラグ、エピソード一覧の軽量ロード用)
 - **DAOs**: Matching DAOs for each entity (9 total)
-- **Database**: NovelDatabase.kt (v16 with full migration chain, exportSchema=true)
+- **Database**: NovelDatabase.kt (v17 with full migration chain, exportSchema=true)
 - **Repository**: NovelRepository.kt (single source of data access, withTransaction 対応)
 
 #### Adapters (Multi-Site Support)
@@ -223,7 +223,7 @@ This is an Android novel reader application built with modern Android architectu
 - `MainActivity.kt` - Single Activity hosting all Compose screens
 
 #### Data Layer
-- `NovelDatabase.kt` - Room database with 9 tables and proper migrations (v16, exportSchema=true)
+- `NovelDatabase.kt` - Room database with 9 tables and proper migrations (v17, exportSchema=true)
 - `NovelRepository.kt` - Single repository managing all data access via DAOs (withTransaction でアトミック操作)
 - **Entities** (9 total):
   - `NovelDescEntity` - Novel metadata with R18 support, favorite flag, site type, sub_site, end_flag, registration date
