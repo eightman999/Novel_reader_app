@@ -585,16 +585,13 @@ class UpdateService : Service() {
                     val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                    // メタデータとエピソードリスト（本文なし）のみ取得
-                    val (updatedNovelDesc, episodeListWithoutBody) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
+                    // メタデータとエピソードリスト（本文なし）＋マッピングをアトミックに取得
+                    val (updatedNovelDesc, episodeListWithoutBody, mappings) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeListAndMappings(workId)
 
                     if (!isRunning || session.isCancelled()) {
                         updateComplete(false, "更新処理が中断されました")
                         return@launch
                     }
-
-                    // マッピング情報を取得（fetchNovelMetadataWithEpisodeList内でキャッシュに保存されている）
-                    val mappings = kakuyomuAdapter.getCachedMappings()
 
                     generalAllNoValue = episodeListWithoutBody.size
                     newUpdatedAt = updatedNovelDesc.updated_at
@@ -888,16 +885,13 @@ class UpdateService : Service() {
                     val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
                     val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(ncode)
 
-                    // メタデータとエピソードリスト（本文なし）のみ取得
-                    val (updatedNovelDesc, episodeListWithoutBody) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
+                    // メタデータとエピソードリスト（本文なし）＋マッピングをアトミックに取得
+                    val (updatedNovelDesc, episodeListWithoutBody, mappings) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeListAndMappings(workId)
 
                     if (!isRunning || session.isCancelled()) {
                         updateComplete(false, "更新処理が中断されました")
                         return@launch
                     }
-
-                    // マッピング情報を取得
-                    val mappings = kakuyomuAdapter.getCachedMappings()
 
                     generalAllNoValue = episodeListWithoutBody.size
 
@@ -1247,8 +1241,7 @@ class UpdateService : Service() {
                             ) as KakuyomuAdapter
                             val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
 
-                            val (_, episodeList) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
-                            val mappings = kakuyomuAdapter.getCachedMappings()
+                            val (_, episodeList, mappings) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeListAndMappings(workId)
 
                             if (mappings.isNotEmpty()) {
                                 val mappingEntities = mappings.map { (epNo, kakuyomuId) ->

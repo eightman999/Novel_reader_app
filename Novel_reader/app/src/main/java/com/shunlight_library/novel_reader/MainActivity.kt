@@ -386,7 +386,8 @@ fun NovelReaderApp(
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
                 if (prevEpisodeNo.toInt() >= 1) {
-                    navigationManager.navigateTo(Screen.EpisodeView(
+                    // 前後話ナビはスタックを増やさず現在フレームを差し替える（バックスタック肥大防止）
+                    navigationManager.replaceCurrent(Screen.EpisodeView(
                         ncode = currentScreen.ncode,
                         episodeNo = prevEpisodeNo,
                         source = currentScreen.source))  // Use the source from currentScreen
@@ -394,7 +395,8 @@ fun NovelReaderApp(
             },
             onNext = {
                 val nextEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it + 1 }?.toString() ?: "1"
-                navigationManager.navigateTo(Screen.EpisodeView(
+                // 前後話ナビはスタックを増やさず現在フレームを差し替える（バックスタック肥大防止）
+                navigationManager.replaceCurrent(Screen.EpisodeView(
                     ncode = currentScreen.ncode,
                     episodeNo = nextEpisodeNo,
                     source = currentScreen.source))  // Use the source from currentScreen

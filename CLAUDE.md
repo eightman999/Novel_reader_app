@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 Quick Reference
 
-### Current State (2026-06-15)
-- **Version**: 2.0.19 (versionCode: 219)
+### Current State (2026-07-01)
+- **Version**: 2.0.20 (versionCode: 220)
 - **Database**: Version 17 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -385,6 +385,17 @@ Use `SettingsStore` for persistent configuration with DataStore.
 - Batch update check (v2.0.17): なろう作品の更新確認を `?ncode=n1-n2-n3&of=n-ga-ua-u-nt-l&lim=N&gzip=5` のOR検索で一括取得（`NovelApiUtils.fetchNovelInfoBatch`、最大100件/リクエスト、R18は novel18api に分離、小文字ncodeで突合）。AutoUpdateWorker と UpdateInfoScreen の全更新確認で「1作品=1リクエスト→100作品=1リクエスト」に削減。一括取得で取れなかった作品（検索除外・通信失敗）は個別 `fetchNovelInfo` にフォールバック。YAMLパースを `yamlData.drop(1)` ループ化（従来の単発 `yamlData[1]` を維持しつつ一括用を追加）
 - Short-novel update exclusion (v2.0.17): 短編（noveltype=2）は新規エピソードが増えないため、設定 `excludeShortFromUpdate`（DataStore、デフォルトON）で更新確認の対象から除外。AutoUpdateWorker・UpdateInfoScreen全更新確認に適用、設定画面「自動更新設定」にトグル追加（noveltype=null は除外しない安全側）
 - Completed-novel update exclusion (v2.0.18): 完結作品（end_flag=1）を更新確認から除外する設定 `excludeCompletedFromUpdate`（DataStore、デフォルトOFF＝後日談を見逃さないため）。AutoUpdateWorker・UpdateInfoScreen全更新確認に適用、設定画面「自動更新設定」にトグル追加（短編除外と独立）
+- Audit fixes (v2.0.20): コード監査（AUDIT_REPORT.md）で確認されたDB非依存の重要バグを修正（スキーマ・同期系は除く）。
+  - Ruby toggle reachable (H7): `SettingsReadingScreen` に自動ルビ変換トグルを追加し UI から到達可能化（旧 orphan `SettingsScreenUpdated` のみだった保存経路を本番ハブ画面へ）
+  - Update-exclusion toggles reachable (H8): `SettingsAutoUpdateScreen` に「短編を更新確認から除外」「完結作品を更新確認から除外」トグルを追加（本番自動更新サブ画面から設定可能化）
+  - Notification "すべてダウンロード" wired (M17): 重複していた未登録 `DownloadActionReceiver` を削除し、AutoUpdateWorker のシステム通知に `addAction`（PendingIntent.getBroadcast + FLAG_IMMUTABLE）で `DownloadAllReceiver` を配線。未DLのキューが残る場合のみ表示
+  - Prev/next nav stack fix (H6): `NavigationManager.replaceCurrent(screen)` を追加し、前後話ナビ（MainActivity onPrevious/onNext）を navigateTo→replaceCurrent に変更。EpisodeView フレームのバックスタック無限蓄積を解消
+  - WebView body sanitize (H5/L12): `EnhancedHtmlRubyWebView` で表示前に `Jsoup.clean`(Safelist.relaxed + ruby/rt/rp/rb 許可, img は file/content/data 許可) により本文の `<script>`/on* を除去（XSS防止）。`allowFileAccessFromFileURLs/allowUniversalAccessFromFileURLs=false` を明示。`WebViewScrollInterface.saveScrollPosition` はネイティブ側で `coerceIn(0f,1f)`
+  - Kakuyomu mapping race fix (H1): `KakuyomuAdapter` の共有可変 `cachedMappings` / `getCachedMappings()` を廃止。`parseEpisodeList` がマッピングを戻り値で返し、`fetchNovelMetadataWithEpisodeListAndMappings`（→ `NovelWithEpisodesAndMappings`）でメタ・エピソード・マッピングをアトミック取得。全呼び出し側（UpdateService/AutoUpdateWorker/RegistrationQueueManager/UpdateInfoScreen）を更新
+  - Rate-limit serialized (M1): `applyRateLimit` を companion `Mutex.withLock` で直列化（30並列同時通過による403/遮断を防止）
+  - Queue start race fix (H3): `RegistrationQueueManager.processQueue` を `CoroutineStart.LAZY` 生成→map登録→PROCESSING更新→`job.start()` の順にし、「DBはPROCESSINGだがjob未登録」窓を除去。`processingQueues` アクセスを `synchronized` 化（孤児 temp_episodes 防止）
+  - Syosetu missing-episode resume fix (H4): `fetchSyosetuWithTempDb` で取得失敗話を空本文（body_empty）プレースホルダとして temp に記録。MAX(episode_no) レジュームによる恒久欠番化を防ぎ、欠落修正スキャン（body='' OR e_title=''）で再取得可能に（カクヨム経路と挙動統一）
+  - Missing-fix scan batched (H11): UpdateInfoScreen の欠落修正スキャンで、なろう作品の話数確認を `fetchNovelInfoBatch`（rating分離・100件チャンクのOR検索）に変更し 1作品=1リクエストのN+1を解消（取れなかった作品のみ個別 `fetchNovelInfo` フォールバック）
 
 ### Performance Optimizations
 
@@ -516,7 +527,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.19 (versionCode 219).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.20 (versionCode 220).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.

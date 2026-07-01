@@ -48,6 +48,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import org.jsoup.Jsoup
+import org.jsoup.safety.Safelist
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -759,13 +761,38 @@ class WebViewScrollInterface(
 
     @JavascriptInterface
     fun saveScrollPosition(position: Float) {
+        // 本文はサニタイズ済みだが、ブリッジ境界は信頼できない値が来うる前提で
+        // ネイティブ側でも読書率を必ず 0f〜1f にクランプし reading_rate の破壊を防ぐ
+        val clamped = position.coerceIn(0f, 1f)
         // 前回保存した位置との差が閾値を超えた場合のみ保存処理を実行
-        if (abs(position - lastSavedPosition) > updateThreshold) {
+        if (abs(clamped - lastSavedPosition) > updateThreshold) {
             scope.launch(Dispatchers.IO) {
-                repo.updateReadingRate(ncode, episodeNo, position)
-                lastSavedPosition = position
+                repo.updateReadingRate(ncode, episodeNo, clamped)
+                lastSavedPosition = clamped
             }
         }
+    }
+}
+
+/**
+ * 外部サイトからスクレイプした本文HTMLを WebView 表示前にサニタイズする。
+ * `<script>` やイベント属性(on*)を除去し、ルビ・画像・基本的な整形タグのみ許可する。
+ * これにより JS 有効・JSブリッジ露出の WebView 上で本文由来の任意JS実行(XSS)を防ぐ。
+ */
+private val episodeBodySafelist: Safelist by lazy {
+    Safelist.relaxed()
+        // ルビ(ふりがな)関連タグを許可
+        .addTags("ruby", "rt", "rp", "rb")
+        // ローカルにキャッシュした挿絵(file/content)やデータURIの画像を表示できるよう許可
+        .addProtocols("img", "src", "http", "https", "file", "content", "data")
+}
+
+private fun sanitizeEpisodeHtml(html: String): String {
+    return try {
+        Jsoup.clean(html, episodeBodySafelist)
+    } catch (e: Exception) {
+        // 想定外の失敗時はテキスト化してでも安全側に倒す（生HTMLは絶対に流さない）
+        Jsoup.clean(html, Safelist.none())
     }
 }
 
@@ -884,6 +911,10 @@ fun EnhancedHtmlRubyWebView(
     // HTMLを修正
     val fixedHtml = fixRubyTags(processedContent)
 
+    // 外部サイト由来の本文HTMLをサニタイズ（script/on*除去、XSS防止）。
+    // アプリが注入する scrollMonitorScript は別途head内に置くため影響を受けない。
+    val sanitizedHtml = sanitizeEpisodeHtml(fixedHtml)
+
     // スクロール位置を保存・復元するためのJavaScriptを追加
     val isVertical = textOrientation == "Vertical"
     val scrollMonitorScript = """
@@ -970,7 +1001,7 @@ fun EnhancedHtmlRubyWebView(
             $scrollMonitorScript
         </head>
         <body>
-            $fixedHtml
+            $sanitizedHtml
         </body>
         </html>
     """.trimIndent()
@@ -989,6 +1020,9 @@ fun EnhancedHtmlRubyWebView(
                     // ローカルファイル（ダウンロードした画像）へのアクセスを許可
                     allowFileAccess = true
                     allowContentAccess = true
+                    // file:// からの他ファイル/クロスオリジン読み取りは明示的に禁止（万一の情報漏洩防止）
+                    allowFileAccessFromFileURLs = false
+                    allowUniversalAccessFromFileURLs = false
                     // レイアウト設定を追加
                     useWideViewPort = true
                     loadWithOverviewMode = false

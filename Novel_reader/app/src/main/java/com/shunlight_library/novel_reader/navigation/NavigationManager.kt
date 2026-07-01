@@ -31,6 +31,15 @@ class NavigationManager {
     }
 
     /**
+     * 現在の画面をスタックに積まずに [screen] へ置き換える。
+     * 前後話ナビのようにスタックを増やさず同種画面を差し替えたい場合に使用し、
+     * バックスタックの無限蓄積を防ぐ。
+     */
+    fun replaceCurrent(screen: Screen) {
+        _currentScreen.value = screen
+    }
+
+    /**
      * 1 つ前の画面に戻る。
      * @return 遷移できた場合は true
      */
