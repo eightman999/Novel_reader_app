@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📖 Quick Reference
 
 ### Current State (2026-07-01)
-- **Version**: 2.0.20 (versionCode: 220)
+- **Version**: 2.0.22 (versionCode: 222)
 - **Database**: Version 17 with 9 tables + performance indices
 - **Supported Sites**: Syosetu (なろう小説) + Kakuyomu (カクヨム)
 - **Architecture**: Clean + MVVM + Repository + Adapter Pattern
@@ -396,6 +396,17 @@ Use `SettingsStore` for persistent configuration with DataStore.
   - Queue start race fix (H3): `RegistrationQueueManager.processQueue` を `CoroutineStart.LAZY` 生成→map登録→PROCESSING更新→`job.start()` の順にし、「DBはPROCESSINGだがjob未登録」窓を除去。`processingQueues` アクセスを `synchronized` 化（孤児 temp_episodes 防止）
   - Syosetu missing-episode resume fix (H4): `fetchSyosetuWithTempDb` で取得失敗話を空本文（body_empty）プレースホルダとして temp に記録。MAX(episode_no) レジュームによる恒久欠番化を防ぎ、欠落修正スキャン（body='' OR e_title=''）で再取得可能に（カクヨム経路と挙動統一）
   - Missing-fix scan batched (H11): UpdateInfoScreen の欠落修正スキャンで、なろう作品の話数確認を `fetchNovelInfoBatch`（rating分離・100件チャンクのOR検索）に変更し 1作品=1リクエストのN+1を解消（取れなかった作品のみ個別 `fetchNovelInfo` フォールバック）
+- Multi-format DB restore (v2.0.21): データベース同期(DatabaseSyncActivity)の復元を複数形式に対応。選択ファイルの先頭バイトで形式を自動判別（`WebNovelReaderImportManager.looksLikeZip`）。
+  - SQLite形式（`ImprovedDatabaseSyncManager`）: 本アプリの.dbバックアップに加え、旧形式SQLite（`n_code`/`Synopsis`/`rast_read_novel` の命名揺れ）にも既存フォールバックで対応済み（`novel_status.db` 等）。
+  - WebNovelReaderバックアップ(.zip)（新規 `WebNovelReaderImportManager`）: 別アプリのエクスポートZIP（`webnovel.db`(fetch_target/episode) + `ep_data/{fetch_target_id}/{episode._id}` の入れ子ZIP内生HTML）を復元。`fetch_target.url` からサイト判別（ncode.syosetu.com=なろう一般, novel18.syosetu.com=R18, kakuyomu.jp/works/{id}=カクヨム→`PseudoNcodeGenerator`でPseudo-Ncode化）。本文は入れ子ZIP→生HTMLをJsoupで抽出（なろう=`div.p-novel__body > div`を`<hr>`連結＝NovelApiUtilsと同一, カクヨム=`div.widget-episodeBody.js-episode-body`）。カクヨムは`episode_mapping`（話番号→episodes URLの数値ID）も再構築。なろうは作品トップページ(no=0)から作者名/あらすじ/作者IDを補完。話の`is_read`を取り込み、`insertEpisodes(preserveExisting)`でローカル既読とマージ。バッチ20件でインクリメンタル保存（rule #9準拠）。非対応サイト（syosetu.org=ハーメルン等）はスキップ数を集計してログ。
+- DB sync audit fixes (v2.0.22): AUDIT_REPORT.md でv2.0.20から繰り越されていたDB/同期系の要修正事項を修正。
+  - Read-status restore (C1): `ImprovedDatabaseSyncManager`・`DatabaseSyncManager` の `syncEpisodes` が外部DBの `is_read`/`is_bookmark`/`reading_rate` を読まずデフォルト0で挿入していた不具合を修正（`getColumnIndexSafely`で読み取り、`EpisodeEntity`へ設定）。`insertEpisodes(preserveExisting)`により「内部に既存があれば内部優先、無ければ外部値採用」で復元。**バックアップ復元で全話の既読・しおり・読書位置が消失する問題を解消**。
+  - episode_mapping sync (H10): 両同期マネージャに `syncEpisodeMappings` を追加。外部DBに `episode_mapping` テーブルがあれば `insertEpisodeMappings` で復元（カクヨム作品が復元後に本文再取得不能になる問題を解消）。旧形式SQLite等でテーブルが無ければ何もしない。
+  - Old sync site_type preservation (H9): 旧 `DatabaseSyncManager.syncNovelDescs` が `site_type`/`sub_site`/`end_flag`/`is_favorite` を読まずデフォルトのSyosetu値で `REPLACE` し、カクヨム作品になろうURLを付与していた破壊を修正。`getNovelByNcode` で既存値を保持し、URLEntity生成をなろう作品(site_type≠2)に限定。`n_code` 命名揺れにもフォールバック。
+  - IN-clause chunking (H2): `NovelRepository.getNovelsByNcodes` を `chunked(900)` 分割に変更し、1000件超で `SQLiteException: too many SQL variables` クラッシュを解消（RecentlyReadNovelsScreen・UpdateInfoScreenの全呼び出しに適用）。
+  - Progress throttling fix (L14): `ImprovedDatabaseSyncManager` の進捗スロットリング判定 `abs(lastProgress?.progress ?: 0f - progress.progress)` の演算子優先順位ミス（常にtrue化＝無効）を `abs((lastProgress?.progress ?: 0f) - progress.progress)` に修正。
+  - ToC recovery total_ep (L10): `EpisodeListScreen` のカクヨム目次復帰で `total_ep` を `mappings.size` でなく挿入後の実話数（既存＋新規スタブ）で設定。
+  - 未対応（別途要対応）: M15(novels_descsバッチ非トランザクション), M16(同期コールバックのスレッド境界), M4(MigrationTestのスキーマJSON欠落), L4(MIGRATION_15_16のR18 sub_site誤分類)。M15はインクリメンタル保存＋欠落修正で緩和済み、M16は同期コールバックが単一コルーチンから逐次呼び出しのため実クラッシュリスクは低い。L4/M4はスキーマ変更を伴うため保留。
 
 ### Performance Optimizations
 
@@ -527,7 +538,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 4. **Navigation**: Use NavigationManager for navigation to maintain proper back stack
 5. **R18 Content**: Handle R18 content appropriately with dialog-based site selection
 6. **Reading Progress**: Maintain reading progress, bookmark functionality, and reading rate in EpisodeViewScreen
-7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.20 (versionCode 220).
+7. **Version Management**: Always increment both `versionCode` by +1 and `versionName` patch version (e.g., 2.0.0 → 2.0.1) when making any code changes in `Novel_reader/app/build.gradle.kts`. Current version: 2.0.22 (versionCode 222).
 8. **Commit Messages**: Always write commit messages in Japanese
 9. **Incremental Episode Saving**: When fetching episodes (both Kakuyomu and Syosetu), always fetch and save one episode at a time. Never fetch all episodes into memory first - instead use: fetch episode 1 → save to DB → fetch episode 2 → save to DB, etc. This applies to all re-download, update, and error-fix operations.
 10. **Multi-Site Support**: Use the Adapter pattern for site-specific logic. Never hardcode site-specific behavior outside of adapter implementations.

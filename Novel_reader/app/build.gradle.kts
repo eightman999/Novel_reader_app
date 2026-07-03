@@ -16,8 +16,8 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 220
-        versionName = "2.0.20"
+        versionCode = 222
+        versionName = "2.0.22"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

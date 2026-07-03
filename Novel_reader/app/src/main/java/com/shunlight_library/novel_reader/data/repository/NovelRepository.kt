@@ -105,7 +105,11 @@ class NovelRepository(
     }
 
     suspend fun getNovelsByNcodes(ncodes: List<String>): List<NovelDescEntity> {
-        return novelDescDao.getNovelsByNcodes(ncodes)
+        if (ncodes.isEmpty()) return emptyList()
+        // SQLite IN句の変数上限(端末により999)超過クラッシュを防ぐためチャンク分割
+        return ncodes.chunked(900).flatMap { chunk ->
+            novelDescDao.getNovelsByNcodes(chunk)
+        }
     }
 
     fun getNovelsByTag(tag: String): Flow<List<NovelDescEntity>> {

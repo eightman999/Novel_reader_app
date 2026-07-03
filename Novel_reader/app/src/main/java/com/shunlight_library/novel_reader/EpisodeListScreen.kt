@@ -186,8 +186,10 @@ fun EpisodeListScreen(
                     }
                 stubs.forEach { repository.insertEpisode(it) }
                 val currentNovel = novel
-                if (currentNovel != null && currentNovel.total_ep < mappings.size) {
-                    repository.updateNovel(currentNovel.copy(total_ep = mappings.size))
+                // 挿入後の実エピソード数（既存 + 新規スタブ）を total_ep に反映する
+                val actualEpisodeCount = existingNos.size + stubs.size
+                if (currentNovel != null && currentNovel.total_ep < actualEpisodeCount) {
+                    repository.updateNovel(currentNovel.copy(total_ep = actualEpisodeCount))
                     novel = repository.getNovelByNcode(ncode)
                 }
             }

@@ -12,6 +12,7 @@ import android.net.Uri
 import android.util.Log
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import com.shunlight_library.novel_reader.SettingsStore
@@ -192,6 +193,13 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 ))
                 val episodesCount = syncEpisodes(db, dbSyncSettings.preserveExistingEpisodes)
 
+                // カクヨムのエピソードマッピングを同期（外部DBに存在する場合のみ）
+                // これが無いとカクヨム作品は再DL・エラー修正時に本文を取得できない
+                val mappingCount = syncEpisodeMappings(db)
+                if (mappingCount > 0) {
+                    Log.d(TAG, "カクヨムのエピソードマッピングを${mappingCount}件同期しました")
+                }
+
                 // 最後に読んだ記録の同期
                 updateProgress(callback, SyncProgress(
                     step = SyncStep.SYNCING_LAST_READ,
@@ -259,7 +267,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
             lastProgress == null || // 初回更新
                     currentTime - lastProgressUpdateTime >= minUpdateIntervalMs || // 時間間隔
                     lastProgress?.step != progress.step || // ステップ変更
-                    abs(lastProgress?.progress ?: 0f - progress.progress) >= progressThreshold || // 進捗変化
+                    abs((lastProgress?.progress ?: 0f) - progress.progress) >= progressThreshold || // 進捗変化
                     progress.progress >= 1.0f || progress.step == SyncStep.ERROR // 最終更新またはエラー
 
         if (shouldUpdate) {
@@ -495,6 +503,10 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                             val bodyIndex = episodeCursor.getColumnIndexOrThrow("body")
                             val eTitleIndex = getColumnIndexSafely(episodeCursor, "e_title")
                             val updateTimeIndex = getColumnIndexSafely(episodeCursor, "update_time")
+                            // 既読・しおり・読書率も外部DBから読み取る（バックアップ復元で読書状態を保全）
+                            val isReadIndex = getColumnIndexSafely(episodeCursor, "is_read")
+                            val isBookmarkIndex = getColumnIndexSafely(episodeCursor, "is_bookmark")
+                            val readingRateIndex = getColumnIndexSafely(episodeCursor, "reading_rate")
 
                             val batchSize = 20
                             val episodes = mutableListOf<EpisodeEntity>()
@@ -502,13 +514,19 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
 
                             // エピソードを処理
                             while (episodeCursor.moveToNext()) {
+                                val readingRate = if (readingRateIndex != null && !episodeCursor.isNull(readingRateIndex)) {
+                                    episodeCursor.getFloat(readingRateIndex)
+                                } else 0f
                                 val episode = EpisodeEntity(
                                     ncode = getStringSafely(episodeCursor, epNcodeIndex),
                                     episode_no = getStringSafely(episodeCursor, episodeNoIndex),
                                     body = getStringSafely(episodeCursor, bodyIndex),
                                     e_title = getStringSafely(episodeCursor, eTitleIndex),
                                     update_time = getStringSafely(episodeCursor, updateTimeIndex,
-                                        DatabaseSyncUtils.getCurrentDateTimeString())
+                                        DatabaseSyncUtils.getCurrentDateTimeString()),
+                                    is_read = getIntSafely(episodeCursor, isReadIndex),
+                                    is_bookmark = getIntSafely(episodeCursor, isBookmarkIndex),
+                                    reading_rate = readingRate
                                 )
 
                                 episodes.add(episode)
@@ -584,6 +602,51 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
             throw e
         }
     }
+    /**
+     * カクヨム作品のエピソードマッピング（話番号→エピソードID）を同期します。
+     * 外部DBに `episode_mapping` テーブルが無い場合（旧形式SQLite等）は何もしません。
+     * @return 同期されたマッピング数
+     */
+    private suspend fun syncEpisodeMappings(externalDb: SQLiteDatabase): Int {
+        if (!sqliteHelper.isTableExists(externalDb, "episode_mapping")) return 0
+
+        var count = 0
+        val batchSize = 100
+        val batch = mutableListOf<EpisodeMappingEntity>()
+        try {
+            externalDb.query("episode_mapping", null, null, null, null, null, null).use { cursor ->
+                val ncodeIndex = getColumnIndexSafely(cursor, "ncode") ?: return 0
+                val episodeNoIndex = getColumnIndexSafely(cursor, "episode_no") ?: return 0
+                val kakuyomuIdIndex = getColumnIndexSafely(cursor, "kakuyomu_episode_id") ?: return 0
+
+                while (cursor.moveToNext()) {
+                    val ncode = getStringSafely(cursor, ncodeIndex)
+                    val kakuyomuId = getStringSafely(cursor, kakuyomuIdIndex)
+                    if (ncode.isEmpty() || kakuyomuId.isEmpty()) continue
+
+                    batch.add(
+                        EpisodeMappingEntity(
+                            ncode = ncode,
+                            episode_no = getIntSafely(cursor, episodeNoIndex),
+                            kakuyomu_episode_id = kakuyomuId
+                        )
+                    )
+                    count++
+                    if (batch.size >= batchSize) {
+                        repository.insertEpisodeMappings(batch.toList())
+                        batch.clear()
+                    }
+                }
+            }
+            if (batch.isNotEmpty()) {
+                repository.insertEpisodeMappings(batch.toList())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "エピソードマッピングの同期中にエラーが発生しました", e)
+        }
+        return count
+    }
+
     /**
      * 最後に読んだ小説のデータを同期します
      * @return 同期された記録数
