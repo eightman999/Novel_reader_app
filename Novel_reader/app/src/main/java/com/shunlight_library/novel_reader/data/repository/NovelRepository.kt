@@ -117,11 +117,25 @@ class NovelRepository(
     }
 
     suspend fun insertNovel(novel: NovelDescEntity) {
-        novelDescDao.insertNovel(novel)
+        // 既存レコードのis_favoriteを保持（insertEpisodeのis_read/is_bookmark保持と同じパターン）
+        val existing = novelDescDao.getNovelByNcode(novel.ncode)
+        val toInsert = if (existing != null) {
+            novel.copy(is_favorite = existing.is_favorite)
+        } else {
+            novel
+        }
+        novelDescDao.insertNovel(toInsert)
     }
 
     suspend fun insertNovels(novels: List<NovelDescEntity>) {
-        novelDescDao.insertNovels(novels)
+        if (novels.isEmpty()) return
+        // 既存レコードのis_favoriteを保持（insertNovelと同じパターン）
+        val existingMap = getNovelsByNcodes(novels.map { it.ncode }).associateBy { it.ncode }
+        val toInsert = novels.map { novel ->
+            val existing = existingMap[novel.ncode]
+            if (existing != null) novel.copy(is_favorite = existing.is_favorite) else novel
+        }
+        novelDescDao.insertNovels(toInsert)
     }
 
     fun getRecentlyUpdatedNovels(limit: Int): Flow<List<NovelDescEntity>> {
