@@ -274,6 +274,17 @@ fun UpdateInfoScreen(
                             var totalMissingEps = 0
                             var novelsWithErrors = 0
 
+                            // なろう作品はAPI一括取得（ncode OR検索）でgeneralAllNoをまとめて取得し、
+                            // スキャン中の 1作品=1リクエスト（N+1）を回避する（全更新確認と同じ方式）
+                            val syosetuScanInfoMap = HashMap<String, NovelApiUtils.NovelApiInfo>()
+                            try {
+                                val syosetuScanList = scanNovels.filter { it.site_type != NovelSiteAdapter.SITE_TYPE_KAKUYOMU }
+                                syosetuScanInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuScanList.filter { it.rating != 1 }.map { it.ncode }, isR18 = false))
+                                syosetuScanInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuScanList.filter { it.rating == 1 }.map { it.ncode }, isR18 = true))
+                            } catch (e: Exception) {
+                                Log.e("UpdateInfo", "なろう一括取得エラー（個別取得にフォールバック）: ${e.message}")
+                            }
+
                             scanNovels.forEachIndexed { index, novel ->
                                 syncProgress = 0.3f + (0.7f * index.toFloat() / scanNovels.size)
                                 currentCount = index + 1
@@ -306,7 +317,9 @@ fun UpdateInfoScreen(
                                         )
                                         repository.updateNovel(updatedNovel)
                                     } else {
-                                        val info = NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
+                                        // 一括取得結果を優先。取れなかった作品（検索除外・通信失敗）のみ個別取得にフォールバック
+                                        val info = syosetuScanInfoMap[novel.ncode.lowercase()]
+                                            ?: NovelApiUtils.fetchNovelInfo(novel.ncode, novel.rating == 1)
                                         generalAllNoValue = info?.generalAllNo ?: novel.general_all_no
                                     }
 
@@ -916,15 +929,15 @@ fun UpdateInfoScreen(
                                                                             )
 
                                                                             try {
-                                                                                // エピソード一覧とマッピング情報を再取得
+                                                                                // エピソード一覧とマッピング情報をアトミックに再取得
                                                                                 syncMessage = "「${novel.title}」のエピソード一覧を更新中..."
-                                                                                val (_, refreshedEpisodes) = adapter.fetchNovelMetadataWithEpisodeList(novel.ncode)
+                                                                                val (_, refreshedEpisodes, refreshedMappings) = adapter.fetchNovelMetadataWithEpisodeListAndMappings(novel.ncode)
 
                                                                                 // エピソード情報をデータベースに保存（既読情報を保持）
                                                                                 repository.insertEpisodesPreservingReadStatus(refreshedEpisodes)
 
                                                                                 // マッピング情報をデータベースに保存
-                                                                                val mappings = adapter.getCachedMappings().map { (episodeNoInt, kakuyomuEpisodeId) ->
+                                                                                val mappings = refreshedMappings.map { (episodeNoInt, kakuyomuEpisodeId) ->
                                                                                     com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
                                                                                         ncode = novel.ncode,
                                                                                         episode_no = episodeNoInt,

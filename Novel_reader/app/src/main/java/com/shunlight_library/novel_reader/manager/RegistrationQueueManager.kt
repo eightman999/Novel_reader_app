@@ -170,8 +170,9 @@ object RegistrationQueueManager {
         withContext(Dispatchers.IO) {
             // 先に処理中のジョブを停止して完了を待つ
             // （削除後にジョブが temp_episodes へ書き込み、孤児データが残る競合を防ぐ）
-            processingQueues[id]?.cancelAndJoin()
-            processingQueues.remove(id)
+            val job = synchronized(processingQueues) { processingQueues[id] }
+            job?.cancelAndJoin()
+            synchronized(processingQueues) { processingQueues.remove(id) }
             pausedQueueIds.remove(id)
 
             val queue = repository.getRegistrationQueueById(id)
@@ -203,7 +204,7 @@ object RegistrationQueueManager {
                     // 一時停止フラグを設定してからジョブをキャンセル
                     // processQueueのcatchブロックで一時停止として処理される
                     pausedQueueIds.add(id)
-                    processingQueues[id]?.cancel()
+                    synchronized(processingQueues) { processingQueues[id] }?.cancel()
                     AppLogger.d(TAG, "処理中キューを一時停止: id=$id")
                 }
                 RegistrationQueueEntity.STATUS_PENDING -> {
@@ -247,14 +248,8 @@ object RegistrationQueueManager {
                 val queue = repository.getNextPendingRegistrationQueue()
 
                 if (queue != null) {
-                    // 処理中に変更
-                    repository.updateRegistrationQueueStatus(
-                        queue.id,
-                        RegistrationQueueEntity.STATUS_PROCESSING,
-                        null
-                    )
-
-                    // 処理開始
+                    // 処理開始（PROCESSINGへのDB更新は processQueue 内で
+                    // ジョブをmapへ登録した後に行い、「PROCESSINGだがjob未登録」窓を無くす）
                     processQueue(queue)
                 }
             }
@@ -271,8 +266,11 @@ object RegistrationQueueManager {
      *
      * @param queue 処理対象のキュー
      */
-    private fun processQueue(queue: RegistrationQueueEntity) {
-        val job = scope.launch {
+    private suspend fun processQueue(queue: RegistrationQueueEntity) {
+        // CoroutineStart.LAZY で生成し、mapへ登録してからPROCESSINGに更新し、最後にstartする。
+        // これにより pause/cancel が PROCESSING を観測した時点で必ずジョブがmapに存在し、
+        // cancel()/cancelAndJoin() が確実に実ジョブへ届く（孤児 temp_episodes を防止）。
+        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             try {
                 AppLogger.d(TAG, "キュー処理開始: id=${queue.id}, ncode=${queue.ncode}")
 
@@ -411,14 +409,23 @@ object RegistrationQueueManager {
                     updateQueueError(queue.id, e.message ?: "不明なエラー")
                 }
             } finally {
-                processingQueues.remove(queue.id)
+                synchronized(processingQueues) { processingQueues.remove(queue.id) }
                 pausedQueueIds.remove(queue.id)
                 // 登録セッションを終了
                 com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishRegistrationByNcode(queue.ncode)
             }
         }
 
-        processingQueues[queue.id] = job
+        // 1) 先にmapへ登録
+        synchronized(processingQueues) { processingQueues[queue.id] = job }
+        // 2) 登録後にPROCESSINGへDB更新（この時点でjobは必ずmapにある）
+        repository.updateRegistrationQueueStatus(
+            queue.id,
+            RegistrationQueueEntity.STATUS_PROCESSING,
+            null
+        )
+        // 3) 実行を開始
+        job.start()
     }
 
     /**
@@ -433,8 +440,8 @@ object RegistrationQueueManager {
     private suspend fun fetchKakuyomuWithTempDb(queue: RegistrationQueueEntity, resumeFrom: Int) {
         val adapter = NovelSiteAdapterFactory.getAdapter(queue.site_type) as com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
 
-        // まず小説情報とエピソード一覧（本文なし）を取得
-        val (novelDesc, episodesWithoutBody) = adapter.fetchNovelMetadataWithEpisodeList(queue.ncode)
+        // まず小説情報とエピソード一覧（本文なし）＋マッピングをアトミックに取得
+        val (novelDesc, episodesWithoutBody, mappings) = adapter.fetchNovelMetadataWithEpisodeListAndMappings(queue.ncode)
 
         // 小説情報を保存（既存のregistered_atを保持）
         val existingNovel = repository.getNovelByNcode(queue.ncode)
@@ -445,8 +452,7 @@ object RegistrationQueueManager {
         }
         repository.insertNovel(novelToSave)
 
-        // マッピング情報を取得して保存
-        val mappings = adapter.getCachedMappings()
+        // マッピング情報を保存
         if (mappings.isNotEmpty()) {
             val mappingEntities = mappings.map { (episodeNo, kakuyomuEpisodeId) ->
                 com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
@@ -551,7 +557,21 @@ object RegistrationQueueManager {
                 val tempEpisode = TempEpisodeEntity.fromEpisodeEntity(episode, queue.id)
                 repository.insertTempEpisode(tempEpisode)
             } else {
-                AppLogger.w(TAG, "エピソード取得失敗（スキップ）: ${queue.ncode} 第${episodeNo}話")
+                // 取得失敗した話を「本文空（body_empty）」プレースホルダとして記録する。
+                // 完全にスキップすると MAX(episode_no) レジュームで途中失敗話が飛ばされ
+                // 恒久欠番化する（UI上は total_ep=general_all_no で全話揃って見えるのに実体に穴）。
+                // 空本文で記録すれば欠落修正スキャン（body='' OR e_title=''）で検出・再取得できる。
+                // （カクヨム経路と同じ挙動に揃える）
+                AppLogger.w(TAG, "エピソード取得失敗（空本文で記録・後で再取得可能）: ${queue.ncode} 第${episodeNo}話")
+                val placeholder = EpisodeEntity(
+                    ncode = queue.ncode,
+                    episode_no = episodeNo.toString(),
+                    body = "",
+                    e_title = "",
+                    update_time = getCurrentDateTimeString()
+                )
+                val tempEpisode = TempEpisodeEntity.fromEpisodeEntity(placeholder, queue.id)
+                repository.insertTempEpisode(tempEpisode)
             }
 
             // 進捗通知

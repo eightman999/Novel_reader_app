@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
+import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
 import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.entity.URLEntity
@@ -150,6 +151,10 @@ class DatabaseSyncManager(private val context: Context) {
             try { syncEpisodes(externalDb, dbSyncSettings.preserveExistingEpisodes) }
             catch (e: Exception) { Log.e(TAG, "[Step2/3] エピソードの同期に失敗", e); throw e }
 
+            // カクヨムのエピソードマッピングを同期（外部DBに存在する場合のみ）
+            try { syncEpisodeMappings(externalDb) }
+            catch (e: Exception) { Log.e(TAG, "エピソードマッピングの同期に失敗", e) }
+
             // 最後に読んだ記録の同期
             try { syncLastReadNovels(externalDb) }
             catch (e: Exception) { Log.e(TAG, "[Step3/3] 読書履歴の同期に失敗", e); throw e }
@@ -191,8 +196,9 @@ class DatabaseSyncManager(private val context: Context) {
                 null
             )
 
-            // カラム名の取得とマッピング
-            val columnNcode = cursor.getColumnIndexOrThrow("ncode")
+            // カラム名の取得とマッピング（旧形式の n_code にもフォールバック）
+            val columnNcode = getColumnIndexSafely(cursor, "ncode")
+                ?: cursor.getColumnIndexOrThrow("n_code")
             val columnTitle = cursor.getColumnIndexOrThrow("title")
             val columnAuthor = cursor.getColumnIndexOrThrow("author")
 
@@ -211,14 +217,27 @@ class DatabaseSyncManager(private val context: Context) {
             val columnLength = getColumnIndexOrDefault(cursor, "length")
             val columnUpdatedAt = getColumnIndexOrDefault(cursor, "updated_at")
             val columnRegisteredAt = getColumnIndexOrDefault(cursor, "registered_at")
+            // 外部DBにあれば読む（無ければ既存内部値を保持し、カクヨム作品をなろう扱いで破壊しない）
+            val columnIsFavorite = getColumnIndexOrDefault(cursor, "is_favorite")
+            val columnSiteType = getColumnIndexOrDefault(cursor, "site_type")
+            val columnSubSite = getColumnIndexOrDefault(cursor, "sub_site")
+            val columnEndFlag = getColumnIndexOrDefault(cursor, "end_flag")
             val urlEntities = mutableListOf<URLEntity>() // URLEntityリスト追加
             val batchSize = 50
             val novels = mutableListOf<NovelDescEntity>()
 
             // データの読み取りとバッチ処理
             while (cursor.moveToNext()) {
+                val ncode = cursor.getString(columnNcode)
+                // 外部DBに列が無い場合は既存の内部値を保持する
+                val existing = repository.getNovelByNcode(ncode)
+                val siteType = columnSiteType?.let { cursor.getInt(it) } ?: existing?.site_type ?: 1
+                val subSite = columnSubSite?.let { cursor.getInt(it) } ?: existing?.sub_site ?: 0
+                val endFlag = columnEndFlag?.let { cursor.getInt(it) } ?: existing?.end_flag ?: 0
+                val isFavorite = columnIsFavorite?.let { cursor.getInt(it) } ?: existing?.is_favorite ?: 0
+
                 val novel = NovelDescEntity(
-                    ncode = cursor.getString(columnNcode),
+                    ncode = ncode,
                     title = cursor.getString(columnTitle),
                     author = cursor.getString(columnAuthor),
                     Synopsis = columnSynopsis?.let { cursor.getString(it) } ?: "",
@@ -232,31 +251,37 @@ class DatabaseSyncManager(private val context: Context) {
                     noveltype = columnNoveltype?.let { cursor.getInt(it) },
                     length = columnLength?.let { cursor.getInt(it) },
                     updated_at = columnUpdatedAt?.let { cursor.getString(it) } ?: getCurrentDateString(),
-                    registered_at = columnRegisteredAt?.let { cursor.getString(it) } ?: getCurrentDateString()
+                    registered_at = columnRegisteredAt?.let { cursor.getString(it) } ?: getCurrentDateString(),
+                    is_favorite = isFavorite,
+                    site_type = siteType,
+                    sub_site = subSite,
+                    end_flag = endFlag
                 )
 
                 novels.add(novel)
-                // URLEntityも作成
-                val isR18 = novel.rating == 1
-                val apiUrl = if (isR18) {
-                    "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5"
-                } else {
-                    "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5"
-                }
-                val webUrl = if (isR18) {
-                    "https://novel18.syosetu.com/${novel.ncode}/"
-                } else {
-                    "https://ncode.syosetu.com/${novel.ncode}/"
-                }
+                // URLEntityはなろう作品のみ生成（カクヨム作品になろうAPI/WebURLを付与しない）
+                if (siteType != com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
+                    val isR18 = novel.rating == 1
+                    val apiUrl = if (isR18) {
+                        "https://api.syosetu.com/novel18api/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5"
+                    } else {
+                        "https://api.syosetu.com/novelapi/api/?of=t-w-ga-s-ua&ncode=${novel.ncode}&gzip=5"
+                    }
+                    val webUrl = if (isR18) {
+                        "https://novel18.syosetu.com/${novel.ncode}/"
+                    } else {
+                        "https://ncode.syosetu.com/${novel.ncode}/"
+                    }
 
-                val urlEntity = URLEntity(
-                    ncode = novel.ncode,
-                    api_url = apiUrl,
-                    url = webUrl,
-                    is_r18 = if (isR18) 1 else 0
-                )
-
-                urlEntities.add(urlEntity)
+                    urlEntities.add(
+                        URLEntity(
+                            ncode = novel.ncode,
+                            api_url = apiUrl,
+                            url = webUrl,
+                            is_r18 = if (isR18) 1 else 0
+                        )
+                    )
+                }
                 // バッチサイズに達したら保存
                 if (novels.size >= batchSize) {
                     repository.insertNovels(novels)
@@ -301,27 +326,38 @@ class DatabaseSyncManager(private val context: Context) {
             ) 
             
             // カラム名の取得とマッピング
-            val columnNcode = cursor.getColumnIndexOrThrow("ncode")
+            val columnNcode = getColumnIndexSafely(cursor, "ncode")
+                ?: cursor.getColumnIndexOrThrow("n_code")
             val columnEpisodeNo = cursor.getColumnIndexOrThrow("episode_no")
             val columnBody = cursor.getColumnIndexOrThrow("body")
             val columnETitle = getColumnIndexOrDefault(cursor, "e_title")
-            val columnUpdateTime = getColumnIndexOrDefault(cursor, "update_time") 
-            
+            val columnUpdateTime = getColumnIndexOrDefault(cursor, "update_time")
+            // 既読・しおり・読書率も読み取り、バックアップ復元で読書状態を保全する
+            val columnIsRead = getColumnIndexOrDefault(cursor, "is_read")
+            val columnIsBookmark = getColumnIndexOrDefault(cursor, "is_bookmark")
+            val columnReadingRate = getColumnIndexOrDefault(cursor, "reading_rate")
+
             val batchSize = 20
-            val episodes = mutableListOf<EpisodeEntity>() 
-            
+            val episodes = mutableListOf<EpisodeEntity>()
+
             // データの読み取りとバッチ処理
             while (cursor.moveToNext()) {
+                val readingRate = if (columnReadingRate != null && !cursor.isNull(columnReadingRate)) {
+                    cursor.getFloat(columnReadingRate)
+                } else 0f
                 val episode = EpisodeEntity(
                     ncode = cursor.getString(columnNcode),
                     episode_no = cursor.getString(columnEpisodeNo),
                     body = cursor.getString(columnBody),
                     e_title = columnETitle?.let { cursor.getString(it) } ?: "",
                     update_time = columnUpdateTime?.let { cursor.getString(it) } ?:
-                    getCurrentDateString()
-                ) 
-                
-                episodes.add(episode) 
+                    getCurrentDateString(),
+                    is_read = columnIsRead?.let { cursor.getInt(it) } ?: 0,
+                    is_bookmark = columnIsBookmark?.let { cursor.getInt(it) } ?: 0,
+                    reading_rate = readingRate
+                )
+
+                episodes.add(episode)
                 
                 // バッチサイズに達したら保存（設定を反映）
                 if (episodes.size >= batchSize) {
@@ -339,6 +375,48 @@ class DatabaseSyncManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "エピソードの同期中にエラーが発生しました", e)
             throw e
+        } finally {
+            cursor?.close()
+        }
+    }
+
+    /**
+     * カクヨム作品のエピソードマッピング（話番号→エピソードID）を同期します。
+     * 外部DBに `episode_mapping` テーブルが無い場合は何もしません。
+     */
+    private suspend fun syncEpisodeMappings(externalDb: SQLiteDatabase) {
+        if (!isTableExists(externalDb, "episode_mapping")) return
+        var cursor: Cursor? = null
+        try {
+            cursor = externalDb.query("episode_mapping", null, null, null, null, null, null)
+            val columnNcode = getColumnIndexSafely(cursor, "ncode") ?: return
+            val columnEpisodeNo = getColumnIndexSafely(cursor, "episode_no") ?: return
+            val columnKakuyomuId = getColumnIndexSafely(cursor, "kakuyomu_episode_id") ?: return
+
+            val batchSize = 100
+            val mappings = mutableListOf<EpisodeMappingEntity>()
+            while (cursor.moveToNext()) {
+                val ncode = cursor.getString(columnNcode) ?: continue
+                val kakuyomuId = cursor.getString(columnKakuyomuId) ?: continue
+                if (ncode.isEmpty() || kakuyomuId.isEmpty()) continue
+                mappings.add(
+                    EpisodeMappingEntity(
+                        ncode = ncode,
+                        episode_no = cursor.getInt(columnEpisodeNo),
+                        kakuyomu_episode_id = kakuyomuId
+                    )
+                )
+                if (mappings.size >= batchSize) {
+                    repository.insertEpisodeMappings(mappings.toList())
+                    mappings.clear()
+                }
+            }
+            if (mappings.isNotEmpty()) {
+                repository.insertEpisodeMappings(mappings.toList())
+            }
+            Log.d(TAG, "エピソードマッピングの同期が完了しました")
+        } catch (e: Exception) {
+            Log.e(TAG, "エピソードマッピングの同期中にエラーが発生しました", e)
         } finally {
             cursor?.close()
         }

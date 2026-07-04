@@ -500,13 +500,15 @@ class AutoUpdateWorker(
         val workId = PseudoNcodeGenerator.extractKakuyomuWorkId(novel.ncode)
         val kakuyomuAdapter = NovelSiteAdapterFactory.getAdapter(NovelSiteAdapter.SITE_TYPE_KAKUYOMU) as KakuyomuAdapter
 
-        // 並列更新確認処理でcachedMappingsが上書きされている可能性があるため、
-        // ダウンロード前に当該作品のエピソードリストを再取得して正確なマッピングを得る
+        // ダウンロード前に当該作品のエピソードリストとマッピングをアトミックに再取得。
+        // マッピングは戻り値で返るため、並行取得で別作品のマッピングを取り違えることはない。
         val episodeListFromWeb: List<com.shunlight_library.novel_reader.data.entity.EpisodeEntity>
+        val mappings: Map<Int, String>
         try {
-            val (_, fetchedEpisodes) = kakuyomuAdapter.fetchNovelMetadataWithEpisodeList(workId)
-            episodeListFromWeb = fetchedEpisodes
-            Log.d(TAG, "カクヨムエピソードリスト再取得完了: ${novel.ncode}, ${fetchedEpisodes.size}話")
+            val fetched = kakuyomuAdapter.fetchNovelMetadataWithEpisodeListAndMappings(workId)
+            episodeListFromWeb = fetched.episodes
+            mappings = fetched.episodeMappings
+            Log.d(TAG, "カクヨムエピソードリスト再取得完了: ${novel.ncode}, ${fetched.episodes.size}話")
         } catch (e: Exception) {
             Log.e(TAG, "カクヨムエピソードリスト再取得エラー: ${novel.ncode}", e)
 
@@ -539,8 +541,7 @@ class AutoUpdateWorker(
             return
         }
 
-        // エピソード番号→IDとタイトルのマッピングを構築
-        val mappings = kakuyomuAdapter.getCachedMappings()
+        // エピソード番号→タイトルのマッピングを構築（IDマッピングは上でアトミック取得済み）
         val episodeTitles = episodeListFromWeb.associate {
             it.episode_no.toIntOrNull() to (it.e_title ?: "第${it.episode_no}話")
         }
@@ -628,8 +629,11 @@ class AutoUpdateWorker(
         val totalUpdates = results.newNovelsCount + results.updatedNovelsCount
 
         if (totalUpdates > 0 || results.downloadDetails.isNotEmpty()) {
+            // 自動DLされずキューに残っている更新があるか（未DL/一部失敗）
+            val hasPendingDownloads = repository.getAllUpdateQueue().isNotEmpty()
+
             // システム通知を送信
-            sendSystemNotification(results)
+            sendSystemNotification(results, hasPendingDownloads)
 
             // アプリ内通知データを保存（次回アプリ起動時に表示）
             saveAppNotification(results)
@@ -638,7 +642,7 @@ class AutoUpdateWorker(
         Log.d(TAG, "更新結果: 新規${results.newNovelsCount}件、更新${results.updatedNovelsCount}件、DL成功${results.totalSuccessEpisodes}話、DL失敗${results.totalFailedEpisodes}話")
     }
 
-    private fun sendSystemNotification(results: UpdateResult) {
+    private fun sendSystemNotification(results: UpdateResult, hasPendingDownloads: Boolean) {
         val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val totalUpdates = results.newNovelsCount + results.updatedNovelsCount
@@ -671,16 +675,37 @@ class AutoUpdateWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(content)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .build()
 
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        // 自動DLされていない更新がキューに残っている場合のみ「すべてダウンロード」アクションを表示。
+        // タップで DownloadAllReceiver → UpdateService(一括更新) が update_queue を処理する。
+        if (hasPendingDownloads) {
+            val downloadAllIntent = Intent(
+                applicationContext,
+                com.shunlight_library.novel_reader.receiver.DownloadAllReceiver::class.java
+            ).apply {
+                action = com.shunlight_library.novel_reader.receiver.DownloadAllReceiver.ACTION_DOWNLOAD_ALL
+            }
+            val downloadAllPendingIntent = PendingIntent.getBroadcast(
+                applicationContext,
+                1,
+                downloadAllIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
+                R.drawable.ic_launcher_foreground,
+                "すべてダウンロード",
+                downloadAllPendingIntent
+            )
+        }
+
+        notificationManager.notify(NOTIFICATION_ID, builder.build())
         AppLogger.logNotification(title, content)
     }
 

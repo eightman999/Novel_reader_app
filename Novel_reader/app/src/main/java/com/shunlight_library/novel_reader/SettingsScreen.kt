@@ -1870,6 +1870,7 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
     var fontColor by remember { mutableStateOf("#000000") }
     var swipeEnabled by remember { mutableStateOf(true) }
     var tapEnabled by remember { mutableStateOf(false) }
+    var autoRubyEnabled by remember { mutableStateOf(true) }
 
     val backgroundOptions = listOf("White" to "#FFFFFF", "Cream" to "#F5F5DC", "Light Gray" to "#EEEEEE", "Light Blue" to "#E6F2FF", "Dark Gray" to "#303030", "Black" to "#000000")
     val fontColorOptions = listOf("Black" to "#000000", "Dark Gray" to "#333333", "Navy" to "#000080", "Dark Green" to "#006400", "White" to "#FFFFFF")
@@ -1879,6 +1880,7 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
         fontColor = settingsStore.fontColor.first()
         swipeEnabled = settingsStore.swipeEnabled.first()
         tapEnabled = settingsStore.tapEnabled.first()
+        autoRubyEnabled = settingsStore.autoRubyEnabled.first()
     }
 
     Scaffold(
@@ -1899,6 +1901,7 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                                 settingsStore.saveFontColor(fontColor)
                                 settingsStore.saveSwipeEnabled(swipeEnabled)
                                 settingsStore.saveTapEnabled(tapEnabled)
+                                settingsStore.saveAutoRubyEnabled(autoRubyEnabled)
                                 android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
                                 onBack()
                             } catch (e: Exception) {
@@ -1961,6 +1964,20 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("画面タップで話を移動"); Spacer(modifier = Modifier.weight(1f))
                     Switch(checked = tapEnabled, onCheckedChange = { tapEnabled = it })
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "ルビ設定") {
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("漢字（よみがな）をルビとして表示")
+                        Text(
+                            text = "本文中の「漢字（よみがな）」形式を自動でルビに変換します",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = autoRubyEnabled, onCheckedChange = { autoRubyEnabled = it })
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))
@@ -2046,12 +2063,16 @@ fun SettingsAutoUpdateScreen(onBack: () -> Unit) {
     var autoUpdateEnabled by remember { mutableStateOf(false) }
     var autoUpdateTime by remember { mutableStateOf("03:00") }
     var autoDownloadEnabled by remember { mutableStateOf(true) }
+    var excludeShortFromUpdate by remember { mutableStateOf(true) }
+    var excludeCompletedFromUpdate by remember { mutableStateOf(false) }
     var showTimePickerDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         autoUpdateEnabled = settingsStore.autoUpdateEnabled.first()
         autoUpdateTime = settingsStore.autoUpdateTime.first()
         autoDownloadEnabled = settingsStore.autoDownloadEnabled.first()
+        excludeShortFromUpdate = settingsStore.excludeShortFromUpdate.first()
+        excludeCompletedFromUpdate = settingsStore.excludeCompletedFromUpdate.first()
     }
 
     if (showTimePickerDialog) {
@@ -2077,6 +2098,8 @@ fun SettingsAutoUpdateScreen(onBack: () -> Unit) {
                         scope.launch {
                             try {
                                 settingsStore.saveAutoUpdateSettings(autoUpdateEnabled, autoUpdateTime, autoDownloadEnabled)
+                                settingsStore.saveExcludeShortFromUpdate(excludeShortFromUpdate)
+                                settingsStore.saveExcludeCompletedFromUpdate(excludeCompletedFromUpdate)
                                 autoUpdateScheduler.resetSchedule(autoUpdateEnabled, autoUpdateTime)
                                 android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
                                 onBack()
@@ -2124,6 +2147,28 @@ fun SettingsAutoUpdateScreen(onBack: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
+            }
+            HorizontalDivider()
+            // 更新確認の除外設定（自動更新・手動の全更新確認の両方に適用）
+            SettingSection(title = "更新確認の除外設定") {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("短編を更新確認から除外"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = excludeShortFromUpdate, onCheckedChange = { excludeShortFromUpdate = it })
+                }
+                Text(
+                    "短編は新しい話が増えないため、更新確認の対象から外して高速化します。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("完結作品を更新確認から除外"); Spacer(modifier = Modifier.weight(1f))
+                    Switch(checked = excludeCompletedFromUpdate, onCheckedChange = { excludeCompletedFromUpdate = it })
+                }
+                Text(
+                    "完結済みの作品を更新確認の対象から外します。稀に後日談が追加される場合は見逃すことがあります。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
             Spacer(modifier = Modifier.height(32.dp))
         }

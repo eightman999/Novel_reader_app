@@ -13,6 +13,8 @@ import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.json.JSONObject
@@ -61,23 +63,17 @@ data class KakuyomuUpdateSummary(
  * - エピソードページ: https://kakuyomu.jp/works/{workId}/episodes/{episodeId}
  */
 class KakuyomuAdapter : NovelSiteAdapter {
-    // 最後に取得したエピソードのマッピング情報を保持
-    private var cachedMappings: Map<Int, String> = emptyMap()
-
     companion object {
         private const val BASE_URL = "https://kakuyomu.jp"
         private const val RATE_LIMIT_DELAY_MS = 500L  // 0.5秒（スクレイピング時の推奨間隔）
         @Volatile private var lastAccessTime = 0L
+        // レート制限区間を直列化し、並列リクエストが同時にゲートを通過するのを防ぐ
+        private val rateLimitMutex = Mutex()
 
         // PC版User-Agentを使用（モバイル版では目次が省略される可能性があるため）
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    /**
-     * 最後に取得したマッピング情報を取得（呼び出し側が保存に使用）
-     */
-    fun getCachedMappings(): Map<Int, String> = cachedMappings
-
     override fun getSiteType(): Int = NovelSiteAdapter.SITE_TYPE_KAKUYOMU
 
     override fun getSiteName(): String = "カクヨム"
@@ -116,14 +112,14 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 小説情報を抽出
         val novelDesc = parseNovelInfo(doc, workId)
 
-        // エピソード一覧を抽出（本文なし）
-        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode, doc)
+        // エピソード一覧を抽出（本文なし）＋連番→カクヨムIDマッピング
+        val (episodesWithoutBody, mappings) = parseEpisodeList(workId, novelDesc.ncode, doc)
 
         // 各エピソードの本文を取得
         AppLogger.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
         val episodesWithBody = episodesWithoutBody.map { episode ->
-            // episode.episode_no は連番（1, 2, 3...）なので、キャッシュから実際のIDを取得
-            val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+            // episode.episode_no は連番（1, 2, 3...）なので、マッピングから実際のIDを取得
+            val actualEpisodeId = mappings[episode.episode_no.toInt()] ?: episode.episode_no
             val episodeBody = normalizeEpisodeBody(fetchEpisodeContent(workId, actualEpisodeId))
             episode.copy(body = episodeBody)
         }
@@ -182,8 +178,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 小説情報を抽出
         val novelDesc = parseNovelInfo(doc, workId)
 
-        // エピソード一覧を抽出（本文なし）
-        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode, doc)
+        // エピソード一覧を抽出（本文なし）＋連番→カクヨムIDマッピング
+        val (episodesWithoutBody, mappings) = parseEpisodeList(workId, novelDesc.ncode, doc)
 
         android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
 
@@ -191,7 +187,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         if (repository != null) {
             // 1話ずつ取得→保存（メモリリーク防止）
             episodesWithoutBody.forEachIndexed { index, episode ->
-                val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+                val actualEpisodeId = mappings[episode.episode_no.toInt()] ?: episode.episode_no
                 val episodeBody = normalizeEpisodeBody(fetchEpisodeContent(workId, actualEpisodeId))
                 val episodeWithBody = episode.copy(body = episodeBody)
 
@@ -221,16 +217,14 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了（1話ずつ保存）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
             }
 
-            // マッピング情報をコピー
-            val mappingsCopy = cachedMappings.toMap()
-            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappingsCopy.size}件 (例: ${mappingsCopy.entries.take(3)})")
+            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappings.size}件 (例: ${mappings.entries.take(3)})")
 
             // 空リストを返す（すでに保存済み）
-            return@withContext NovelWithEpisodesAndMappings(novelDesc, emptyList(), mappingsCopy)
+            return@withContext NovelWithEpisodesAndMappings(novelDesc, emptyList(), mappings)
         } else {
             // 旧方式：全話をメモリに保持（後方互換性のため残す）
             val episodesWithBody = episodesWithoutBody.map { episode ->
-                val actualEpisodeId = cachedMappings[episode.episode_no.toInt()] ?: episode.episode_no
+                val actualEpisodeId = mappings[episode.episode_no.toInt()] ?: episode.episode_no
                 val episodeBody = normalizeEpisodeBody(fetchEpisodeContent(workId, actualEpisodeId))
                 episode.copy(body = episodeBody)
             }
@@ -253,10 +247,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
             }
 
-            val mappingsCopy = cachedMappings.toMap()
-            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappingsCopy.size}件 (例: ${mappingsCopy.entries.take(3)})")
+            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappings.size}件 (例: ${mappings.entries.take(3)})")
 
-            return@withContext NovelWithEpisodesAndMappings(novelDesc, episodesWithBody, mappingsCopy)
+            return@withContext NovelWithEpisodesAndMappings(novelDesc, episodesWithBody, mappings)
         }
     }
 
@@ -269,7 +262,14 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * @param novelId カクヨムの作品IDまたはPseudo-Ncode
      * @return 小説メタデータとエピソードリスト（本文は空文字列）のペア
      */
-    suspend fun fetchNovelMetadataWithEpisodeList(novelId: String): Pair<NovelDescEntity, List<EpisodeEntity>> = withContext(Dispatchers.IO) {
+    /**
+     * 小説メタデータ・エピソードリスト（本文なし）・連番→カクヨムIDマッピングを
+     * まとめてアトミックに取得する。
+     *
+     * マッピングを戻り値に含めることで、並行取得時に別作品のマッピングを
+     * 取り違える共有可変状態（旧 cachedMappings）のレースを解消する。
+     */
+    suspend fun fetchNovelMetadataWithEpisodeListAndMappings(novelId: String): NovelWithEpisodesAndMappings = withContext(Dispatchers.IO) {
         val workId = if (PseudoNcodeGenerator.isKakuyomuNcode(novelId)) {
             PseudoNcodeGenerator.extractKakuyomuWorkId(novelId)
         } else {
@@ -285,12 +285,21 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 小説情報を抽出
         val novelDesc = parseNovelInfo(doc, workId)
 
-        // エピソード一覧を抽出（本文なし）
-        val episodesWithoutBody = parseEpisodeList(workId, novelDesc.ncode, doc)
+        // エピソード一覧を抽出（本文なし）＋マッピング
+        val (episodesWithoutBody, mappings) = parseEpisodeList(workId, novelDesc.ncode, doc)
 
-        AppLogger.d("KakuyomuAdapter", "小説メタデータとエピソードリスト取得完了（本文なし）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
+        AppLogger.d("KakuyomuAdapter", "小説メタデータとエピソードリスト取得完了（本文なし）: ${novelDesc.title}, ${episodesWithoutBody.size}話, マッピング${mappings.size}件")
 
-        Pair(novelDesc, episodesWithoutBody)
+        NovelWithEpisodesAndMappings(novelDesc, episodesWithoutBody, mappings)
+    }
+
+    /**
+     * 後方互換用: メタデータとエピソードリスト（本文なし）のみを返す。
+     * マッピングも必要な場合は fetchNovelMetadataWithEpisodeListAndMappings を使うこと。
+     */
+    suspend fun fetchNovelMetadataWithEpisodeList(novelId: String): Pair<NovelDescEntity, List<EpisodeEntity>> {
+        val result = fetchNovelMetadataWithEpisodeListAndMappings(novelId)
+        return Pair(result.novelDesc, result.episodes)
     }
 
     /**
@@ -422,11 +431,15 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * レート制限を適用（0.5秒間隔）
      */
     private suspend fun applyRateLimit() {
-        val elapsed = System.currentTimeMillis() - lastAccessTime
-        if (elapsed < RATE_LIMIT_DELAY_MS) {
-            delay(RATE_LIMIT_DELAY_MS - elapsed)
+        // check-then-act をMutexで直列化。並列呼び出しが同時に elapsed>=500ms と
+        // 判断して一斉アクセスする（→403/遮断）のを防ぎ、必ず0.5秒間隔を保証する。
+        rateLimitMutex.withLock {
+            val elapsed = System.currentTimeMillis() - lastAccessTime
+            if (elapsed < RATE_LIMIT_DELAY_MS) {
+                delay(RATE_LIMIT_DELAY_MS - elapsed)
+            }
+            lastAccessTime = System.currentTimeMillis()
         }
-        lastAccessTime = System.currentTimeMillis()
     }
 
     /**
@@ -860,10 +873,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
      *
      * @param workDoc 呼び出し元で取得済みの作品ページDocument（再フェッチ防止）
      */
-    private suspend fun parseEpisodeList(workId: String, pseudoNcode: String, workDoc: Document): List<EpisodeEntity> {
-        // 各呼び出し開始時にキャッシュをリセットして別作品の残留を防ぐ
-        cachedMappings = emptyMap()
-
+    private suspend fun parseEpisodeList(workId: String, pseudoNcode: String, workDoc: Document): Pair<List<EpisodeEntity>, Map<Int, String>> {
+        // マッピングは共有可変状態にせず戻り値として返す（並行取得時の別作品への上書きを防止）
         // 呼び出し元の取得済みdocから最初のエピソードリンクを抽出（重複フェッチ防止）
         val firstEpisodeLink = workDoc.select("a.widget-toc-episode-episodeTitle").firstOrNull()?.attr("href")
             ?: workDoc.select("a.WorkTocSection_link__ocg9K").firstOrNull()?.attr("href")
@@ -873,12 +884,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 方法1: episode_sidebarエンドポイントから取得（最優先、最も確実）
         val episodesWithMapping = extractEpisodesFromSidebar(workId, pseudoNcode, firstEpisodeLink)
         if (episodesWithMapping.isNotEmpty()) {
-            // マッピング情報をキャッシュに保存
-            cachedMappings = episodesWithMapping.associate {
+            val mappings = episodesWithMapping.associate {
                 it.episode.episode_no.toInt() to it.kakuyomuEpisodeId
             }
             AppLogger.d("KakuyomuAdapter", "エピソード一覧取得成功 (episode_sidebar): ${episodesWithMapping.size}話")
-            return episodesWithMapping.map { it.episode }
+            return Pair(episodesWithMapping.map { it.episode }, mappings)
         }
 
         AppLogger.d("KakuyomuAdapter", "episode_sidebarからエピソード取得失敗、他の方法を試行")
@@ -886,12 +896,11 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // 方法2: エピソードページの目次から取得（フォールバック）
         val episodesWithMappingFromToc = extractEpisodesFromToc(workId, pseudoNcode, firstEpisodeLink)
         if (episodesWithMappingFromToc.isNotEmpty()) {
-            // マッピング情報をキャッシュに保存
-            cachedMappings = episodesWithMappingFromToc.associate {
+            val mappings = episodesWithMappingFromToc.associate {
                 it.episode.episode_no.toInt() to it.kakuyomuEpisodeId
             }
             AppLogger.d("KakuyomuAdapter", "エピソード一覧取得成功 (目次): ${episodesWithMappingFromToc.size}話")
-            return episodesWithMappingFromToc.map { it.episode }
+            return Pair(episodesWithMappingFromToc.map { it.episode }, mappings)
         }
 
         AppLogger.d("KakuyomuAdapter", "目次からエピソード取得失敗、他の方法を試行")
@@ -999,7 +1008,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             )
         }
 
-        // 方法3 でも cachedMappings を構築（連番→カクヨムID）
+        // 方法3 でも マッピング（連番→カクヨムID）を構築
         val fallbackMappings = mutableMapOf<Int, String>()
         var idx = 0
         val allElements = if (doc.select("a.WorkTocSection_link__ocg9K").isNotEmpty())
@@ -1014,12 +1023,9 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 fallbackMappings[idx] = eid
             }
         }
-        if (fallbackMappings.isNotEmpty()) {
-            cachedMappings = fallbackMappings
-        }
 
         AppLogger.d("KakuyomuAdapter", "エピソード一覧パース完了 (HTML方法3): ${episodes.size}話")
-        return episodes
+        return Pair(episodes, fallbackMappings)
     }
 
     /**

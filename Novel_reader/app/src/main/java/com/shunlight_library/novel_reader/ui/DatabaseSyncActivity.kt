@@ -31,8 +31,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.data.sync.DatabaseExportManager
 import com.shunlight_library.novel_reader.data.sync.ImprovedDatabaseSyncManager
+import com.shunlight_library.novel_reader.data.sync.WebNovelReaderImportManager
 import com.shunlight_library.novel_reader.ui.theme.Novel_readerTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -155,51 +158,67 @@ fun DatabaseSyncScreen(
         addLog("同期を開始しています...")
 
         scope.launch {
-            val syncManager = ImprovedDatabaseSyncManager(context)
+            val callback = object : ImprovedDatabaseSyncManager.SyncProgressCallback {
+                override fun onProgressUpdate(progress: ImprovedDatabaseSyncManager.SyncProgress) {
+                    syncProgress = progress.progress
+                    syncStep = progress.step.name
+                    syncMessage = progress.message
+                    currentCount = progress.currentCount
+                    totalCount = progress.totalCount
 
-            try {
-                syncManager.syncFromExternalDb(
-                    selectedUri!!,
-                    object : ImprovedDatabaseSyncManager.SyncProgressCallback {
-                        override fun onProgressUpdate(progress: ImprovedDatabaseSyncManager.SyncProgress) {
-                            syncProgress = progress.progress
-                            syncStep = progress.step.name
-                            syncMessage = progress.message
-                            currentCount = progress.currentCount
-                            totalCount = progress.totalCount
+                    // ログメッセージの改善
+                    val logMsg = buildString {
+                        append("${progress.step}: ${progress.message}")
 
-                            // ログメッセージの改善
-                            val logMsg = buildString {
-                                append("${progress.step}: ${progress.message}")
-
-                                if (progress.currentNcode.isNotEmpty() && progress.currentTitle.isNotEmpty()) {
-                                    append(" - [${progress.currentNcode}] ${progress.currentTitle}")
-                                }
-
-                                if (progress.totalCount > 0) {
-                                    val percent = (progress.currentCount.toFloat() / progress.totalCount * 100).toInt()
-                                    append(" ($percent%)")
-                                }
-                            }
-
-                            addLog(logMsg)
+                        if (progress.currentNcode.isNotEmpty() && progress.currentTitle.isNotEmpty()) {
+                            append(" - [${progress.currentNcode}] ${progress.currentTitle}")
                         }
 
-                        override fun onComplete(result: ImprovedDatabaseSyncManager.SyncResult) {
-                            syncResult = result
-                            isSyncing = false
-
-                            if (result.success) {
-                                val successMsg = "同期が完了しました: 小説${result.novelDescsCount}件、" +
-                                        "エピソード${result.episodesCount}件、履歴${result.lastReadCount}件"
-                                addLog("完了: $successMsg")
-                            } else {
-                                val errorMsg = "同期に失敗しました: ${result.errorMessage}"
-                                addLog("エラー: $errorMsg")
-                            }
+                        if (progress.totalCount > 0) {
+                            val percent = (progress.currentCount.toFloat() / progress.totalCount * 100).toInt()
+                            append(" ($percent%)")
                         }
                     }
-                )
+
+                    addLog(logMsg)
+                }
+
+                override fun onComplete(result: ImprovedDatabaseSyncManager.SyncResult) {
+                    syncResult = result
+                    isSyncing = false
+
+                    if (result.success) {
+                        val successMsg = "同期が完了しました: 小説${result.novelDescsCount}件、" +
+                                "エピソード${result.episodesCount}件、履歴${result.lastReadCount}件"
+                        addLog("完了: $successMsg")
+                    } else {
+                        val errorMsg = "同期に失敗しました: ${result.errorMessage}"
+                        addLog("エラー: $errorMsg")
+                    }
+                }
+            }
+
+            try {
+                // ファイル形式を自動判別（先頭バイトがZIPマジックなら WebNovelReader バックアップ）
+                val isZip = withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openInputStream(selectedUri!!)?.use { input ->
+                            val header = ByteArray(4)
+                            val read = input.read(header)
+                            read >= 4 && WebNovelReaderImportManager.looksLikeZip(header)
+                        } ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+
+                if (isZip) {
+                    addLog("WebNovelReader バックアップ(ZIP)として復元します")
+                    WebNovelReaderImportManager(context).importFromZip(selectedUri!!, callback)
+                } else {
+                    addLog("SQLiteデータベースとして復元します")
+                    ImprovedDatabaseSyncManager(context).syncFromExternalDb(selectedUri!!, callback)
+                }
             } catch (e: Exception) {
                 Log.e(DatabaseSyncActivity.TAG, "同期処理中にエラーが発生しました", e)
                 syncResult = ImprovedDatabaseSyncManager.SyncResult(
@@ -247,6 +266,11 @@ fun DatabaseSyncScreen(
                     Text(
                         text = "外部データベース",
                         style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Text(
+                        text = "対応形式: 本アプリの.dbバックアップ / 旧形式SQLite(novel_status.db等) / WebNovelReaderバックアップ(.zip)。形式は自動判別します。",
+                        style = MaterialTheme.typography.bodySmall
                     )
 
                     Text(
