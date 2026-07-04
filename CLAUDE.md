@@ -334,11 +334,19 @@ Use `SettingsStore` for persistent configuration with DataStore.
    - Composite PK: (ncode, episode_no)
    - Indices: (ncode, episode_no), (ncode, kakuyomu_episode_id)
 
-8. **`registration_queue`** - Download/registration queue
-   - Queue management for novel downloads (pending/in-progress/completed状態管理)
-
-9. **`temp_episodes`** - Temporary episode storage
+8. **`registration_queue`** - New novel registration queue (v14+)
+   - Queue: id (PK, autoincrement), ncode, site_type, title, url, is_r18
+   - Status: status, current_episode, total_episodes, error_message
+   - Dates: created_at, started_at, completed_at
+   - Indices: status, ncode, created_at
    - Timeout-resumable downloads: タイムアウト時に一時データを保持し、リトライ時に続きから再開
+
+9. **`temp_episodes`** - Download staging table (v15+)
+   - Content: ncode, episode_no, body, e_title, update_time
+   - Progress: is_read, is_bookmark, reading_rate
+   - Link: queue_id
+   - Composite PK: (ncode, episode_no)
+   - Indices: (ncode, episode_no), queue_id
    - Cleared atomically when registration completes or is cancelled
 
 ### Special Features
@@ -440,8 +448,8 @@ The application uses the Adapter pattern to support multiple novel sites with si
 
 2. **`KakuyomuAdapter`** - カクヨム (Kakuyomu)
    - HTML scraping (no official API)
-   - 1-second rate limiting between requests
-   - Pseudo-ncode format: "KK-{Base62(workId)}" for compatibility
+   - 0.5-second rate limiting between requests
+   - Pseudo-ncode format: "K{Base62(workId)}" for compatibility (例: "K9zXYt1A2B3")
    - Episode ID mapping table for internal episode numbering
    - Multiple fallback patterns for robust HTML parsing
 
@@ -463,7 +471,7 @@ val episodes = adapter.fetchEpisodeList(novel.ncode)
 
 #### Core Utilities
 - **`Base62Converter`** - Base62 encoding/decoding for Kakuyomu work IDs
-- **`PseudoNcodeGenerator`** - Generates pseudo-ncodes for Kakuyomu (KK-{Base62})
+- **`PseudoNcodeGenerator`** - Generates pseudo-ncodes for Kakuyomu (K{Base62})
 - **`AppLogger`** - Centralized logging with BuildConfig-based enable/disable
 - **`FontUtils`** - Custom font loading and CSS generation for WebView
 - **`ImageCacheUtils`** - Image caching management for novel covers
@@ -1209,7 +1217,7 @@ val episodeUrl = "https://kakuyomu.jp/works/{workId}/episodes/{episodeId}"
 **重要なルール**:
 - 作品IDとエピソードIDは独立した19桁の数値
 - 連番ではないため、目次から全エピソードIDを取得する必要がある
-- Pseudo-Ncode形式（`KK-{workId}`）でデータベースに格納
+- Pseudo-Ncode形式（`K{Base62(workId)}`）でデータベースに格納
 
 ### エラーハンドリング
 
