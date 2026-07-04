@@ -864,7 +864,7 @@ class SettingsStore(private val context: Context) {
             preferences[EXCLUDE_COMPLETED_FROM_UPDATE] = enabled
         }
     }
-    
+
     // データベース同期設定を一括取得
     suspend fun getDatabaseSyncSettings(): DatabaseSyncSettings {
         val preferences = context.dataStore.data.first()
