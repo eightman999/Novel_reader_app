@@ -11,3 +11,7 @@ release/baselineProfiles/0/app-release.dm
 /kakuyomu
 /.claude
 CLAUDE.md.bak-*
+
+# graphify (local-only; graph.json/GRAPH_REPORT.md are committed)
+graphify-out/cost.json
+graphify-out/cache/

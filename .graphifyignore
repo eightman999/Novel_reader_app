@@ -1,0 +1,24 @@
+# Build / IDE / VCS
+**/build/
+**/.gradle/
+**/.idea/
+**/.git/
+**/local.properties
+
+# APK / release artifacts
+release/
+**/*.apk
+**/*.aab
+**/*.dm
+
+# Node (opencode local)
+.opencode/node_modules/
+.kamui/
+
+# Backup / noise docs
+CLAUDE.md.bak-*
+**/output-metadata.json
+
+# Generated / caches
+**/.DS_Store
+**/captures/
