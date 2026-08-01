@@ -196,7 +196,7 @@ fun RecentlyReadNovelsScreen(
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                items(displayedItems) { item ->
+                items(displayedItems, key = { it.lastRead.ncode }) { item ->
                     RecentlyReadNovelItem(
                         lastReadNovel = item.lastRead,
                         novel = item.novel,

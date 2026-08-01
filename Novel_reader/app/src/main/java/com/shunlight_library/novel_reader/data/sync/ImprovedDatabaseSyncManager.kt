@@ -208,6 +208,11 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 ))
                 val lastReadCount = syncLastReadNovels(db)
 
+                // M15: novels_descs と episodes は別フェーズのため、途中失敗で total_ep が乖離しうる。
+                // エピソード投入後に実件数で total_ep を再計算して半壊状態を修復する。
+                repository.recalculateAllTotalEpFromEpisodes()
+                Log.d(TAG, "total_ep を episodes 実件数で再計算しました")
+
                 // 完了通知
                 val result = SyncResult(
                     success = true,

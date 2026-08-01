@@ -1903,7 +1903,7 @@ fun EpisodeListScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(episodes) { episode ->
+                        items(episodes, key = { it.episode_no }) { episode ->
                             val isRead = lastRead != null &&
                                     episode.episode_no.toIntOrNull()?.let { it <= lastRead!!.episode_no } ?: false
 

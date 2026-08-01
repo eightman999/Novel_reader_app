@@ -32,6 +32,10 @@ import com.shunlight_library.novel_reader.data.entity.LastReadNovelEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.api.NovelApiUtils
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.snapshotFlow
 
 // 並び替え条件を定義する列挙型
 enum class SortField(val displayName: String) {
@@ -108,7 +112,7 @@ data class NovelWithReadInfo(
     val unreadCount: Int
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class, FlowPreview::class)
 @Composable
 fun NovelListScreen(
     onBack: () -> Unit,
@@ -147,8 +151,17 @@ fun NovelListScreen(
 
     // 検索関連の状態変数
     var searchText by remember { mutableStateOf("") }
+    // フィルタリング計算用にdebounceした検索文字列（入力エコー自体はsearchTextのまま即時表示）
+    var debouncedSearchText by remember { mutableStateOf("") }
     var searchField by remember { mutableStateOf(SearchField.TITLE) }
     var isSearching by remember { mutableStateOf(false) }
+
+    // searchTextの変更を300ms debounceしてdebouncedSearchTextに反映
+    LaunchedEffect(Unit) {
+        snapshotFlow { searchText }
+            .debounce(300)
+            .collectLatest { debouncedSearchText = it }
+    }
 
     // ダイアログ表示状態
     var showSortDialog by remember { mutableStateOf(false) }
@@ -224,7 +237,7 @@ fun NovelListScreen(
     val displayedNovels by remember(
         allNovels,
         filterSettings,
-        searchText,
+        debouncedSearchText,
         searchField,
         sortField,
         sortDirection
@@ -269,17 +282,17 @@ fun NovelListScreen(
                     if (novelSubSite !in filterSettings.selectedSubSites) return@filter false
                 }
 
-                if (searchText.isNotEmpty()) {
+                if (debouncedSearchText.isNotEmpty()) {
                     when (searchField) {
-                        SearchField.NCODE -> if (!novel.ncode.contains(searchText, ignoreCase = true)) {
+                        SearchField.NCODE -> if (!novel.ncode.contains(debouncedSearchText, ignoreCase = true)) {
                             return@filter false
                         }
 
-                        SearchField.TITLE -> if (!novel.title.contains(searchText, ignoreCase = true)) {
+                        SearchField.TITLE -> if (!novel.title.contains(debouncedSearchText, ignoreCase = true)) {
                             return@filter false
                         }
 
-                        SearchField.AUTHOR -> if (!novel.author.contains(searchText, ignoreCase = true)) {
+                        SearchField.AUTHOR -> if (!novel.author.contains(debouncedSearchText, ignoreCase = true)) {
                             return@filter false
                         }
                     }

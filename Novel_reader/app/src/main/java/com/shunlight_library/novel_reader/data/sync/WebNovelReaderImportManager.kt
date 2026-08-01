@@ -173,6 +173,13 @@ class WebNovelReaderImportManager(private val context: Context) {
                 }
             }
 
+            // M15: episodes 実件数で total_ep を再計算
+            try {
+                repository.recalculateAllTotalEpFromEpisodes()
+            } catch (e: Exception) {
+                Log.e(TAG, "total_ep 再計算に失敗", e)
+            }
+
             val message = buildString {
                 append("復元が完了しました: 作品${novelCount}件、エピソード${episodeCount}件")
                 if (skippedNovels > 0) append("（非対応・失敗 ${skippedNovels}件をスキップ）")

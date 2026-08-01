@@ -78,7 +78,7 @@ fun RecentlyUpdatedNovelsScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                items(novels) { novel ->
+                items(novels, key = { it.ncode }) { novel ->
                     RecentNovelItem(
                         novel = novel,
                         onClick = { onNovelClick(novel.ncode) }

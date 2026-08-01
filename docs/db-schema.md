@@ -1,4 +1,4 @@
-# Database Schema (Version 17)
+# Database Schema (Version 18)
 
 `NovelDatabase.kt` — Room database, 9 tables, `exportSchema=true`（room.schemaLocation でスキーマJSONを出力）。
 
@@ -15,8 +15,9 @@
 - v10→v11: Added `registered_at` to novels_descs (download date tracking)
 - v11→v12: **Performance optimization** - Added indices for sorting/filtering (total_ep, author, title, is_read, is_bookmark) and composite indices (site_type+is_favorite, ncode+is_read, ncode+is_bookmark)
 - v12→v15: Various feature additions (see git history)
-- v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; initialized sub_site for existing records
+- v15→v16: Added `sub_site`, `end_flag`, `last_checked_at` to novels_descs; added indices for sub_site, end_flag, last_checked_at; 一般作品のみ sub_site=1、R18は 0(不明)（L4）
 - v16→v17: `image_cache`に`idx_image_cache_hash`インデックスを追加（ImageCacheEntityがv2.0.7で宣言済みだったがマイグレーション未整備だった不整合を解消）。エクスポート済み16.jsonはインデックス無しの正しいv16スキーマに再生成
+- v17→v18: L4修正 — 旧15→16で R18 を一律 `sub_site=2` にしていた誤分類を `sub_site=0` に戻す（物理スキーマ変更なし）
 
 ## Tables (9 total)
 
@@ -163,4 +164,10 @@
   - IN-clause chunking (H2): `NovelRepository.getNovelsByNcodes` を `chunked(900)` 分割に変更し、1000件超で `SQLiteException: too many SQL variables` クラッシュを解消（RecentlyReadNovelsScreen・UpdateInfoScreenの全呼び出しに適用）。
   - Progress throttling fix (L14): `ImprovedDatabaseSyncManager` の進捗スロットリング判定 `abs(lastProgress?.progress ?: 0f - progress.progress)` の演算子優先順位ミス（常にtrue化＝無効）を `abs((lastProgress?.progress ?: 0f) - progress.progress)` に修正。
   - ToC recovery total_ep (L10): `EpisodeListScreen` のカクヨム目次復帰で `total_ep` を `mappings.size` でなく挿入後の実話数（既存＋新規スタブ）で設定。
-  - 未対応（別途要対応）: M15(novels_descsバッチ非トランザクション), M16(同期コールバックのスレッド境界), M4(MigrationTestのスキーマJSON欠落), L4(MIGRATION_15_16のR18 sub_site誤分類)。M15はインクリメンタル保存＋欠落修正で緩和済み、M16は同期コールバックが単一コルーチンから逐次呼び出しのため実クラッシュリスクは低い。L4/M4はスキーマ変更を伴うため保留。
+  - 未対応（別途要対応）: （v2.0.24で M15/M16/M4/L4 を消化）
+- Maintenance (v2.0.24): 既知課題の消化とリリース最適化。
+  - M15: `insertNovels` を `runInTransaction` 化。DB同期完了後に `recalculateAllTotalEpFromEpisodes()` で episodes 実件数から `total_ep` を一括再計算（Improved/旧/WebNovelReader 全経路）。
+  - M16: `DatabaseSyncActivity` の同期コールバックで Compose State 更新を `Dispatchers.Main.immediate` に戻す。
+  - M4: MigrationTest をスキーマJSONがある 16→17→18 検証＋手組みDBでの直接 Migration 検証に再構成（欠落JSON依存の 4/9/10/11 createDatabase を廃止）。
+  - L4: `MIGRATION_15_16` が R18 を一律 `sub_site=2` にしていたのをやめ R18 は 0(不明) のまま。既存DB向け `MIGRATION_17_18` で `rating=1 AND sub_site=2` を 0 に戻す。`NovelApiUtils` も R18 の sub_site 既定を 0 に変更。
+  - Room DB version 17→18。R8 minify + shrinkResources 有効化、LazyColumn key、検索 debounce 等の UI/APK 最適化も同梱。

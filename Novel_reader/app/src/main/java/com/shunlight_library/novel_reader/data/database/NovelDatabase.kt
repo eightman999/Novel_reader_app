@@ -270,15 +270,18 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
 
 /**
  * v15→v16のマイグレーション: sub_site/end_flag/last_checked_at を追加
+ *
+ * L4: R18作品は rating=1 だけではノクターン/ムーンライト/ミッドナイトを区別できないため
+ * sub_site=0(不明)のままにし、後続のURL判定・更新処理で確定する。
+ * 一般作品(rating=2)のみ sub_site=1(なろう) を設定する。
  */
 val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE novels_descs ADD COLUMN sub_site INTEGER NOT NULL DEFAULT 0")
         database.execSQL("ALTER TABLE novels_descs ADD COLUMN end_flag INTEGER NOT NULL DEFAULT 0")
         database.execSQL("ALTER TABLE novels_descs ADD COLUMN last_checked_at TEXT NOT NULL DEFAULT ''")
-        // 既存レコードの sub_site を初期化
+        // 一般作品のみ sub_site を初期化。R18は 0(不明) のまま（L4）
         database.execSQL("UPDATE novels_descs SET sub_site = 1 WHERE site_type = 1 AND rating = 2")
-        database.execSQL("UPDATE novels_descs SET sub_site = 2 WHERE site_type = 1 AND rating = 1")
         // インデックス追加
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_sub_site ON novels_descs (sub_site)")
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_novels_end_flag ON novels_descs (end_flag)")
@@ -292,6 +295,21 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
 val MIGRATION_16_17 = object : Migration(16, 17) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_image_cache_hash ON image_cache (hash)")
+    }
+}
+
+/**
+ * v17→v18のマイグレーション: L4 修正
+ * 旧 MIGRATION_15_16 が R18 を一律 sub_site=2(ノクターン) にしていた誤分類を
+ * sub_site=0(不明) に戻す。正しくノクターンだった作品も一旦不明になるが、
+ * 後続のURL/メタデータ更新で再確定できる。ムーンライト/ミッドナイトの恒久誤分類を優先して解消する。
+ */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "UPDATE novels_descs SET sub_site = 0 " +
+                "WHERE site_type = 1 AND rating = 1 AND sub_site = 2"
+        )
     }
 }
 
@@ -310,7 +328,7 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
         RegistrationQueueEntity::class,
         TempEpisodeEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = true
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -354,7 +372,8 @@ abstract class NovelDatabase : RoomDatabase() {
                         MIGRATION_13_14,
                         MIGRATION_14_15,
                         MIGRATION_15_16,
-                        MIGRATION_16_17
+                        MIGRATION_16_17,
+                        MIGRATION_17_18
                     )
                     .build()
                 INSTANCE = instance

@@ -211,12 +211,6 @@ fun NovelReaderApp(
     var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
     var showNovelList by remember { mutableStateOf(false) }
     var showUpdateInfo by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        lastReadNovel = repository.getMostRecentlyReadNovel()
-        if (lastReadNovel != null) {
-            novelInfo = repository.getNovelByNcode(lastReadNovel!!.ncode)
-        }
-    }
     // 画面状態変数をキーとしたLaunchedEffectで、メイン画面に戻るたびに最新情報を更新
     LaunchedEffect(showSettings, showWebView, showNovelList, showEpisodeList, showEpisodeView) {
         if (!showSettings && !showWebView && !showNovelList && !showEpisodeList && !showEpisodeView) {
@@ -227,6 +221,7 @@ fun NovelReaderApp(
             }
         }
     }
+    // 初回起動時の取得（上記の画面復帰用エフェクトとは別に、初回のみ更新情報も併せて取得する）
     LaunchedEffect(Unit) {
         lastReadNovel = repository.getMostRecentlyReadNovel()
         if (lastReadNovel != null) {
@@ -536,6 +531,8 @@ fun MainScreen(
     // 状態変数
     var lastReadNovel by remember { mutableStateOf<LastReadNovelEntity?>(null) }
     var novelInfo by remember { mutableStateOf<NovelDescEntity?>(null) }
+    // 「最後に読んだ小説」の初回読み込みが完了したかどうか（未完了=ロード中、完了かつnull=未読了データなし、を区別するため）
+    var isLastReadNovelLoaded by remember { mutableStateOf(false) }
     var updateInfoText by remember { mutableStateOf("0作品0話") }
     var showR18Dialog by remember { mutableStateOf(false) }
 
@@ -604,6 +601,7 @@ fun MainScreen(
         if (lastReadNovel != null) {
             novelInfo = repository.getNovelByNcode(lastReadNovel!!.ncode)
         }
+        isLastReadNovelLoaded = true
 
         // 更新情報も取得
         val (workCount, episodeCount) = repository.getUpdateCountsWithEpisodes()
@@ -834,16 +832,37 @@ fun MainScreen(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = if (novelInfo != null)
-                                "${novelInfo!!.title} ${lastReadNovel!!.episode_no}話"
-                            else
-                                "まだ小説を読んでいません",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        if (!isLastReadNovelLoaded) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.DarkGray
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "読み込み中...",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = if (novelInfo != null)
+                                    "${novelInfo!!.title} ${lastReadNovel!!.episode_no}話"
+                                else
+                                    "まだ小説を読んでいません",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))

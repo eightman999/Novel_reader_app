@@ -158,6 +158,10 @@ class DatabaseSyncManager(private val context: Context) {
             // 最後に読んだ記録の同期
             try { syncLastReadNovels(externalDb) }
             catch (e: Exception) { Log.e(TAG, "[Step3/3] 読書履歴の同期に失敗", e); throw e }
+
+            // M15: episodes 実件数で total_ep を再計算
+            try { repository.recalculateAllTotalEpFromEpisodes() }
+            catch (e: Exception) { Log.e(TAG, "total_ep 再計算に失敗", e) }
             
             return true
         } catch (e: Exception) {

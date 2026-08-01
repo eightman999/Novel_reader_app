@@ -6,20 +6,25 @@
 package com.shunlight_library.novel_reader.data.database
 
 import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
-import org.junit.Assert.*
 
 /**
  * NovelDatabaseのマイグレーションテスト
  *
- * データベースのバージョンアップ時にデータが失われないことを検証する。
- * MigrationTestHelperを使用して各マイグレーションをテストする。
+ * M4対策:
+ * - exportSchema で生成済みの 16.json / 17.json / 18.json を使う経路を主検証とする
+ * - 旧版スキーマJSONが欠落している 4/9/10/11 系の createDatabase 依存テストは廃止し、
+ *   重要マイグレーションは SupportSQLiteDatabase を手組みして Migration.migrate() を直接検証する
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -35,359 +40,223 @@ class MigrationTest {
     )
 
     // ========================================
-    // v4→v5のマイグレーションテスト
+    // v16→v17（スキーマJSONあり）
     // ========================================
 
     @Test
     @Throws(IOException::class)
-    fun migrate4To5_addsReadingRateColumn() {
-        // Given: v4のデータベースを作成してエピソードを挿入
-        helper.createDatabase(TEST_DB_NAME, 4).apply {
+    fun migrate16To17_createsImageCacheHashIndex() {
+        helper.createDatabase(TEST_DB_NAME, 16).apply {
             execSQL(
-                "INSERT INTO episodes (ncode, episode_no, body, e_title, update_time, is_read, is_bookmark) " +
-                        "VALUES ('n1234ab', '1', 'テスト本文', '第1話', '2025-01-01 12:00:00', 0, 0)"
+                "INSERT INTO image_cache (hash, original_url, local_path, mime_type) " +
+                    "VALUES ('abc123', 'https://example.com/a.jpg', '/tmp/a.jpg', 'image/jpeg')"
             )
             close()
         }
 
-        // When: v5にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 5, true, MIGRATION_4_5)
+        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 17, true, MIGRATION_16_17)
 
-        // Then: reading_rateカラムが追加されていることを確認
-        val cursor = db.query("SELECT ncode, episode_no, reading_rate FROM episodes WHERE ncode = 'n1234ab'")
-        cursor.use {
-            assertTrue(it.moveToFirst())
-            assertEquals("n1234ab", it.getString(0))
-            assertEquals("1", it.getString(1))
-            assertEquals(0.0, it.getDouble(2), 0.001)  // デフォルト値が0.0
-        }
-    }
-
-    @Test
-    @Throws(IOException::class)
-    fun migrate4To5_preservesExistingData() {
-        // Given: v4のデータベースに複数のエピソードを挿入
-        helper.createDatabase(TEST_DB_NAME, 4).apply {
-            execSQL(
-                "INSERT INTO episodes (ncode, episode_no, body, e_title, update_time, is_read, is_bookmark) " +
-                        "VALUES ('n1234ab', '1', '本文1', '第1話', '2025-01-01 12:00:00', 1, 0)"
-            )
-            execSQL(
-                "INSERT INTO episodes (ncode, episode_no, body, e_title, update_time, is_read, is_bookmark) " +
-                        "VALUES ('n1234ab', '2', '本文2', '第2話', '2025-01-02 12:00:00', 0, 1)"
-            )
-            close()
-        }
-
-        // When: v5にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 5, true, MIGRATION_4_5)
-
-        // Then: 既存データが保持されていることを確認
-        val cursor = db.query("SELECT ncode, episode_no, e_title, is_read, is_bookmark FROM episodes ORDER BY episode_no")
-        cursor.use {
-            assertTrue(it.moveToFirst())
-
-            // エピソード1
-            assertEquals("n1234ab", it.getString(0))
-            assertEquals("1", it.getString(1))
-            assertEquals("第1話", it.getString(2))
-            assertEquals(1, it.getInt(3))  // is_read
-            assertEquals(0, it.getInt(4))  // is_bookmark
-
-            // エピソード2
-            assertTrue(it.moveToNext())
-            assertEquals("n1234ab", it.getString(0))
-            assertEquals("2", it.getString(1))
-            assertEquals("第2話", it.getString(2))
-            assertEquals(0, it.getInt(3))  // is_read
-            assertEquals(1, it.getInt(4))  // is_bookmark
-        }
-    }
-
-    // ========================================
-    // v9→v10のマイグレーションテスト
-    // ========================================
-
-    @Test
-    @Throws(IOException::class)
-    fun migrate9To10_createsEpisodeMappingTable() {
-        // Given: v9のデータベースを作成
-        helper.createDatabase(TEST_DB_NAME, 9).apply {
-            close()
-        }
-
-        // When: v10にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 10, true, MIGRATION_9_10)
-
-        // Then: episode_mappingテーブルが作成されていることを確認
-        val cursor = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='episode_mapping'")
-        cursor.use {
-            assertTrue("episode_mappingテーブルが存在すること", it.moveToFirst())
-        }
-    }
-
-    @Test
-    @Throws(IOException::class)
-    fun migrate9To10_episodeMappingTableHasCorrectStructure() {
-        // Given: v9のデータベースを作成
-        helper.createDatabase(TEST_DB_NAME, 9).apply {
-            close()
-        }
-
-        // When: v10にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 10, true, MIGRATION_9_10)
-
-        // Then: episode_mappingテーブルにデータを挿入できることを確認
-        db.execSQL(
-            "INSERT INTO episode_mapping (ncode, episode_no, kakuyomu_episode_id) " +
-                    "VALUES ('K9zXYt1A2B3', 1, '1177354054887277844')"
+        val indexCursor = db.query(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_image_cache_hash'"
         )
+        indexCursor.use {
+            assertTrue("idx_image_cache_hash が存在すること", it.moveToFirst())
+        }
 
-        val cursor = db.query("SELECT ncode, episode_no, kakuyomu_episode_id FROM episode_mapping")
-        cursor.use {
+        val dataCursor = db.query(
+            "SELECT hash FROM image_cache WHERE original_url = 'https://example.com/a.jpg'"
+        )
+        dataCursor.use {
             assertTrue(it.moveToFirst())
-            assertEquals("K9zXYt1A2B3", it.getString(0))
-            assertEquals(1, it.getInt(1))
-            assertEquals("1177354054887277844", it.getString(2))
+            assertEquals("abc123", it.getString(0))
         }
     }
 
     @Test
     @Throws(IOException::class)
-    fun migrate9To10_preservesExistingTables() {
-        // Given: v9のデータベースに小説とエピソードを挿入
-        helper.createDatabase(TEST_DB_NAME, 9).apply {
-            execSQL(
-                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
-                        "last_update_date, total_ep, general_all_no, updated_at, site_type, registered_at) " +
-                        "VALUES ('K9zXYt1A2B3', 'カクヨム小説', 'テスト作者', 'あらすじ', 'ファンタジー', " +
-                        "'異世界', 2, '2025-01-01 12:00:00', 10, 5, '2025-01-01 12:00:00', 2, '2025-01-01 10:00:00')"
-            )
-            execSQL(
-                "INSERT INTO episodes (ncode, episode_no, body, e_title, update_time, is_read, is_bookmark, reading_rate) " +
-                        "VALUES ('K9zXYt1A2B3', '1', '本文', '第1話', '2025-01-01 12:00:00', 0, 0, 0.0)"
-            )
-            close()
-        }
-
-        // When: v10にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 10, true, MIGRATION_9_10)
-
-        // Then: 既存の小説データが保持されていることを確認
-        val novelCursor = db.query("SELECT ncode, title, site_type FROM novels_descs WHERE ncode = 'K9zXYt1A2B3'")
-        novelCursor.use {
-            assertTrue(it.moveToFirst())
-            assertEquals("K9zXYt1A2B3", it.getString(0))
-            assertEquals("カクヨム小説", it.getString(1))
-            assertEquals(2, it.getInt(2))  // site_type=2（カクヨム）
-        }
-
-        // Then: 既存のエピソードデータが保持されていることを確認
-        val episodeCursor = db.query("SELECT ncode, episode_no, e_title FROM episodes WHERE ncode = 'K9zXYt1A2B3'")
-        episodeCursor.use {
-            assertTrue(it.moveToFirst())
-            assertEquals("K9zXYt1A2B3", it.getString(0))
-            assertEquals("1", it.getString(1))
-            assertEquals("第1話", it.getString(2))
-        }
+    fun migrate16To17_emptyDatabase_completesSuccessfully() {
+        helper.createDatabase(TEST_DB_NAME, 16).apply { close() }
+        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 17, true, MIGRATION_16_17)
+        assertNotNull(db)
     }
 
     // ========================================
-    // v10→v11のマイグレーションテスト
+    // v17→v18（L4: R18 sub_site 誤分類の是正）
     // ========================================
 
     @Test
     @Throws(IOException::class)
-    fun migrate10To11_addsRegisteredAtColumn() {
-        // Given: v10のデータベースに小説を挿入
-        helper.createDatabase(TEST_DB_NAME, 10).apply {
+    fun migrate17To18_resetsMisclassifiedR18SubSite() {
+        helper.createDatabase(TEST_DB_NAME, 17).apply {
+            // 一般: sub_site=1 のまま
             execSQL(
                 "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
-                        "last_update_date, total_ep, general_all_no, updated_at, site_type) " +
-                        "VALUES ('n1234ab', 'テスト小説', 'テスト作者', 'あらすじ', 'ファンタジー', " +
-                        "'異世界', 2, '2025-01-15 12:00:00', 100, 50, '2025-01-15 12:00:00', 1)"
+                    "last_update_date, total_ep, general_all_no, updated_at, registered_at, is_favorite, " +
+                    "site_type, sub_site, end_flag, last_checked_at) VALUES (" +
+                    "'n1111aa', '一般小説', '作者A', 'あらすじ', 'tag', '', 2, " +
+                    "'2026-01-01 00:00:00', 1, 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 0, " +
+                    "1, 1, 0, '')"
+            )
+            // R18で誤ってノクターン(2)扱い → 0 に戻る対象
+            execSQL(
+                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
+                    "last_update_date, total_ep, general_all_no, updated_at, registered_at, is_favorite, " +
+                    "site_type, sub_site, end_flag, last_checked_at) VALUES (" +
+                    "'n2222bb', 'R18誤分類', '作者B', 'あらすじ', 'tag', '', 1, " +
+                    "'2026-01-01 00:00:00', 1, 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 0, " +
+                    "1, 2, 0, '')"
+            )
+            // 既にムーンライト(3)と判明しているR18 → 維持
+            execSQL(
+                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
+                    "last_update_date, total_ep, general_all_no, updated_at, registered_at, is_favorite, " +
+                    "site_type, sub_site, end_flag, last_checked_at) VALUES (" +
+                    "'n3333cc', 'ムーンライト', '作者C', 'あらすじ', 'tag', '', 1, " +
+                    "'2026-01-01 00:00:00', 1, 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 0, " +
+                    "1, 3, 0, '')"
             )
             close()
         }
 
-        // When: v11にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 11, true, MIGRATION_10_11)
+        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 18, true, MIGRATION_17_18)
 
-        // Then: registered_atカラムが追加されていることを確認
-        val cursor = db.query("SELECT ncode, registered_at FROM novels_descs WHERE ncode = 'n1234ab'")
-        cursor.use {
-            assertTrue(it.moveToFirst())
-            assertEquals("n1234ab", it.getString(0))
-            assertNotNull(it.getString(1))
-            // registered_atはlast_update_dateの値で初期化される
-            assertEquals("2025-01-15 12:00:00", it.getString(1))
-        }
+        assertEquals(1, querySubSite(db, "n1111aa"))
+        assertEquals(0, querySubSite(db, "n2222bb"))
+        assertEquals(3, querySubSite(db, "n3333cc"))
     }
 
     @Test
     @Throws(IOException::class)
-    fun migrate10To11_copiesLastUpdateDateToRegisteredAt() {
-        // Given: v10のデータベースに異なる更新日時の小説を複数挿入
-        helper.createDatabase(TEST_DB_NAME, 10).apply {
-            execSQL(
-                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
-                        "last_update_date, total_ep, general_all_no, updated_at, site_type) " +
-                        "VALUES ('n1111aa', '小説1', '作者1', 'あらすじ1', 'タグ1', 'サブタグ1', 2, " +
-                        "'2024-12-01 10:00:00', 50, 25, '2024-12-01 10:00:00', 1)"
-            )
-            execSQL(
-                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
-                        "last_update_date, total_ep, general_all_no, updated_at, site_type) " +
-                        "VALUES ('n2222bb', '小説2', '作者2', 'あらすじ2', 'タグ2', 'サブタグ2', 2, " +
-                        "'2025-01-20 15:30:00', 100, 50, '2025-01-20 15:30:00', 1)"
-            )
-            close()
-        }
-
-        // When: v11にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 11, true, MIGRATION_10_11)
-
-        // Then: 各小説のregistered_atがlast_update_dateからコピーされていることを確認
-        val cursor = db.query("SELECT ncode, last_update_date, registered_at FROM novels_descs ORDER BY ncode")
-        cursor.use {
-            // 小説1
-            assertTrue(it.moveToFirst())
-            assertEquals("n1111aa", it.getString(0))
-            assertEquals("2024-12-01 10:00:00", it.getString(1))
-            assertEquals("2024-12-01 10:00:00", it.getString(2))
-
-            // 小説2
-            assertTrue(it.moveToNext())
-            assertEquals("n2222bb", it.getString(0))
-            assertEquals("2025-01-20 15:30:00", it.getString(1))
-            assertEquals("2025-01-20 15:30:00", it.getString(2))
-        }
-    }
-
-    @Test
-    @Throws(IOException::class)
-    fun migrate10To11_createsIndexOnRegisteredAt() {
-        // Given: v10のデータベースを作成
-        helper.createDatabase(TEST_DB_NAME, 10).apply {
-            close()
-        }
-
-        // When: v11にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 11, true, MIGRATION_10_11)
-
-        // Then: idx_novels_registeredインデックスが作成されていることを確認
-        val cursor = db.query("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_novels_registered'")
-        cursor.use {
-            assertTrue("idx_novels_registeredインデックスが存在すること", it.moveToFirst())
-        }
-    }
-
-    // ========================================
-    // 複数バージョンのマイグレーションテスト
-    // ========================================
-
-    @Test
-    @Throws(IOException::class)
-    fun migrateAll_from4To11() {
-        // Given: v4のデータベースにデータを挿入
-        helper.createDatabase(TEST_DB_NAME, 4).apply {
-            // 小説データ（v4時点ではis_favoriteなし）
-            execSQL(
-                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
-                        "last_update_date, total_ep, general_all_no, updated_at) " +
-                        "VALUES ('n1234ab', 'テスト小説', 'テスト作者', 'あらすじ', 'ファンタジー', " +
-                        "'異世界', 2, '2025-01-01 12:00:00', 100, 50, '2025-01-01 12:00:00')"
-            )
-            // エピソードデータ（v4時点ではreading_rateなし）
-            execSQL(
-                "INSERT INTO episodes (ncode, episode_no, body, e_title, update_time, is_read, is_bookmark) " +
-                        "VALUES ('n1234ab', '1', '本文', '第1話', '2025-01-01 12:00:00', 1, 0)"
-            )
-            close()
-        }
-
-        // When: v4からv11まで全てのマイグレーションを実行
+    fun migrate16To18_chain() {
+        helper.createDatabase(TEST_DB_NAME, 16).apply { close() }
         val db = helper.runMigrationsAndValidate(
-            TEST_DB_NAME, 11, true,
-            MIGRATION_4_5,
-            MIGRATION_5_6,
-            MIGRATION_6_7,
-            MIGRATION_7_8,
-            MIGRATION_8_9,
-            MIGRATION_9_10,
-            MIGRATION_10_11
+            TEST_DB_NAME, 18, true,
+            MIGRATION_16_17,
+            MIGRATION_17_18
         )
+        assertNotNull(db)
+    }
 
-        // Then: 小説データが正しく保持され、新しいカラムが追加されていることを確認
-        val novelCursor = db.query(
-            "SELECT ncode, title, is_favorite, userid, noveltype, length, site_type, registered_at " +
-                    "FROM novels_descs WHERE ncode = 'n1234ab'"
-        )
-        novelCursor.use {
-            assertTrue(it.moveToFirst())
-            assertEquals("n1234ab", it.getString(0))
-            assertEquals("テスト小説", it.getString(1))
-            assertEquals(0, it.getInt(2))  // is_favorite（v6で追加）
-            assertNull(it.getString(3))  // userid（v8で追加、null許容）
-            assertNull(it.getString(4))  // noveltype（v8で追加、null許容）
-            assertNull(it.getString(5))  // length（v8で追加、null許容）
-            assertEquals(1, it.getInt(6))  // site_type（v9で追加、デフォルト1）
-            assertEquals("2025-01-01 12:00:00", it.getString(7))  // registered_at（v11で追加）
+    // ========================================
+    // 旧マイグレーション: 手組みDBで直接検証（スキーマJSON不要）
+    // ========================================
+
+    @Test
+    fun migrate4To5_direct_addsReadingRateColumn() {
+        val db = openScratchDatabase()
+        try {
+            db.execSQL(
+                "CREATE TABLE episodes (" +
+                    "ncode TEXT NOT NULL, episode_no TEXT NOT NULL, body TEXT NOT NULL, " +
+                    "e_title TEXT NOT NULL, update_time TEXT NOT NULL, " +
+                    "is_read INTEGER NOT NULL, is_bookmark INTEGER NOT NULL, " +
+                    "PRIMARY KEY(ncode, episode_no))"
+            )
+            db.execSQL(
+                "INSERT INTO episodes (ncode, episode_no, body, e_title, update_time, is_read, is_bookmark) " +
+                    "VALUES ('n1234ab', '1', 'テスト本文', '第1話', '2025-01-01 12:00:00', 1, 0)"
+            )
+
+            MIGRATION_4_5.migrate(db)
+
+            val cursor = db.query(
+                "SELECT reading_rate, is_read FROM episodes WHERE ncode = 'n1234ab' AND episode_no = '1'"
+            )
+            cursor.use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0.0, it.getDouble(0), 0.001)
+                assertEquals(1, it.getInt(1))
+            }
+        } finally {
+            db.close()
         }
+    }
 
-        // Then: エピソードデータが正しく保持され、reading_rateが追加されていることを確認
-        val episodeCursor = db.query(
-            "SELECT ncode, episode_no, e_title, is_read, is_bookmark, reading_rate " +
-                    "FROM episodes WHERE ncode = 'n1234ab'"
-        )
-        episodeCursor.use {
-            assertTrue(it.moveToFirst())
-            assertEquals("n1234ab", it.getString(0))
-            assertEquals("1", it.getString(1))
-            assertEquals("第1話", it.getString(2))
-            assertEquals(1, it.getInt(3))  // is_read
-            assertEquals(0, it.getInt(4))  // is_bookmark
-            assertEquals(0.0, it.getDouble(5), 0.001)  // reading_rate（v5で追加）
+    @Test
+    fun migrate15To16_direct_doesNotForceR18ToNocturne() {
+        val db = openScratchDatabase()
+        try {
+            // v15相当: sub_site 列なし
+            db.execSQL(
+                "CREATE TABLE novels_descs (" +
+                    "ncode TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, author TEXT NOT NULL, " +
+                    "Synopsis TEXT NOT NULL, main_tag TEXT NOT NULL, sub_tag TEXT NOT NULL, " +
+                    "rating INTEGER NOT NULL, last_update_date TEXT NOT NULL, total_ep INTEGER NOT NULL, " +
+                    "general_all_no INTEGER NOT NULL, userid TEXT, noveltype INTEGER, length INTEGER, " +
+                    "updated_at TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT '', " +
+                    "is_favorite INTEGER NOT NULL DEFAULT 0, site_type INTEGER NOT NULL DEFAULT 1)"
+            )
+            db.execSQL(
+                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
+                    "last_update_date, total_ep, general_all_no, updated_at, registered_at, is_favorite, site_type) " +
+                    "VALUES ('n_r18', 'R18', 'a', 's', 't', '', 1, '2026-01-01', 1, 1, '2026-01-01', '2026-01-01', 0, 1)"
+            )
+            db.execSQL(
+                "INSERT INTO novels_descs (ncode, title, author, Synopsis, main_tag, sub_tag, rating, " +
+                    "last_update_date, total_ep, general_all_no, updated_at, registered_at, is_favorite, site_type) " +
+                    "VALUES ('n_gen', '一般', 'a', 's', 't', '', 2, '2026-01-01', 1, 1, '2026-01-01', '2026-01-01', 0, 1)"
+            )
+
+            MIGRATION_15_16.migrate(db)
+
+            assertEquals(0, querySubSite(db, "n_r18")) // L4: R18は不明のまま
+            assertEquals(1, querySubSite(db, "n_gen")) // 一般はなろう
+
+            // インデックス存在
+            val idx = db.query(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_novels_sub_site'"
+            )
+            idx.use { assertTrue(it.moveToFirst()) }
+        } finally {
+            db.close()
         }
+    }
 
-        // Then: episode_mappingテーブルが作成されていることを確認（v10で追加）
-        val tableCursor = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='episode_mapping'")
-        tableCursor.use {
-            assertTrue("episode_mappingテーブルが存在すること", it.moveToFirst())
+    @Test
+    fun migrate9To10_direct_createsEpisodeMappingTable() {
+        val db = openScratchDatabase()
+        try {
+            MIGRATION_9_10.migrate(db)
+            val cursor = db.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='episode_mapping'"
+            )
+            cursor.use {
+                assertTrue("episode_mapping テーブルが存在すること", it.moveToFirst())
+            }
+        } finally {
+            db.close()
         }
     }
 
     // ========================================
-    // エラーケースのテスト
+    // helpers
     // ========================================
 
-    @Test
-    @Throws(IOException::class)
-    fun migrate4To5_emptyDatabase_completesSuccessfully() {
-        // Given: v4のデータベースを作成（データなし）
-        helper.createDatabase(TEST_DB_NAME, 4).apply {
-            close()
+    private fun querySubSite(db: SupportSQLiteDatabase, ncode: String): Int {
+        val cursor = db.query("SELECT sub_site FROM novels_descs WHERE ncode = '$ncode'")
+        cursor.use {
+            assertTrue("ncode=$ncode が存在すること", it.moveToFirst())
+            return it.getInt(0)
         }
-
-        // When: v5にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 5, true, MIGRATION_4_5)
-
-        // Then: エラーなくマイグレーションが完了することを確認
-        assertNotNull(db)
     }
 
-    @Test
-    @Throws(IOException::class)
-    fun migrate10To11_emptyDatabase_completesSuccessfully() {
-        // Given: v10のデータベースを作成（データなし）
-        helper.createDatabase(TEST_DB_NAME, 10).apply {
-            close()
-        }
+    private fun openScratchDatabase(): SupportSQLiteDatabase {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        // 毎回ユニークな名前で衝突を避ける
+        val name = "scratch-migration-${System.nanoTime()}.db"
+        context.deleteDatabase(name)
+        val config = androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(name)
+            .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(1) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    // 空のDB。各テストが必要なテーブルを作る
+                }
 
-        // When: v11にマイグレーション
-        val db = helper.runMigrationsAndValidate(TEST_DB_NAME, 11, true, MIGRATION_10_11)
-
-        // Then: エラーなくマイグレーションが完了することを確認
-        assertNotNull(db)
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                    // no-op
+                }
+            })
+            .build()
+        return FrameworkSQLiteOpenHelperFactory().create(config).writableDatabase
     }
 }

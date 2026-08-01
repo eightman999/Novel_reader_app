@@ -125,7 +125,7 @@ fun DownloadQueueScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredQueues) { queue ->
+                    items(filteredQueues, key = { it.id }) { queue ->
                         QueueItem(
                             queue = queue,
                             onPause = { viewModel.pauseQueue(queue.id) },

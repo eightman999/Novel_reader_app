@@ -159,41 +159,45 @@ fun DatabaseSyncScreen(
 
         scope.launch {
             val callback = object : ImprovedDatabaseSyncManager.SyncProgressCallback {
+                // M16: 同期処理は Dispatchers.IO 上で動くため、Compose State 更新は Main に戻す
                 override fun onProgressUpdate(progress: ImprovedDatabaseSyncManager.SyncProgress) {
-                    syncProgress = progress.progress
-                    syncStep = progress.step.name
-                    syncMessage = progress.message
-                    currentCount = progress.currentCount
-                    totalCount = progress.totalCount
+                    scope.launch(Dispatchers.Main.immediate) {
+                        syncProgress = progress.progress
+                        syncStep = progress.step.name
+                        syncMessage = progress.message
+                        currentCount = progress.currentCount
+                        totalCount = progress.totalCount
 
-                    // ログメッセージの改善
-                    val logMsg = buildString {
-                        append("${progress.step}: ${progress.message}")
+                        val logMsg = buildString {
+                            append("${progress.step}: ${progress.message}")
 
-                        if (progress.currentNcode.isNotEmpty() && progress.currentTitle.isNotEmpty()) {
-                            append(" - [${progress.currentNcode}] ${progress.currentTitle}")
+                            if (progress.currentNcode.isNotEmpty() && progress.currentTitle.isNotEmpty()) {
+                                append(" - [${progress.currentNcode}] ${progress.currentTitle}")
+                            }
+
+                            if (progress.totalCount > 0) {
+                                val percent = (progress.currentCount.toFloat() / progress.totalCount * 100).toInt()
+                                append(" ($percent%)")
+                            }
                         }
 
-                        if (progress.totalCount > 0) {
-                            val percent = (progress.currentCount.toFloat() / progress.totalCount * 100).toInt()
-                            append(" ($percent%)")
-                        }
+                        addLog(logMsg)
                     }
-
-                    addLog(logMsg)
                 }
 
                 override fun onComplete(result: ImprovedDatabaseSyncManager.SyncResult) {
-                    syncResult = result
-                    isSyncing = false
+                    scope.launch(Dispatchers.Main.immediate) {
+                        syncResult = result
+                        isSyncing = false
 
-                    if (result.success) {
-                        val successMsg = "同期が完了しました: 小説${result.novelDescsCount}件、" +
-                                "エピソード${result.episodesCount}件、履歴${result.lastReadCount}件"
-                        addLog("完了: $successMsg")
-                    } else {
-                        val errorMsg = "同期に失敗しました: ${result.errorMessage}"
-                        addLog("エラー: $errorMsg")
+                        if (result.success) {
+                            val successMsg = "同期が完了しました: 小説${result.novelDescsCount}件、" +
+                                    "エピソード${result.episodesCount}件、履歴${result.lastReadCount}件"
+                            addLog("完了: $successMsg")
+                        } else {
+                            val errorMsg = "同期に失敗しました: ${result.errorMessage}"
+                            addLog("エラー: $errorMsg")
+                        }
                     }
                 }
             }

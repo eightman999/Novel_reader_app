@@ -644,8 +644,9 @@ object NovelApiUtils {
 
                         // レーティング（R18なら1、それ以外なら2）
                         val rating = if (isR18) 1 else 2
-                        // sub_site: R18なら2(ノクターン), 一般なら1(なろう)
-                        val subSite = if (isR18) 2 else 1
+                        // sub_site: 一般は1(なろう)。R18はノクターン/ムーンライト/ミッドナイトを
+                        // APIレスポンスだけでは区別できないため 0(不明) とし、URL判定で後から確定する（L4）
+                        val subSite = if (isR18) 0 else 1
 
                         return@withContext NovelDescEntity(
                             ncode = ncode,

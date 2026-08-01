@@ -143,7 +143,7 @@ fun NotificationDialog(
                         .height(400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(notifications) { notification ->
+                    items(notifications, key = { it.id }) { notification ->
                         NotificationItem(
                             notification = notification,
                             onClick = {
@@ -586,7 +586,7 @@ fun ErrorLogDialog(
                         .heightIn(max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(errorLogs) { log ->
+                    items(errorLogs, key = { it.id }) { log ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()

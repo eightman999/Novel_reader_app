@@ -130,12 +130,25 @@ class NovelRepository(
     suspend fun insertNovels(novels: List<NovelDescEntity>) {
         if (novels.isEmpty()) return
         // 既存レコードのis_favoriteを保持（insertNovelと同じパターン）
-        val existingMap = getNovelsByNcodes(novels.map { it.ncode }).associateBy { it.ncode }
-        val toInsert = novels.map { novel ->
-            val existing = existingMap[novel.ncode]
-            if (existing != null) novel.copy(is_favorite = existing.is_favorite) else novel
+        // バッチ挿入をトランザクション化し、途中失敗時の部分コミットを防ぐ（M15）
+        runInTransaction {
+            val existingMap = getNovelsByNcodes(novels.map { it.ncode }).associateBy { it.ncode }
+            val toInsert = novels.map { novel ->
+                val existing = existingMap[novel.ncode]
+                if (existing != null) novel.copy(is_favorite = existing.is_favorite) else novel
+            }
+            novelDescDao.insertNovels(toInsert)
         }
-        novelDescDao.insertNovels(toInsert)
+    }
+
+    /**
+     * episodes の実件数で novels_descs.total_ep を一括再計算する（M15対策）。
+     * DB同期のエピソード投入後に呼び、途中失敗による total_ep 乖離を修復する。
+     */
+    suspend fun recalculateAllTotalEpFromEpisodes() {
+        withContext(Dispatchers.IO) {
+            novelDescDao.recalculateAllTotalEpFromEpisodes()
+        }
     }
 
     fun getRecentlyUpdatedNovels(limit: Int): Flow<List<NovelDescEntity>> {
@@ -617,7 +630,8 @@ class NovelRepository(
         url.contains("moonlight.syosetu.com") -> 3
         url.contains("midnight.syosetu.com") -> 4
         url.contains("nocturne.syosetu.com") -> 2
-        url.contains("novel18.syosetu.com") -> 2  // デフォルトR18 → ノクターン
+        // novel18 は R18 共通ドメインでサブサイトを特定できないため 0(不明)（L4）
+        url.contains("novel18.syosetu.com") -> 0
         url.contains("ncode.syosetu.com") -> 1
         url.contains("kakuyomu.jp") -> 0  // site_type=2 で判定するため0
         else -> 0

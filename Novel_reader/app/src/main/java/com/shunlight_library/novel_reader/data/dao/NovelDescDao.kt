@@ -61,4 +61,18 @@ interface NovelDescDao {
     @Query("SELECT * FROM novels_descs WHERE sub_site = :subSite")
     suspend fun getNovelsBySubSite(subSite: Int): List<NovelDescEntity>
 
+    /**
+     * episodes テーブルの実件数で total_ep を一括再計算する。
+     * 同期中断などで total_ep と実話数が乖離した半壊状態を修復する（M15対策）。
+     */
+    @Query(
+        """
+        UPDATE novels_descs
+        SET total_ep = (
+            SELECT COUNT(*) FROM episodes WHERE episodes.ncode = novels_descs.ncode
+        )
+        """
+    )
+    suspend fun recalculateAllTotalEpFromEpisodes()
+
 }

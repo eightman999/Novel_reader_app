@@ -1281,7 +1281,7 @@ fun UpdateInfoScreen(
                     HorizontalDivider()
 
                     LazyColumn {
-                        items(updateQueue) { queueItem ->
+                        items(updateQueue, key = { it.ncode }) { queueItem ->
                             val novel = novels[queueItem.ncode]
                             UpdateQueueItem(
                                 queueItem = queueItem,

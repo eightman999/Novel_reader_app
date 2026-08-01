@@ -16,10 +16,14 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 223
-        versionName = "2.0.23"
+        versionCode = 224
+        versionName = "2.0.24"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // アプリで実際に使用するロケール(ja/en/zh-rCN)のみをAPKに含め、未使用ロケールのvaluesを除外する
+        // (AGP 8.6.1では androidResources.localeFilters が未提供のため、旧来の resConfigs を使用)
+        resConfigs("ja", "en", "zh-rCN")
     }
 
     buildTypes {
@@ -30,7 +34,8 @@ android {
             buildConfigField("boolean", "ENABLE_LOGGING", "true")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // リリース環境: ログ出力を無効化
             buildConfigField("boolean", "ENABLE_LOGGING", "false")
@@ -113,7 +118,6 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.0")
     // Import the Firebase BoM
     implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
 

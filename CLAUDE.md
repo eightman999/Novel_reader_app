@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 - **App**: Android novel reader (Syosetu「なろう小説」+ Kakuyomu「カクヨム」対応)
 - **Version**: see `Novel_reader/app/build.gradle.kts` (`versionName`/`versionCode`) — this is the single source of truth. Do not hardcode version numbers elsewhere in this file.
-- **Database**: Room, version 17, 9 tables + performance indices (詳細 → [docs/db-schema.md](docs/db-schema.md))
+- **Database**: Room, version 18, 9 tables + performance indices (詳細 → [docs/db-schema.md](docs/db-schema.md))
 - **Architecture**: Clean Architecture + MVVM + Repository Pattern + Adapter Pattern (multi-site)
 - **Performance target**: 1000+ novels, 320,000+ episodes
 
@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Entities/DAOs**: 9 each (NovelDesc, Episode, LastReadNovel, UpdateQueue, URL, ImageCache, EpisodeMapping, RegistrationQueue, TempEpisode)
 - **Screens**: 9 main screens (incl. SettingsMenuScreen hub) + 1 sync activity (DatabaseSyncActivity)
 - **Adapters**: 2 (SyosetuAdapter, KakuyomuAdapter)
-- **Migrations**: v1→v17 (詳細 → [docs/db-schema.md](docs/db-schema.md))
+- **Migrations**: v1→v18 (詳細 → [docs/db-schema.md](docs/db-schema.md))
 
 ## Tech Stack
 - **UI**: Jetpack Compose, single Activity pattern
@@ -76,7 +76,8 @@ Novel_reader_app/
 - **カクヨムのレート制限**: 0.5秒間隔必須（`applyRateLimit()`、Mutex直列化済み）。詳細 → [docs/kakuyomu-protocol.md](docs/kakuyomu-protocol.md)
 - **カクヨムのHTMLパース**: 複数フォールバックパターン必須（本文/タイトル/章タイトルそれぞれ優先順位あり）。詳細 → [docs/kakuyomu-protocol.md](docs/kakuyomu-protocol.md)
 - **DB同期 (DatabaseSyncActivity)**: 復元時に `is_read`/`is_bookmark`/`reading_rate`/`episode_mapping`/`site_type` 等を欠落させないこと。過去に大きな不具合があった領域（v2.0.20〜v2.0.22で修正）。変更前に [docs/db-schema.md](docs/db-schema.md) の Version History を確認。
-- **未対応の既知課題**: M15(novels_descsバッチ非トランザクション), M16(同期コールバックのスレッド境界), M4(MigrationTestのスキーマJSON欠落), L4(MIGRATION_15_16のR18 sub_site誤分類)。詳細 → [docs/db-schema.md](docs/db-schema.md)
+- **R8/minify (releaseビルド)**: v2.0.24からR8+shrinkResources有効。リフレクション依存箇所（snakeyaml=なろうAPIパース、`WebViewScrollInterface`=読書位置保存のJSブリッジ）は `proguard-rules.pro` のkeepルールで保護済み。新たにリフレクション・`@JavascriptInterface`・ServiceLoaderを使うコードを追加する際は必ずkeepルールも追記すること。
+- **消化済み既知課題 (v2.0.24)**: M15(total_ep再計算), M16(同期コールバックMain), M4(MigrationTest再構成), L4(R18 sub_site誤分類→v18 migration)。詳細 → [docs/db-schema.md](docs/db-schema.md)
 
 ## Documentation Map
 | Topic | File |
