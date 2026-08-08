@@ -170,7 +170,9 @@ Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/
 
 ## ライセンス / License
 
-このプロジェクトのライセンスについては、プロジェクトオーナーにお問い合わせください。
+このプロジェクトは [GNU Affero General Public License version 3 or later
+(AGPL-3.0-or-later)](https://www.gnu.org/licenses/agpl-3.0.html) の下で公開しています。
+詳細は [LICENSE](LICENSE) を参照してください。
 
 ## 貢献 / Contributing
 
