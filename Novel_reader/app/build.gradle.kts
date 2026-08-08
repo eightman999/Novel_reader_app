@@ -10,14 +10,14 @@ plugins {
 
 android {
     namespace = "com.shunlight_library.novel_reader"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
-        targetSdk = 34
-        versionCode = 225
-        versionName = "2.1.0"
+        targetSdk = 36
+        versionCode = 226
+        versionName = "2.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
