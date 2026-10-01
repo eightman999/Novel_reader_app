@@ -9,6 +9,7 @@ import RecentlyUpdatedNovelsScreen
 import android.content.Intent
 import android.content.Context
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -41,6 +42,7 @@ import com.shunlight_library.novel_reader.ui.DatabaseSyncActivity
 import com.shunlight_library.novel_reader.data.NotificationStore
 import com.shunlight_library.novel_reader.ui.components.NotificationDialog
 import com.shunlight_library.novel_reader.utils.ReleaseUtils
+import com.shunlight_library.novel_reader.utils.VolumeKeyPaging
 import com.shunlight_library.novel_reader.AppInfo
 import com.shunlight_library.novel_reader.data.AppNotification
 import com.shunlight_library.novel_reader.data.NotificationType
@@ -84,6 +86,17 @@ class MainActivity : ComponentActivity() {
     fun hideR18Dialog() {
         _showR18Dialog.value = false
     }
+    // 読書画面で音量キーによるページ送りが有効な場合はキーを横取りする
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (VolumeKeyPaging.dispatch(event)) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (VolumeKeyPaging.dispatch(event)) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

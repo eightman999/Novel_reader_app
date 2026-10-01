@@ -57,6 +57,7 @@ public class VTextLayout extends RelativeLayout {
     OnPageEndListener onPageEndListener = null;
     OnReadyListener onReadyListener = null;
     OnPageChangedListener onPageChangedListener = null;
+    OnNextAtEndListener onNextAtEndListener = null;
 
     private float density;
 
@@ -161,7 +162,7 @@ public class VTextLayout extends RelativeLayout {
                 progressBar.setVisibility(View.GONE);
                 updatePageText();
                 if (onReadyListener != null) {
-                    onReadyListener.onReady(total);
+                    onReadyListener.onReady(getLastPage());
                 }
             }
         });
@@ -207,10 +208,10 @@ public class VTextLayout extends RelativeLayout {
                 updatePageText();
 
                 if (onPageChangedListener != null) {
-                    onPageChangedListener.onPageChanged(position, vTextView.getTotalPage());
+                    onPageChangedListener.onPageChanged(position, getLastPage());
                 }
 
-                if (position >= viewPager.totalPage && onPageEndListener != null) {
+                if (getLastPage() > 0 && position >= getLastPage() && onPageEndListener != null) {
                     onPageEndListener.onPageEnd();
                 }
 
@@ -255,12 +256,12 @@ public class VTextLayout extends RelativeLayout {
     }
 
     void updatePageText() {
-        String text = vTextView.getTotalPage() < 0 ? currentPage + "" : currentPage + "/" + (vTextView.getTotalPage() + 1);
+        String text = getLastPage() < 0 ? currentPage + "" : currentPage + "/" + getLastPage();
         pageNumText.setText(text);
     }
 
     public void updatePageNum(final boolean showSeekBar) {
-        pagingBar.setMax(vTextView.getTotalPage());
+        pagingBar.setMax(getLastPage());
         pagingBar.setProgress(currentPage);
         updatePageText();
         progressBar.setVisibility(View.GONE);
@@ -290,27 +291,18 @@ public class VTextLayout extends RelativeLayout {
                 break;
             case MotionEvent.ACTION_UP:
                 if (viewPager.scrollDisabled) {
+                    boolean isPrevTap;
                     if (vTextView.virtical) {
                         int direction = isClickDirectionLeft ? 1 : -1;
-                        if (direction * touchStartX > direction * vTextView.width / 2) {
-                            if (currentPage > 1) {
-                                viewPager.setCurrentItem(currentPage - 1, false);
-                            }
-                        } else {
-                            if (currentPage < vTextView.getTotalPage() || vTextView.getTotalPage() < 0) {
-                                viewPager.setCurrentItem(currentPage + 1, false);
-                            }
-                        }
+                        isPrevTap = direction * touchStartX > direction * vTextView.width / 2;
                     } else {
-                        if (touchStartY > vTextView.height / 2) {
-                            if (currentPage > 1) {
-                                viewPager.setCurrentItem(currentPage - 1, false);
-                            }
-                        } else {
-                            if (currentPage < vTextView.getTotalPage() || vTextView.getTotalPage() < 0) {
-                                viewPager.setCurrentItem(currentPage + 1, false);
-                            }
-                        }
+                        isPrevTap = touchStartY > vTextView.height / 2;
+                    }
+                    if (isPrevTap) {
+                        prevPage();
+                    } else if (!nextPage() && onNextAtEndListener != null) {
+                        // 最終ページでの次ページ操作
+                        onNextAtEndListener.onNextAtEnd();
                     }
                 }
                 updatePageText();
@@ -360,9 +352,48 @@ public class VTextLayout extends RelativeLayout {
         return currentPage;
     }
 
-    /** Returns total pages, or -1 if not yet calculated. */
+    /**
+     * 最終ページ番号（1始まり）。未計算なら -1。
+     * VTextView.totalPage は最後の描画ページ添字（0始まり）のため +1 して返す。
+     */
+    public int getLastPage() {
+        int total = vTextView.getTotalPage();
+        return total < 0 ? -1 : total + 1;
+    }
+
+    /** Returns the last page number (1-indexed), or -1 if not yet calculated. */
     public int getTotalPage() {
-        return vTextView.getTotalPage();
+        return getLastPage();
+    }
+
+    /** 次のページへ進む。最終ページで進めなかった場合は false。 */
+    public boolean nextPage() {
+        int last = getLastPage();
+        if (last < 0 || currentPage < last) {
+            viewPager.setCurrentItem(currentPage + 1, false);
+            updatePageText();
+            return true;
+        }
+        return false;
+    }
+
+    /** 前のページへ戻る。先頭で戻れなかった場合は false。 */
+    public boolean prevPage() {
+        if (currentPage > 1) {
+            viewPager.setCurrentItem(currentPage - 1, false);
+            updatePageText();
+            return true;
+        }
+        return false;
+    }
+
+    /** 最終ページで次ページ操作（タップ）が行われたときに呼ばれる。 */
+    public interface OnNextAtEndListener {
+        void onNextAtEnd();
+    }
+
+    public void setOnNextAtEndListener(OnNextAtEndListener listener) {
+        this.onNextAtEndListener = listener;
     }
 
     public interface OnPageEndListener {
@@ -400,6 +431,13 @@ public class VTextLayout extends RelativeLayout {
 
     public void setFontSize(int size) {
         vTextView.setFontSize(size);
+        // 表示中ページを含めて再計算させる（ページ0へ戻し onDraw でページ計算を起動）
+        reset();
+    }
+
+    public void setFont(String path) {
+        vTextView.setFont(path);
+        reset();
     }
 
     public void setColor(String fontColor, String backgroundColor) {

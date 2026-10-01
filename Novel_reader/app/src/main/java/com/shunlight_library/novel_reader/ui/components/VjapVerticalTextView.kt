@@ -32,6 +32,20 @@ private class VjapAppliedState(initialRate: Float) {
 }
 
 /**
+ * 縦書きビューを外部（音量キー等）からページ送りするためのハンドル。
+ * ビュー生成前・破棄後は操作できず false を返す。
+ */
+class VjapPageController {
+    internal var layout: VTextLayout? = null
+
+    /** 次ページへ進む。最終ページ（または未生成）で進めなかった場合は false */
+    fun nextPage(): Boolean = layout?.nextPage() ?: false
+
+    /** 前ページへ戻る。先頭（または未生成）で戻れなかった場合は false */
+    fun prevPage(): Boolean = layout?.prevPage() ?: false
+}
+
+/**
  * vjapライブラリを使用した縦書きテキスト表示コンポーザブル。
  *
  * - fontSizeはspで受け取り、内部でpx換算してvjapに渡す
@@ -39,6 +53,7 @@ private class VjapAppliedState(initialRate: Float) {
  * - 読書進捗はページ番号/総ページ数（0.0〜1.0）で保存・復元
  * - ページをめくるたびに onReadingRateChanged で進捗率を通知
  * - フォントサイズ・色・フォントの変更時も現在の読書位置を維持する
+ * - 最終ページで次ページ操作（タップ）をすると onNextAtEnd を呼ぶ
  */
 @Composable
 fun VjapVerticalTextView(
@@ -50,6 +65,8 @@ fun VjapVerticalTextView(
     customFontPath: String? = null,
     savedReadingRate: Float = 0f,
     onReadingRateChanged: (Float) -> Unit = {},
+    onNextAtEnd: () -> Unit = {},
+    controller: VjapPageController? = null,
     modifier: Modifier = Modifier
 ) {
     val aozoraText = remember(htmlContent) {
@@ -57,6 +74,7 @@ fun VjapVerticalTextView(
     }
 
     val applied = remember { VjapAppliedState(savedReadingRate) }
+    val currentOnNextAtEnd by rememberUpdatedState(onNextAtEnd)
 
     AndroidView(
         factory = { context ->
@@ -88,6 +106,8 @@ fun VjapVerticalTextView(
                     }
                 }
 
+                setOnNextAtEndListener { currentOnNextAtEnd() }
+
                 setOnPageEndListener {
                     if (getTotalPage() > 0) {
                         applied.currentRate = 1f
@@ -102,7 +122,7 @@ fun VjapVerticalTextView(
                     setColor("#000000", "#FFFFFF")
                 }
                 if (!customFontPath.isNullOrEmpty()) {
-                    vTextView.setFont(customFontPath)
+                    setFont(customFontPath)
                 }
                 initContent(episodeTitle, aozoraText)
 
@@ -112,6 +132,7 @@ fun VjapVerticalTextView(
                 applied.fontPath = customFontPath
                 applied.content = aozoraText
                 applied.title = episodeTitle
+                controller?.layout = this
             }
         },
         update = { layout ->
@@ -143,7 +164,7 @@ fun VjapVerticalTextView(
                     applied.backgroundColor = backgroundColor
                 }
                 if (applied.fontPath != customFontPath) {
-                    layout.vTextView.setFont(if (customFontPath.isNullOrEmpty()) null else customFontPath)
+                    layout.setFont(if (customFontPath.isNullOrEmpty()) null else customFontPath)
                     applied.fontPath = customFontPath
                 }
                 if (contentChanged) {
@@ -152,6 +173,10 @@ fun VjapVerticalTextView(
                     applied.title = episodeTitle
                 }
             }
+        },
+        onRelease = { layout ->
+            // 話の切替で新しいビューが先に登録されている場合は上書きしない
+            if (controller?.layout === layout) controller.layout = null
         },
         modifier = modifier
     )

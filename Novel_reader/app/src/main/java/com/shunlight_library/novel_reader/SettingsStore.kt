@@ -151,6 +151,21 @@ class SettingsStore(private val context: Context) {
 
         // 完結作品を更新確認から除外する設定
         val EXCLUDE_COMPLETED_FROM_UPDATE = booleanPreferencesKey("exclude_completed_from_update")
+
+        // 読書画面の余白（dp）
+        val READER_MARGIN_TOP = intPreferencesKey("reader_margin_top")
+        val READER_MARGIN_BOTTOM = intPreferencesKey("reader_margin_bottom")
+        val READER_MARGIN_LEFT = intPreferencesKey("reader_margin_left")
+        val READER_MARGIN_RIGHT = intPreferencesKey("reader_margin_right")
+
+        // 音量キーでページ送り
+        val VOLUME_KEY_PAGING_ENABLED = booleanPreferencesKey("volume_key_paging_enabled")
+
+        // 最終ページからの次ページ操作で次話へ遷移
+        val AUTO_NEXT_EPISODE_AT_END = booleanPreferencesKey("auto_next_episode_at_end")
+
+        /** 読書画面の余白の上限（dp） */
+        const val MAX_READER_MARGIN = 64
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -825,6 +840,71 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    // 読書画面の余白（dp）。不正値は 0..MAX_READER_MARGIN に丸める
+    val readerMargins: Flow<ReaderMargins> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            fun margin(key: Preferences.Key<Int>) =
+                (preferences[key] ?: 0).coerceIn(0, MAX_READER_MARGIN)
+            ReaderMargins(
+                top = margin(READER_MARGIN_TOP),
+                bottom = margin(READER_MARGIN_BOTTOM),
+                left = margin(READER_MARGIN_LEFT),
+                right = margin(READER_MARGIN_RIGHT)
+            )
+        }
+
+    suspend fun saveReaderMargins(margins: ReaderMargins) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_MARGIN_TOP] = margins.top.coerceIn(0, MAX_READER_MARGIN)
+            preferences[READER_MARGIN_BOTTOM] = margins.bottom.coerceIn(0, MAX_READER_MARGIN)
+            preferences[READER_MARGIN_LEFT] = margins.left.coerceIn(0, MAX_READER_MARGIN)
+            preferences[READER_MARGIN_RIGHT] = margins.right.coerceIn(0, MAX_READER_MARGIN)
+        }
+    }
+
+    val volumeKeyPagingEnabled: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[VOLUME_KEY_PAGING_ENABLED] ?: false
+        }
+
+    suspend fun saveVolumeKeyPagingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[VOLUME_KEY_PAGING_ENABLED] = enabled
+        }
+    }
+
+    val autoNextEpisodeAtEnd: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[AUTO_NEXT_EPISODE_AT_END] ?: false
+        }
+
+    suspend fun saveAutoNextEpisodeAtEnd(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTO_NEXT_EPISODE_AT_END] = enabled
+        }
+    }
+
     // 短編を更新確認から除外する設定の取得
     val excludeShortFromUpdate: Flow<Boolean> = context.dataStore.data
         .catch { exception: Throwable ->
@@ -873,3 +953,11 @@ class SettingsStore(private val context: Context) {
         )
     }
 }
+
+/** 読書画面の余白（dp） */
+data class ReaderMargins(
+    val top: Int = 0,
+    val bottom: Int = 0,
+    val left: Int = 0,
+    val right: Int = 0
+)

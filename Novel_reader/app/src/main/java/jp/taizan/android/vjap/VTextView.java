@@ -52,7 +52,15 @@ public class VTextView extends View {
 
     private int[] pageIndex = new int[MAX_PAGE];
     private int currentIndex = 0;
+    /**
+     * 最後の描画ページの添字（0始まり、-1は未計算）。
+     * 表示上のページ番号は描画ページ添字 + 1 のため、最終ページ番号は totalPage + 1。
+     */
     public int totalPage = -1;
+
+    // ページ計算の世代管理（reset ごとに進め、古い計算結果を破棄する）
+    private volatile int layoutGeneration = 0;
+    private int calcGeneration = -1;
     int imageNum = 0;
     private boolean isNextImage = false;
 
@@ -139,6 +147,7 @@ public class VTextView extends View {
     }
 
     public void reset(boolean isReDraw) {
+        this.layoutGeneration++;
         this.pageIndex[0] = 0;
         this.currentIndex = 0;
         this.totalPage = -1;
@@ -309,25 +318,35 @@ public class VTextView extends View {
         super.onDraw(canvas);
         this.textDraw(canvas, currentIndex, true, this);
         Log.d("draw", "draw vtext");
-        if (this.totalPage < 0) this.calcPages();
+        // 計算中に onDraw が繰り返されても同一レイアウトの計算は1本だけ走らせる
+        if (this.totalPage < 0 && calcGeneration != layoutGeneration) this.calcPages();
     }
 
     final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public void calcPages() {
+        final int generation = layoutGeneration;
+        calcGeneration = generation;
         new Thread(new Runnable() {
             @Override
             public void run() {
                 int current = 0;
-                Log.d("page", current + "");
                 while (!textDraw(null, current, false, null)) {
+                    if (generation != layoutGeneration) return; // 設定変更で無効化された計算
                     current++;
                 }
-                Log.d("page", current + "");
-                totalPage = current - 1;
+                // 本文がページ末尾ちょうどで終わると最後に空ページができるため除外する
+                if (current > 0 && pageIndex[current] >= text.length()) {
+                    current--;
+                }
+                Log.d("page", "last page: " + current);
+                // 以前は current - 1 としており、最終描画ページへ遷移できなかった（#164）
+                final int calculated = current;
                 mainHandler.post(new Runnable() {
                     @Override
                     public void run() {
+                        if (generation != layoutGeneration) return;
+                        totalPage = calculated;
                         if (onPageClacListener != null) onPageClacListener.onPageClac(totalPage);
                     }
                 });

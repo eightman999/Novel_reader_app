@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1871,6 +1872,9 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
     var swipeEnabled by remember { mutableStateOf(true) }
     var tapEnabled by remember { mutableStateOf(false) }
     var autoRubyEnabled by remember { mutableStateOf(true) }
+    var volumeKeyPagingEnabled by remember { mutableStateOf(false) }
+    var autoNextEpisodeAtEnd by remember { mutableStateOf(false) }
+    var readerMargins by remember { mutableStateOf(ReaderMargins()) }
 
     val backgroundOptions = listOf("White" to "#FFFFFF", "Cream" to "#F5F5DC", "Light Gray" to "#EEEEEE", "Light Blue" to "#E6F2FF", "Dark Gray" to "#303030", "Black" to "#000000")
     val fontColorOptions = listOf("Black" to "#000000", "Dark Gray" to "#333333", "Navy" to "#000080", "Dark Green" to "#006400", "White" to "#FFFFFF")
@@ -1881,6 +1885,9 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
         swipeEnabled = settingsStore.swipeEnabled.first()
         tapEnabled = settingsStore.tapEnabled.first()
         autoRubyEnabled = settingsStore.autoRubyEnabled.first()
+        volumeKeyPagingEnabled = settingsStore.volumeKeyPagingEnabled.first()
+        autoNextEpisodeAtEnd = settingsStore.autoNextEpisodeAtEnd.first()
+        readerMargins = settingsStore.readerMargins.first()
     }
 
     Scaffold(
@@ -1902,6 +1909,9 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                                 settingsStore.saveSwipeEnabled(swipeEnabled)
                                 settingsStore.saveTapEnabled(tapEnabled)
                                 settingsStore.saveAutoRubyEnabled(autoRubyEnabled)
+                                settingsStore.saveVolumeKeyPagingEnabled(volumeKeyPagingEnabled)
+                                settingsStore.saveAutoNextEpisodeAtEnd(autoNextEpisodeAtEnd)
+                                settingsStore.saveReaderMargins(readerMargins)
                                 android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
                                 onBack()
                             } catch (e: Exception) {
@@ -1965,6 +1975,35 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                     Text("画面タップで話を移動"); Spacer(modifier = Modifier.weight(1f))
                     Switch(checked = tapEnabled, onCheckedChange = { tapEnabled = it })
                 }
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("音量キーでページ送り")
+                        Text(
+                            text = "音量下で次ページ、音量上で前ページへ移動します",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = volumeKeyPagingEnabled, onCheckedChange = { volumeKeyPagingEnabled = it })
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("最終ページから次のエピソードへ")
+                        Text(
+                            text = "最終ページでページ送り（タップ・音量キー）をすると次のエピソードを開きます",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = autoNextEpisodeAtEnd, onCheckedChange = { autoNextEpisodeAtEnd = it })
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "余白 (エピソード表示時)") {
+                ReaderMarginSettings(
+                    margins = readerMargins,
+                    onMarginsChange = { readerMargins = it }
+                )
             }
             HorizontalDivider()
             SettingSection(title = "ルビ設定") {
@@ -1981,6 +2020,64 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/** 読書画面の余白設定（プリセット + 上下左右の個別調整） */
+@Composable
+private fun ReaderMarginSettings(
+    margins: ReaderMargins,
+    onMarginsChange: (ReaderMargins) -> Unit
+) {
+    val presets = listOf("なし" to 0, "小" to 8, "中" to 16, "大" to 32)
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text(
+            text = "本文の周囲に追加する余白です（単位: dp）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            presets.forEach { (label, value) ->
+                val preset = ReaderMargins(value, value, value, value)
+                FilterChip(
+                    selected = margins == preset,
+                    onClick = { onMarginsChange(preset) },
+                    label = { Text(label) }
+                )
+            }
+        }
+        val sides = listOf(
+            "上" to margins.top,
+            "下" to margins.bottom,
+            "左" to margins.left,
+            "右" to margins.right
+        )
+        sides.forEach { (label, value) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, modifier = Modifier.width(24.dp))
+                Slider(
+                    value = value.toFloat(),
+                    onValueChange = { v ->
+                        val dp = v.toInt()
+                        onMarginsChange(
+                            when (label) {
+                                "上" -> margins.copy(top = dp)
+                                "下" -> margins.copy(bottom = dp)
+                                "左" -> margins.copy(left = dp)
+                                else -> margins.copy(right = dp)
+                            }
+                        )
+                    },
+                    valueRange = 0f..SettingsStore.MAX_READER_MARGIN.toFloat(),
+                    steps = SettingsStore.MAX_READER_MARGIN / 4 - 1,
+                    modifier = Modifier.weight(1f)
+                )
+                Text("${value}dp", modifier = Modifier.width(48.dp), textAlign = TextAlign.End)
+            }
         }
     }
 }

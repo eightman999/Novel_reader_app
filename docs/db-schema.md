@@ -171,3 +171,9 @@
   - M4: MigrationTest をスキーマJSONがある 16→17→18 検証＋手組みDBでの直接 Migration 検証に再構成（欠落JSON依存の 4/9/10/11 createDatabase を廃止）。
   - L4: `MIGRATION_15_16` が R18 を一律 `sub_site=2` にしていたのをやめ R18 は 0(不明) のまま。既存DB向け `MIGRATION_17_18` で `rating=1 AND sub_site=2` を 0 に戻す。`NovelApiUtils` も R18 の sub_site 既定を 0 に変更。
   - Room DB version 17→18。R8 minify + shrinkResources 有効化、LazyColumn key、検索 debounce 等の UI/APK 最適化も同梱。
+- Reader improvements (v2.1.2): GitHub #164 の修正と #163 の機能追加。DB schema の変更はなし（設定は DataStore に保存）。
+  - #164 縦書きで最終ページに進めない不具合を修正: `VTextView.calcPages` が `totalPage` を「最後の描画ページ添字 - 1」で保存していたため、タップ送りとページャーの上限が1ページ足りなかった。最後の描画ページ添字を保存するように変更し、本文がページ末尾ちょうどで終わる場合の空ページは除外。`VTextLayout.getLastPage()`（1始まり）に統一し、ページ計算は世代番号で古い計算結果を破棄する。フォントサイズ・フォント変更時は `reset()` で再計算して読書位置を復元する。
+  - 読書画面の余白: `SettingsStore.readerMargins`（上下左右 0〜64dp、プリセット なし/小/中/大）。`EpisodeViewScreen` の本文 Box に padding として適用（タップ判定は余白を含めた画面全体）。
+  - 音量キーでページ送り: `volumeKeyPagingEnabled`（既定OFF）。`MainActivity.onKeyDown/onKeyUp` から `VolumeKeyPaging` 経由で、読書画面が登録したハンドラへ渡す（音量下=次、音量上=前）。縦書きは `VjapPageController` でページ送り、横書きは画面の9割ずつスクロール。ハンドラ未登録時は通常の音量操作。
+  - 最終ページから次話へ: `autoNextEpisodeAtEnd`（既定OFF）。縦書きの最終ページでの次ページタップ、または縦書き・横書きの末尾での音量キー送りで次話へ遷移（前後話ナビと同じ `onNext`、二重遷移ガードあり）。最新話では「最新話です」と表示。「画面タップで話を移動」がONのときは、縦書きのタップによる自動遷移は行わない。
+  - 横書きの読書位置復元: 本文WebViewが外側の Compose `verticalScroll` 内に全高で置かれていたため `window.scrollY` が常に0になり、読書位置の保存・復元が効いていなかった。外側スクロールは開発者モード（HTMLソース表示）だけに限定し、WebView自体をスクロールさせる。読み込み直後は本文の高さが変わるため、1.5秒間（または利用者が触るまで）`ResizeObserver` で復元位置をかけ直し、その間はスクロール位置を保存しない（復元途中の位置での上書き防止）。

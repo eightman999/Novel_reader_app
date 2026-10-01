@@ -41,8 +41,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.ui.components.VjapPageController
 import com.shunlight_library.novel_reader.ui.components.VjapVerticalTextView
 import com.shunlight_library.novel_reader.utils.FontUtils
+import com.shunlight_library.novel_reader.utils.VolumeKeyPaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -81,6 +83,15 @@ fun EpisodeViewScreen(
     var swipeEnabled by remember { mutableStateOf(true) }
     var tapEnabled by remember { mutableStateOf(false) }
     var autoRubyEnabled by remember { mutableStateOf(true) }
+    var readerMargins by remember { mutableStateOf(ReaderMargins()) }
+    var volumeKeyPagingEnabled by remember { mutableStateOf(false) }
+    var autoNextEpisodeAtEnd by remember { mutableStateOf(false) }
+
+    // 縦書きビューを音量キーからページ送りするためのハンドル
+    val vjapPageController = remember { VjapPageController() }
+
+    // 最終ページからの次話遷移を二重に発火させないためのフラグ（話が切り替わるとリセット）
+    var nextEpisodeRequested by remember { mutableStateOf(false) }
 
     // カスタムフォント情報
     var customFonts by remember { mutableStateOf<List<CustomFontInfo>>(emptyList()) }
@@ -109,6 +120,9 @@ fun EpisodeViewScreen(
             swipeEnabled = settingsStore.swipeEnabled.first()
             tapEnabled = settingsStore.tapEnabled.first()
             autoRubyEnabled = settingsStore.autoRubyEnabled.first()
+            readerMargins = settingsStore.readerMargins.first()
+            volumeKeyPagingEnabled = settingsStore.volumeKeyPagingEnabled.first()
+            autoNextEpisodeAtEnd = settingsStore.autoNextEpisodeAtEnd.first()
 
             // カスタムフォント情報を読み込む
             customFonts = settingsStore.getAllCustomFontInfo()
@@ -131,6 +145,7 @@ fun EpisodeViewScreen(
         // 前後話ナビゲーション時に旧話の本文で描画されるのを防ぐ
         // （nullの間はローディング表示になり、新データ到着時にWebView/縦書きViewが再生成される）
         episode = null
+        nextEpisodeRequested = false
 
         scrollState.scrollTo(0)
         scope.launch {
@@ -220,6 +235,54 @@ fun EpisodeViewScreen(
             }
         }
     }
+    fun canGoNext(): Boolean {
+        val currentEp = episodeNo.toIntOrNull() ?: return false
+        return novel?.let { currentEp < it.total_ep } ?: false
+    }
+
+    // 最終ページでさらにページ送りされた場合: 設定ONなら次話へ（通常のページめくりと同じ扱い）
+    fun goToNextEpisodeFromEnd() {
+        if (!autoNextEpisodeAtEnd || nextEpisodeRequested) return
+        if (!canGoNext()) {
+            Toast.makeText(context, "最新話です", Toast.LENGTH_SHORT).show()
+            return
+        }
+        nextEpisodeRequested = true
+        saveReadingRate()
+        onNext()
+    }
+
+    // 音量キーによるページ送り（true=次ページ、false=前ページ）
+    fun handleVolumeKey(forward: Boolean) {
+        if (episode == null || nextEpisodeRequested) return
+        if (textOrientation == "Vertical") {
+            if (forward) {
+                if (!vjapPageController.nextPage()) goToNextEpisodeFromEnd()
+            } else {
+                vjapPageController.prevPage()
+            }
+            return
+        }
+        // 横書き: WebView内を画面の9割ずつスクロール。末尾でさらに送ると次話へ
+        val direction = if (forward) 1 else -1
+        webView?.evaluateJavascript(
+            "(function(){var b=window.scrollY;" +
+                "window.scrollBy(0,$direction*window.innerHeight*0.9);" +
+                "return window.scrollY!==b;})()"
+        ) { moved ->
+            if (forward && moved == "false") goToNextEpisodeFromEnd()
+        }
+    }
+
+    val currentHandleVolumeKey by rememberUpdatedState(::handleVolumeKey)
+    DisposableEffect(volumeKeyPagingEnabled) {
+        val handler: (Boolean) -> Unit = { forward -> currentHandleVolumeKey(forward) }
+        if (volumeKeyPagingEnabled) VolumeKeyPaging.handler = handler
+        onDispose {
+            if (VolumeKeyPaging.handler === handler) VolumeKeyPaging.handler = null
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -493,7 +556,8 @@ fun EpisodeViewScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .background(actualBackgroundColor)
+                    // 本文（縦書きvjap・横書きWebViewとも）は既定背景を白で描画するため、余白部分も同じ色に揃える
+                    .background(if (useDefaultBackground) Color.White else actualBackgroundColor)
                     .pointerInput(episodeNo, textOrientation, swipeEnabled, tapEnabled) {
                         // スワイプとスクロールを区別するための改善されたジェスチャー検出
                         awaitPointerEventScope {
@@ -614,17 +678,28 @@ fun EpisodeViewScreen(
                             }
                         }
                     }
+                    // ユーザー設定の余白（タップ判定は余白部分も含めた画面全体で行う）
+                    .padding(
+                        start = readerMargins.left.dp,
+                        top = readerMargins.top.dp,
+                        end = readerMargins.right.dp,
+                        bottom = readerMargins.bottom.dp
+                    )
             ) {
                 // 縦書き時はWebViewが横スクロールするため、verticalScrollは不要
                 // 縦書き時はCSSがpaddingを管理するためComposeのhorizontal paddingは不要
-                val columnModifier = if (textOrientation == "Vertical") {
-                    Modifier
-                        .fillMaxSize()
-                } else {
-                    Modifier
+                // 横書きWebViewは自身でスクロールさせる（外側をverticalScrollにすると
+                // WebViewが全高で配置され window.scrollY が常に0となり、読書位置の保存・復元が効かない）
+                val columnModifier = when {
+                    devModeEnabled -> Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)
                         .verticalScroll(scrollState)
+                    textOrientation == "Vertical" -> Modifier
+                        .fillMaxSize()
+                    else -> Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
                 }
 
                 Column(
@@ -671,6 +746,9 @@ fun EpisodeViewScreen(
                                 customFontPath = if (isCustomFont && customFontPath.isNotEmpty()) customFontPath else null,
                                 savedReadingRate = episode!!.reading_rate,
                                 onReadingRateChanged = { rate -> vjapReadingRate = rate },
+                                // 「画面タップで話を移動」ON時はタップ自体が話移動になるため二重遷移させない
+                                onNextAtEnd = { if (!tapEnabled) goToNextEpisodeFromEnd() },
+                                controller = vjapPageController,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -922,6 +1000,8 @@ fun EnhancedHtmlRubyWebView(
         // ページ読み込み完了後の処理
         window.onload = function() {
             var isVertical = ${isVertical};
+            // 位置復元中は保存しない（復元途中の位置で保存済みの読書位置を上書きしないため）
+            var restoring = false;
 
             // スクロール位置を復元
             var maxScroll;
@@ -945,12 +1025,27 @@ fun EnhancedHtmlRubyWebView(
                 }
             } else {
                 // 横書き: 縦スクロール
+                // 読み込み直後は本文の高さが確定せず（文字サイズ自動調整等）位置がずれるため、
+                // 一定時間（または利用者の操作まで）高さの変化に合わせて復元をかけ直す
                 if (${savedReadingRate} > 0) {
-                    maxScroll = document.body.scrollHeight - window.innerHeight;
-                    targetPosition = maxScroll * ${savedReadingRate};
-                    setTimeout(function() {
-                        window.scrollTo(0, targetPosition);
-                    }, 100);
+                    restoring = true;
+                    var applyRestore = function() {
+                        if (!restoring) return;
+                        var m = document.body.scrollHeight - window.innerHeight;
+                        if (m > 0) window.scrollTo(0, m * ${savedReadingRate});
+                    };
+                    var stopRestoring = function() {
+                        restoring = false;
+                        if (resizeObserver) resizeObserver.disconnect();
+                    };
+                    var resizeObserver = (typeof ResizeObserver !== 'undefined')
+                        ? new ResizeObserver(applyRestore) : null;
+                    if (resizeObserver) resizeObserver.observe(document.body);
+                    window.addEventListener('resize', applyRestore);
+                    window.addEventListener('touchstart', stopRestoring, { passive: true });
+                    applyRestore();
+                    setTimeout(applyRestore, 100);
+                    setTimeout(stopRestoring, 1500);
                 }
             }
 
@@ -959,6 +1054,7 @@ fun EnhancedHtmlRubyWebView(
             window.addEventListener('scroll', function() {
                 clearTimeout(scrollTimeout);
                 scrollTimeout = setTimeout(function() {
+                    if (restoring) return;
                     var maxScroll;
                     var currentScroll;
                     var scrollRatio;
