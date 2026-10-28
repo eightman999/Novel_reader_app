@@ -6,8 +6,8 @@
 package com.shunlight_library.novel_reader
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.net.Uri
-import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -166,6 +166,18 @@ class SettingsStore(private val context: Context) {
 
         /** 読書画面の余白の上限（dp） */
         const val MAX_READER_MARGIN = 64
+
+        // 本文の行間（文字サイズに対する倍率）
+        val READER_LINE_HEIGHT = floatPreferencesKey("reader_line_height")
+        const val DEFAULT_LINE_HEIGHT = 1.8f
+        const val MIN_LINE_HEIGHT = 1.2f
+        const val MAX_LINE_HEIGHT = 2.8f
+
+        // 最近読んだ小説画面のフィルター（JSON）
+        val RECENTLY_READ_FILTER = stringPreferencesKey("recently_read_filter")
+
+        // 読書画面に進捗（ページ数・％）を表示する
+        val SHOW_READING_PROGRESS = booleanPreferencesKey("show_reading_progress")
     }
 
     val defaultFontColor = "#000000" // 黒
@@ -902,6 +914,94 @@ class SettingsStore(private val context: Context) {
     suspend fun saveAutoNextEpisodeAtEnd(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_NEXT_EPISODE_AT_END] = enabled
+        }
+    }
+
+    /**
+     * 最近読んだ小説画面のフィルター設定を取得する。
+     * 未保存・破損時は既定値を返す（不正な値で画面が開けなくなるのを防ぐ）。
+     */
+    suspend fun getRecentlyReadFilterSettings(): FilterSettings {
+        val json = context.dataStore.data
+            .catch { exception: Throwable ->
+                if (exception is IOException) emit(emptyPreferences()) else throw exception
+            }
+            .first()[RECENTLY_READ_FILTER] ?: return FilterSettings()
+        return try {
+            val obj = org.json.JSONObject(json)
+            val defaults = FilterSettings()
+            FilterSettings(
+                showFavoritesOnly = obj.optBoolean("showFavoritesOnly", defaults.showFavoritesOnly),
+                showLongNovels = obj.optBoolean("showLongNovels", defaults.showLongNovels),
+                showShortNovels = obj.optBoolean("showShortNovels", defaults.showShortNovels),
+                showUnreadOnly = obj.optBoolean("showUnreadOnly", defaults.showUnreadOnly),
+                showNoUnreadOnly = obj.optBoolean("showNoUnreadOnly", defaults.showNoUnreadOnly),
+                showCompletedOnly = obj.optBoolean("showCompletedOnly", defaults.showCompletedOnly),
+                showOngoingOnly = obj.optBoolean("showOngoingOnly", defaults.showOngoingOnly),
+                selectedSubSites = obj.optString("selectedSubSites", "")
+                    .split(",")
+                    .mapNotNull { it.trim().toIntOrNull() }
+                    .toSet()
+            )
+        } catch (e: Exception) {
+            FilterSettings()
+        }
+    }
+
+    /** 最近読んだ小説画面のフィルター設定を保存する */
+    suspend fun saveRecentlyReadFilterSettings(settings: FilterSettings) {
+        val json = org.json.JSONObject()
+            .put("showFavoritesOnly", settings.showFavoritesOnly)
+            .put("showLongNovels", settings.showLongNovels)
+            .put("showShortNovels", settings.showShortNovels)
+            .put("showUnreadOnly", settings.showUnreadOnly)
+            .put("showNoUnreadOnly", settings.showNoUnreadOnly)
+            .put("showCompletedOnly", settings.showCompletedOnly)
+            .put("showOngoingOnly", settings.showOngoingOnly)
+            .put("selectedSubSites", settings.selectedSubSites.joinToString(","))
+            .toString()
+        context.dataStore.edit { preferences ->
+            preferences[RECENTLY_READ_FILTER] = json
+        }
+    }
+
+    // 本文の行間。不正値は MIN_LINE_HEIGHT..MAX_LINE_HEIGHT に丸める
+    val readerLineHeight: Flow<Float> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            (preferences[READER_LINE_HEIGHT] ?: DEFAULT_LINE_HEIGHT)
+                .takeIf { !it.isNaN() }
+                ?.coerceIn(MIN_LINE_HEIGHT, MAX_LINE_HEIGHT)
+                ?: DEFAULT_LINE_HEIGHT
+        }
+
+    suspend fun saveReaderLineHeight(lineHeight: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_LINE_HEIGHT] = lineHeight.coerceIn(MIN_LINE_HEIGHT, MAX_LINE_HEIGHT)
+        }
+    }
+
+    val showReadingProgress: Flow<Boolean> = context.dataStore.data
+        .catch { exception: Throwable ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences: Preferences ->
+            preferences[SHOW_READING_PROGRESS] ?: true
+        }
+
+    suspend fun saveShowReadingProgress(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_READING_PROGRESS] = show
         }
     }
 

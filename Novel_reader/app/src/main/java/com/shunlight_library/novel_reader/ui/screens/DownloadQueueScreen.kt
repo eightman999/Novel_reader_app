@@ -220,11 +220,11 @@ fun EmptyQueueMessage() {
 @Composable
 fun QueueItem(
     queue: RegistrationQueueEntity,
-    onPause: () -> Unit = {},
+    onPause: () -> Unit,
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onDeleteCompleted: () -> Unit,
-    onDeleteFailed: () -> Unit = {}
+    onDeleteFailed: () -> Unit
 ) {
     val statusColor = when (queue.status) {
         RegistrationQueueEntity.STATUS_PENDING -> MaterialTheme.colorScheme.onSurfaceVariant

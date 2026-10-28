@@ -127,6 +127,8 @@ fun NovelListScreen(
 
     // 処理中状態の監視
     val processingStates by repository.processingStates.collectAsState()
+    // 一覧の各行から O(1) で処理状態を引けるよう ncode で索引化する（行ごとの線形探索を避ける）
+    val processingStateByNcode = remember(processingStates) { processingStates.associateBy { it.id } }
 
     // 処理中ダイアログ用の状態
     var showProcessingDialog by remember { mutableStateOf(false) }
@@ -1048,7 +1050,7 @@ fun NovelListScreen(
                     key = { it.novel.ncode }
                 ) { novelWithReadInfo ->
                     // 処理中状態を取得（パフォーマンス最適化：isUpdatingチェックは不要なので削除）
-                    val processingState = processingStates.find { it.id == novelWithReadInfo.novel.ncode }
+                    val processingState = processingStateByNcode[novelWithReadInfo.novel.ncode]
 
                     NovelListItem(
                         novel = novelWithReadInfo.novel,

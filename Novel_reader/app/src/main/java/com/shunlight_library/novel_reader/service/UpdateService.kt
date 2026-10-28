@@ -12,14 +12,17 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
-import android.util.Log
+import android.os.Looper
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.app.AlarmManager
 import androidx.core.app.NotificationCompat
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.data.adapter.HttpStatusException
 import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
@@ -56,13 +59,20 @@ class UpdateService : Service() {
         const val UPDATE_TYPE_FIX_ERRORS = 3
         const val UPDATE_TYPE_BULK_UPDATE = 4
         const val UPDATE_TYPE_CHECK_REVISION = 5
+
+        /** HTTP 403 を示すメッセージ（例外メッセージ全体の数字部分一致は使わない） */
+        private val HTTP_403_MESSAGE_REGEX =
+            Regex("""(?:\bHTTP 403\b|\bHTTP response code: 403\b)""")
     }
 
     // Service binding
     private val binder = UpdateBinder()
 
     // オペレーションキュー
-    private val operationQueue = ArrayDeque<UpdateOperation>()
+    // メインスレッド（onStartCommand）とIOスレッド（処理完了時）の両方から参照されるためスレッドセーフな実装を使う。
+    // キューの取り出し・isRunning の状態遷移は mainHandler 上（メインスレッド）に集約する（L5）。
+    private val operationQueue = java.util.concurrent.ConcurrentLinkedDeque<UpdateOperation>()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private data class UpdateOperation(
         val ncode: String,
         val updateType: Int
@@ -84,13 +94,13 @@ class UpdateService : Service() {
     private val repository by lazy { NovelReaderApplication.getRepository() }
 
     // Progress tracking
-    private var progress = 0f
-    private var message = ""
-    private var isRunning = false
-    private var updateType = 0
-    private var currentNcode = ""
-    private var currentUpdateSession: NovelUpdateCoordinator.UpdateSession? = null
-    private var updateListeners = mutableListOf<UpdateProgressListener>()
+    @Volatile private var progress = 0f
+    @Volatile private var message = ""
+    @Volatile private var isRunning = false
+    @Volatile private var updateType = 0
+    @Volatile private var currentNcode = ""
+    @Volatile private var currentUpdateSession: NovelUpdateCoordinator.UpdateSession? = null
+    private val updateListeners = java.util.concurrent.CopyOnWriteArrayList<UpdateProgressListener>()
 
     // Interface for progress updates
     interface UpdateProgressListener {
@@ -155,6 +165,7 @@ class UpdateService : Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -183,9 +194,9 @@ class UpdateService : Service() {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, notification)
 
-            // フォアグラウンドサービス停止
-            serviceScope.launch {
-                delay(3000)
+            // フォアグラウンドサービス停止（待機中に新しいオペレーションが来た場合は停止しない）
+            mainHandler.postDelayed({
+                if (isRunning || operationQueue.isNotEmpty()) return@postDelayed
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     stopForeground(Service.STOP_FOREGROUND_REMOVE)
                 } else {
@@ -193,12 +204,12 @@ class UpdateService : Service() {
                     stopForeground(true)
                 }
                 stopSelf()
-            }
+            }, 3000)
             return
         }
 
         // 次のオペレーションを取得
-        val operation = operationQueue.removeFirst()
+        val operation = operationQueue.pollFirst() ?: return processNextOperation()
         currentNcode = operation.ncode
         updateType = operation.updateType
 
@@ -265,16 +276,18 @@ class UpdateService : Service() {
         updateListeners.forEach { it.onUpdateComplete(success, resultMessage) }
 
         // エラーの場合、2秒待機
-        if (!success) {
-            serviceScope.launch {
-                delay(2000)
-                isRunning = true
-                processNextOperation()
-            }
-        } else {
+        scheduleNextOperation(if (success) 0L else 2000L)
+    }
+
+    /**
+     * 次のオペレーション処理をメインスレッドへ集約して実行する（L5）。
+     * onStartCommand（メインスレッド）との間で operationQueue / isRunning の状態遷移が競合しないようにする。
+     */
+    private fun scheduleNextOperation(delayMs: Long) {
+        mainHandler.postDelayed({
             isRunning = true
             processNextOperation()
-        }
+        }, delayMs)
     }
 
     private fun stopUpdate() {
@@ -291,23 +304,31 @@ class UpdateService : Service() {
     }
 
     // 403エラー判定ヘルパーメソッド
-    private fun is403Error(exception: Exception): Boolean {
-        return when (exception) {
-            is java.net.SocketException -> exception.message?.contains("403", ignoreCase = true) == true
-            is java.net.UnknownHostException -> false
-            else -> {
-                // スタックトレースから403を検索
-                val stackTrace = exception.stackTraceToString()
-                stackTrace.contains("403", ignoreCase = true) ||
-                exception.message?.contains("403", ignoreCase = true) == true ||
-                (exception.cause?.message?.contains("403", ignoreCase = true) == true)
+    // スタックトレース文字列の部分一致は行番号等で誤検知するため使わない（M7）。
+    // 例外とcause連鎖を辿り、型付きのHTTPステータス（HttpStatusException）か、
+    // HTTPステータスを表すメッセージ（"HTTP 403" / HttpURLConnection の
+    // "Server returned HTTP response code: 403"）に厳密一致した場合のみ403とみなす。
+    private fun is403Error(exception: Throwable): Boolean {
+        var current: Throwable? = exception
+        var depth = 0
+        while (current != null && depth < 10) {
+            if (current is HttpStatusException) {
+                return current.statusCode == java.net.HttpURLConnection.HTTP_FORBIDDEN
             }
+            val msg = current.message
+            if (msg != null && HTTP_403_MESSAGE_REGEX.containsMatchIn(msg)) {
+                return true
+            }
+            if (current.cause === current) break
+            current = current.cause
+            depth++
         }
+        return false
     }
 
     // 403エラー時の再開処理
     private fun handle403Error(ncode: String, updateType: Int) {
-        Log.w(TAG, "403エラー検出: $ncode, 10分後に再開します")
+        AppLogger.w(TAG, "403エラー検出: $ncode, 10分後に再開します")
 
         // 10分後にオペレーションを再キュー
         val intent = Intent(this, UpdateService::class.java).apply {
@@ -351,11 +372,7 @@ class UpdateService : Service() {
         notificationManager.notify(NOTIFICATION_ID + 1, notification)
 
         // 次のオペレーションへ（2秒待機）
-        serviceScope.launch {
-            delay(2000)
-            isRunning = true
-            processNextOperation()
-        }
+        scheduleNextOperation(2000L)
     }
 
     private fun createNotificationChannel() {
@@ -509,7 +526,8 @@ class UpdateService : Service() {
                 }
 
                 // Check for new episodes
-                if (generalAllNo > novel.general_all_no) {
+                // 更新判定: 最新話数（general_all_no）> 取得済み話数（total_ep）。Worker / UpdateInfoScreen と同じ基準（M5）
+                if (generalAllNo > novel.total_ep) {
                     // Add to update queue
                     val updateQueue = UpdateQueueEntity(
                         ncode = novel.ncode,
@@ -524,7 +542,7 @@ class UpdateService : Service() {
                     updateComplete(true, "この小説に更新はありません")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Update check error", e)
+                AppLogger.e(TAG, "Update check error", e)
 
                 // 403エラー検出
                 if (is403Error(e)) {
@@ -656,13 +674,13 @@ class UpdateService : Service() {
 
                                 retryCount++
                                 if (retryCount < maxRetries) {
-                                    Log.w(TAG, "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): ${episode.episode_no}")
+                                    AppLogger.w(TAG, "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): ${episode.episode_no}")
                                     delay(1000) // 1秒待機してから再試行
                                 }
                             }
 
                             if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
-                                Log.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: ${episode.episode_no}")
+                                AppLogger.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: ${episode.episode_no}")
                                 // エラー文字列で既存の本文を上書きしない
                             } else {
                                 // 正常取得できた場合のみ保存
@@ -671,7 +689,7 @@ class UpdateService : Service() {
                                 successCount++
                             }
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to fetch episode ${episode.episode_no}: ${e.message}")
+                            AppLogger.e(TAG, "Failed to fetch episode ${episode.episode_no}: ${e.message}")
                             // エラー発生時も既存データを保持（本文なしでの上書き禁止）
                         }
 
@@ -806,7 +824,7 @@ class UpdateService : Service() {
 
                 updateComplete(true, "完了: 成功${successCount}件、失敗${failCount}件")
             } catch (e: Exception) {
-                Log.e(TAG, "Download episodes error", e)
+                AppLogger.e(TAG, "Download episodes error", e)
 
                 // 403エラー検出
                 if (is403Error(e)) {
@@ -969,13 +987,13 @@ class UpdateService : Service() {
 
                                     retryCount++
                                     if (retryCount < maxRetries) {
-                                        Log.w(TAG, "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): $episodeNoInt")
+                                        AppLogger.w(TAG, "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): $episodeNoInt")
                                         delay(1000) // 1秒待機してから再試行
                                     }
                                 }
 
                                 if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
-                                    Log.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: $episodeNoInt")
+                                    AppLogger.e(TAG, "Failed to fetch episode body after ${maxRetries} retries: $episodeNoInt")
                                 } else {
                                     // 正常取得できた場合のみ保存（エラー文字列で上書きしない）
                                     val episodeWithBody = episodeInfo.copy(body = episodeBody)
@@ -984,7 +1002,7 @@ class UpdateService : Service() {
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to fetch episode $episodeNoInt: ${e.message}")
+                            AppLogger.e(TAG, "Failed to fetch episode $episodeNoInt: ${e.message}")
                             // エラーでも処理を継続
                         }
 
@@ -1131,7 +1149,7 @@ class UpdateService : Service() {
 
                 updateComplete(true, "完了: 成功${successCount}件、失敗${failCount}件")
             } catch (e: Exception) {
-                Log.e(TAG, "Fix episodes error", e)
+                AppLogger.e(TAG, "Fix episodes error", e)
 
                 // 403エラー検出
                 if (is403Error(e)) {
@@ -1367,7 +1385,7 @@ class UpdateService : Service() {
                             // 末尾まで保存済み（途中の欠番はエラー修正で再取得可能）
                             repository.deleteUpdateQueueByNcode(queueItem.ncode)
                         }
-                        Log.w(TAG, "一括更新で${failForNovel}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
+                        AppLogger.w(TAG, "一括更新で${failForNovel}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
                     }
                 }
 
@@ -1378,7 +1396,7 @@ class UpdateService : Service() {
                 }
                 updateComplete(true, message)
             } catch (e: Exception) {
-                Log.e(TAG, "Bulk update error", e)
+                AppLogger.e(TAG, "Bulk update error", e)
 
                 // 403エラー検出（performBulkUpdateは特定のncodeを持たないため、最初のncodeを使用）
                 if (is403Error(e)) {
@@ -1499,7 +1517,7 @@ class UpdateService : Service() {
                                     )
                                     repository.insertEpisode(episodeWithRevisionTime)
                                     revisedCount++
-                                    Log.d(TAG, "改稿を検出: 第${revisionInfo.episodeNo}話 (${revisionInfo.updateTime})")
+                                    AppLogger.d(TAG, "改稿を検出: 第${revisionInfo.episodeNo}話 (${revisionInfo.updateTime})")
                                 }
 
                                 // サーバー負荷軽減
@@ -1523,11 +1541,11 @@ class UpdateService : Service() {
                         updateComplete(true, "改稿は見つかりませんでした")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "改稿チェックエラー", e)
+                    AppLogger.e(TAG, "改稿チェックエラー", e)
                     updateComplete(false, "エラー: ${e.message}")
                 }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Revision check error", e)
+                    AppLogger.e(TAG, "Revision check error", e)
 
                     // 403エラー検出
                     if (is403Error(e)) {

@@ -6,9 +6,9 @@
 package com.shunlight_library.novel_reader.ui.components
 
 import android.app.Activity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,7 +46,7 @@ fun DatabaseFileSelector(
                 try {
                     // 永続的な権限を付与
                     contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    Log.d("DatabaseFileSelector", "取得した永続的なアクセス権限: $path")
+                    AppLogger.d("DatabaseFileSelector", "取得した永続的なアクセス権限: $path")
 
                     // 成功メッセージをトーストで表示
                     Toast.makeText(context, "データベースファイルへのアクセス権限を取得しました", Toast.LENGTH_SHORT).show()
@@ -54,7 +54,7 @@ fun DatabaseFileSelector(
                     // 選択されたURIをコールバックで通知
                     onFileSelected(uri)
                 } catch (e: Exception) {
-                    Log.e("DatabaseFileSelector", "権限取得エラー: ${e.message}", e)
+                    AppLogger.e("DatabaseFileSelector", "権限取得エラー: ${e.message}", e)
                     Toast.makeText(context, "アクセス権限の取得に失敗しました", Toast.LENGTH_SHORT).show()
                 }
             }

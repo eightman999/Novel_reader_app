@@ -6,7 +6,7 @@
 package com.shunlight_library.novel_reader.worker
 
 import android.content.Context
-import android.util.Log
+import com.shunlight_library.novel_reader.utils.AppLogger
 import androidx.lifecycle.LiveData
 import androidx.work.*
 import kotlinx.coroutines.guava.await
@@ -45,7 +45,7 @@ class AutoUpdateScheduler(private val context: Context) {
             val (hour, minute) = parseTimeString(timeString)
             val delay = calculateInitialDelay(hour, minute)
 
-            Log.d(TAG, "自動更新スケジュール設定: ${timeString} (${delay}分後に開始, policy=$existingWorkPolicy)")
+            AppLogger.d(TAG, "自動更新スケジュール設定: ${timeString} (${delay}分後に開始, policy=$existingWorkPolicy)")
 
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -64,9 +64,9 @@ class AutoUpdateScheduler(private val context: Context) {
                 workRequest
             )
 
-            Log.d(TAG, "自動更新スケジュール登録完了")
+            AppLogger.d(TAG, "自動更新スケジュール登録完了")
         } catch (e: Exception) {
-            Log.e(TAG, "自動更新スケジュール設定エラー", e)
+            AppLogger.e(TAG, "自動更新スケジュール設定エラー", e)
         }
     }
 
@@ -75,7 +75,7 @@ class AutoUpdateScheduler(private val context: Context) {
      */
     fun cancelAutoUpdate() {
         workManager.cancelUniqueWork(WORK_NAME)
-        Log.d(TAG, "自動更新スケジュールをキャンセル")
+        AppLogger.d(TAG, "自動更新スケジュールをキャンセル")
     }
 
     /**
@@ -86,7 +86,7 @@ class AutoUpdateScheduler(private val context: Context) {
         workManager.cancelAllWork()
         // 完了済み・キャンセル済みのワークをDBから削除
         workManager.pruneWork()
-        Log.d(TAG, "すべての更新スケジュールを削除しました")
+        AppLogger.d(TAG, "すべての更新スケジュールを削除しました")
     }
 
     /**
@@ -107,7 +107,7 @@ class AutoUpdateScheduler(private val context: Context) {
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        Log.d(TAG, "手動更新を実行")
+        AppLogger.d(TAG, "手動更新を実行")
     }
 
     /**
@@ -130,7 +130,7 @@ class AutoUpdateScheduler(private val context: Context) {
                 workInfo.state == WorkInfo.State.BLOCKED
             }
         } catch (e: Exception) {
-            Log.e(TAG, "ワーク状態の取得に失敗", e)
+            AppLogger.e(TAG, "ワーク状態の取得に失敗", e)
             false
         }
     }
@@ -144,7 +144,7 @@ class AutoUpdateScheduler(private val context: Context) {
         // 設定変更時は REPLACE で強制的に再スケジュール（起動時の KEEP とは区別）
         scheduleAutoUpdateInternal(enabled, timeString, ExistingPeriodicWorkPolicy.REPLACE)
 
-        Log.d(TAG, "スケジュールをリセットしました")
+        AppLogger.d(TAG, "スケジュールをリセットしました")
     }
 
     /**

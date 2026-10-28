@@ -8,7 +8,7 @@ package com.shunlight_library.novel_reader.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.service.UpdateService
 
 /**
@@ -26,7 +26,7 @@ class DownloadAllReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == ACTION_DOWNLOAD_ALL) {
-            Log.d(TAG, "ダウンロールボタンがタップされました")
+            AppLogger.d(TAG, "ダウンロールボタンがタップされました")
 
             // UpdateServiceを起動して一括ダウンロードを実行
             val serviceIntent = Intent(context, UpdateService::class.java).apply {
@@ -35,7 +35,7 @@ class DownloadAllReceiver : BroadcastReceiver() {
             }
             context.startService(serviceIntent)
 
-            Log.d(TAG, "UpdateServiceで一括ダウンロードを開始しました")
+            AppLogger.d(TAG, "UpdateServiceで一括ダウンロードを開始しました")
         }
     }
 }

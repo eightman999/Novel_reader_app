@@ -208,6 +208,40 @@ class NovelRepository(
         }
     }
 
+    /**
+     * 既存エピソードの既読情報（is_read / is_bookmark / reading_rate）と本文を保持して新エピソードとマージする。
+     *
+     * 既存全話の本文をロードしないよう、既存側は軽量メタ（EpisodeMeta）で取得し、
+     * 「新しい本文が空かつ既存本文あり」の話だけ個別に本文を読み出す（L3）。
+     *
+     * @return マージ結果と既存件数
+     */
+    private suspend fun mergeWithExistingEpisodes(
+        ncode: String,
+        newEpisodes: List<EpisodeEntity>
+    ): Pair<List<EpisodeEntity>, Int> {
+        val existingMetaMap = episodeDao.getEpisodeMetasByNcode(ncode).first().associateBy { it.episode_no }
+        val merged = newEpisodes.map { newEpisode ->
+            val existing = existingMetaMap[newEpisode.episode_no]
+            if (existing != null) {
+                val body = if (newEpisode.body.isEmpty() && existing.body_empty == 0) {
+                    episodeDao.getEpisode(ncode, newEpisode.episode_no)?.body ?: newEpisode.body
+                } else {
+                    newEpisode.body
+                }
+                newEpisode.copy(
+                    body = body,
+                    is_read = existing.is_read,
+                    is_bookmark = existing.is_bookmark,
+                    reading_rate = existing.reading_rate
+                )
+            } else {
+                newEpisode
+            }
+        }
+        return merged to existingMetaMap.size
+    }
+
     suspend fun insertEpisodes(episodes: List<EpisodeEntity>, preserveExisting: Boolean = true) {
         withContext(Dispatchers.IO) {
             if (episodes.isEmpty()) {
@@ -220,22 +254,7 @@ class NovelRepository(
                 val mergedAll = mutableListOf<EpisodeEntity>()
 
                 for ((ncode, group) in grouped) {
-                    val existingEpisodes = episodeDao.getEpisodesByNcode(ncode).first()
-                    val existingMap = existingEpisodes.associateBy { it.episode_no }
-
-                    val merged = group.map { newEpisode ->
-                        val existing = existingMap[newEpisode.episode_no]
-                        if (existing != null) {
-                            newEpisode.copy(
-                                body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
-                                is_read = existing.is_read,
-                                is_bookmark = existing.is_bookmark,
-                                reading_rate = existing.reading_rate
-                            )
-                        } else {
-                            newEpisode
-                        }
-                    }
+                    val (merged, _) = mergeWithExistingEpisodes(ncode, group)
                     mergedAll.addAll(merged)
                 }
 
@@ -257,37 +276,18 @@ class NovelRepository(
     suspend fun insertEpisodesPreservingReadStatus(episodes: List<EpisodeEntity>) {
         withContext(Dispatchers.IO) {
             if (episodes.isEmpty()) {
-                android.util.Log.w("NovelRepository", "エピソードリストが空です")
+                AppLogger.w("NovelRepository", "エピソードリストが空です")
                 return@withContext
             }
 
             val ncode = episodes.first().ncode
 
-            // 既存のエピソードを取得（既読情報と本文を保持するため）
-            val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
-            val existingEpisodesSnapshot = existingEpisodes.first()
-            val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
-
-            // 新しいエピソードと既存のエピソードをマージ（既読情報と本文を保持）
-            val mergedEpisodes = episodes.map { newEpisode ->
-                val existing = existingMap[newEpisode.episode_no]
-                if (existing != null) {
-                    // 既存のエピソードがある場合、既読情報を保持
-                    newEpisode.copy(
-                        body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
-                        is_read = existing.is_read,
-                        is_bookmark = existing.is_bookmark,
-                        reading_rate = existing.reading_rate
-                    )
-                } else {
-                    // 新しいエピソード（既読情報はデフォルト値）
-                    newEpisode
-                }
-            }
+            // 既存のエピソードと既読情報・本文を保持してマージ（既存側は軽量メタで取得）
+            val (mergedEpisodes, existingCount) = mergeWithExistingEpisodes(ncode, episodes)
 
             // マージしたエピソードを保存
             episodeDao.insertEpisodes(mergedEpisodes)
-            android.util.Log.d("NovelRepository", "エピソード保存（既読情報保持）: ${mergedEpisodes.size}件 (ncode=$ncode, 既存: ${existingMap.size}件, 新規: ${mergedEpisodes.size - existingMap.size}件)")
+            AppLogger.d("NovelRepository", "エピソード保存（既読情報保持）: ${mergedEpisodes.size}件 (ncode=$ncode, 既存: ${existingCount}件, 新規: ${mergedEpisodes.size - existingCount}件)")
         }
     }
 
@@ -308,33 +308,14 @@ class NovelRepository(
     ) {
         withContext(Dispatchers.IO) {
             if (episodes.isEmpty()) {
-                android.util.Log.w("NovelRepository", "エピソードリストが空です")
+                AppLogger.w("NovelRepository", "エピソードリストが空です")
                 return@withContext
             }
 
             val ncode = episodes.first().ncode
 
-            // 既存のエピソードを取得（既読情報と本文を保持するため）
-            val existingEpisodes = episodeDao.getEpisodesByNcode(ncode)
-            val existingEpisodesSnapshot = existingEpisodes.first()
-            val existingMap = existingEpisodesSnapshot.associateBy { it.episode_no }
-
-            // 新しいエピソードと既存のエピソードをマージ（既読情報と本文を保持）
-            val mergedEpisodes = episodes.map { newEpisode ->
-                val existing = existingMap[newEpisode.episode_no]
-                if (existing != null) {
-                    // 既存のエピソードがある場合、既読情報を保持
-                    newEpisode.copy(
-                        body = if (newEpisode.body.isEmpty() && existing.body.isNotEmpty()) existing.body else newEpisode.body,
-                        is_read = existing.is_read,
-                        is_bookmark = existing.is_bookmark,
-                        reading_rate = existing.reading_rate
-                    )
-                } else {
-                    // 新しいエピソード（既読情報はデフォルト値）
-                    newEpisode
-                }
-            }
+            // 既存のエピソードと既読情報・本文を保持してマージ（既存側は軽量メタで取得）
+            val (mergedEpisodes, existingCount) = mergeWithExistingEpisodes(ncode, episodes)
 
             // マッピング情報を構築
             val mappingEntities = mappings.map { (episodeNo, kakuyomuId) ->
@@ -352,7 +333,7 @@ class NovelRepository(
                     episodeMappingDao.insertMappings(mappingEntities)
                 }
             }
-            android.util.Log.d("NovelRepository", "カクヨムエピソード保存: ${mergedEpisodes.size}件, マッピング: ${mappingEntities.size}件 (ncode=$ncode)")
+            AppLogger.d("NovelRepository", "カクヨムエピソード保存: ${mergedEpisodes.size}件, マッピング: ${mappingEntities.size}件 (ncode=$ncode)")
         }
     }
 
@@ -371,6 +352,22 @@ class NovelRepository(
 
     suspend fun insertEpisodeMappings(mappings: List<EpisodeMappingEntity>) {
         episodeMappingDao.insertMappings(mappings)
+    }
+
+    /**
+     * 小説情報とカクヨムのepisode_mappingをアトミックに保存する（M3）。
+     * 途中失敗で「mapping欠落の小説」や「小説なしのmapping」が残らないようにする。
+     */
+    suspend fun insertNovelWithEpisodeMappings(
+        novel: NovelDescEntity,
+        mappings: List<EpisodeMappingEntity>
+    ) {
+        runInTransaction {
+            insertNovel(novel)
+            if (mappings.isNotEmpty()) {
+                episodeMappingDao.insertMappings(mappings)
+            }
+        }
     }
 
     suspend fun getKakuyomuEpisodeId(ncode: String, episodeNo: Int): String? {
@@ -612,6 +609,11 @@ class NovelRepository(
     // v2.0.0 新規メソッド: sub_site / end_flag / last_checked_at 更新
     suspend fun updateEndFlag(ncode: String, endFlag: Int) {
         withContext(Dispatchers.IO) { novelDescDao.updateEndFlag(ncode, endFlag) }
+    }
+
+    /** サイト上の最新話数（general_all_no）のみを更新する（他カラムを古いスナップショットで上書きしない） */
+    suspend fun updateGeneralAllNo(ncode: String, generalAllNo: Int) {
+        withContext(Dispatchers.IO) { novelDescDao.updateGeneralAllNo(ncode, generalAllNo) }
     }
 
     suspend fun updateLastCheckedAt(ncode: String, dateTime: String) {
@@ -1193,20 +1195,27 @@ class NovelRepository(
      * @return 統合されたエピソード数
      */
     suspend fun mergeTempEpisodesToMain(ncode: String, deleteTempAfterMerge: Boolean = true): Int {
-        val tempEpisodes = tempEpisodeDao.getByNcode(ncode)
-        if (tempEpisodes.isEmpty()) return 0
+        // コピーと一時データ削除を1トランザクションにまとめ、途中失敗時の重複・部分統合を防ぐ（L7）
+        val mergedCount = runInTransaction {
+            val tempEpisodes = tempEpisodeDao.getByNcode(ncode)
+            if (tempEpisodes.isEmpty()) return@runInTransaction 0
 
-        var mergedCount = 0
-        for (tempEp in tempEpisodes) {
-            val mainEpisode = tempEp.toEpisodeEntity()
-            // insertEpisode は既存の既読・ブックマーク状態を保持する
-            insertEpisode(mainEpisode)
-            mergedCount++
+            var count = 0
+            for (tempEp in tempEpisodes) {
+                val mainEpisode = tempEp.toEpisodeEntity()
+                // insertEpisode は既存の既読・ブックマーク状態を保持する
+                insertEpisode(mainEpisode)
+                count++
+            }
+            if (deleteTempAfterMerge) {
+                tempEpisodeDao.deleteByNcode(ncode)
+            }
+            count
         }
+        if (mergedCount == 0) return 0
 
         if (deleteTempAfterMerge) {
-            // 統合完了後、一時データを削除
-            tempEpisodeDao.deleteByNcode(ncode)
+            // 統合完了後、一時データを削除済み
             AppLogger.d("NovelRepository", "一時エピソード統合完了（一時データ削除済み）: ncode=$ncode, ${mergedCount}話")
         } else {
             // タイムアウト時: 一時データを保持してリトライ時のレジュームを可能にする
@@ -1234,6 +1243,17 @@ class NovelRepository(
      */
     suspend fun deleteAllTempEpisodes() {
         tempEpisodeDao.deleteAll()
+    }
+
+    /**
+     * 新規登録キューと、そのキューに紐づく一時エピソードをアトミックに削除する（L6）。
+     * ncode基準ではなくqueue_id基準で削除し、同じncodeの他キューの一時データを巻き込まない。
+     */
+    suspend fun deleteRegistrationQueueWithTempEpisodes(queueId: Long) {
+        runInTransaction {
+            tempEpisodeDao.deleteByQueueId(queueId)
+            registrationQueueDao.deleteById(queueId)
+        }
     }
 
     /**

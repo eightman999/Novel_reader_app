@@ -6,10 +6,10 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -33,7 +33,7 @@ class DatabaseSchemaAnalyzer(private val context: Context) {
     suspend fun analyzeExternalDbSchema(uri: Uri): String {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "外部DBスキーマ分析を開始: $uri")
+                AppLogger.d(TAG, "外部DBスキーマ分析を開始: $uri")
 
                 // 一時ファイルを作成
                 val tempDbFile = createTempDbFile(uri)
@@ -84,10 +84,10 @@ class DatabaseSchemaAnalyzer(private val context: Context) {
                 externalDb.close()
                 tempDbFile.delete()
 
-                Log.d(TAG, "外部DBスキーマ分析完了")
+                AppLogger.d(TAG, "外部DBスキーマ分析完了")
                 return@withContext schemaInfo
             } catch (e: Exception) {
-                Log.e(TAG, "外部DBスキーマ分析中にエラーが発生しました", e)
+                AppLogger.e(TAG, "外部DBスキーマ分析中にエラーが発生しました", e)
                 return@withContext "エラー: ${e.message}"
             }
         }
@@ -110,13 +110,13 @@ class DatabaseSchemaAnalyzer(private val context: Context) {
                         input.copyTo(output)
                     }
                 } ?: run {
-                    Log.e(TAG, "URIからの入力ストリームを開けませんでした: $uri")
+                    AppLogger.e(TAG, "URIからの入力ストリームを開けませんでした: $uri")
                     return@withContext null
                 }
 
                 return@withContext tempFile
             } catch (e: Exception) {
-                Log.e(TAG, "一時DBファイルの作成中にエラーが発生しました", e)
+                AppLogger.e(TAG, "一時DBファイルの作成中にエラーが発生しました", e)
                 return@withContext null
             }
         }
@@ -134,7 +134,7 @@ class DatabaseSchemaAnalyzer(private val context: Context) {
                 SQLiteDatabase.OPEN_READONLY
             )
         } catch (e: Exception) {
-            Log.e(TAG, "データベースを開く際にエラーが発生しました: $dbPath", e)
+            AppLogger.e(TAG, "データベースを開く際にエラーが発生しました: $dbPath", e)
             null
         }
     }

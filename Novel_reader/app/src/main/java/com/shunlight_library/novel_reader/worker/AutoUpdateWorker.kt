@@ -12,7 +12,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.util.Log
+import com.shunlight_library.novel_reader.utils.AppLogger
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -36,7 +36,6 @@ import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.KakuyomuAdapter
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
-import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator
 import com.shunlight_library.novel_reader.utils.ReleaseUtils
@@ -79,7 +78,7 @@ class AutoUpdateWorker(
         com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.setAutoUpdateRunning(true)
 
         return try {
-            Log.d(TAG, "自動更新処理開始")
+            AppLogger.d(TAG, "自動更新処理開始")
 
             // 通知チャンネルを作成
             createNotificationChannel()
@@ -88,7 +87,7 @@ class AutoUpdateWorker(
             try {
                 setForeground(createForegroundInfo("小説更新確認中..."))
             } catch (e: Exception) {
-                Log.w(TAG, "フォアグラウンドサービス開始に失敗（バックグラウンドで継続）: ${e.message}")
+                AppLogger.w(TAG, "フォアグラウンドサービス開始に失敗（バックグラウンドで継続）: ${e.message}")
             }
             AppLogger.logNotification("自動更新開始", "小説更新確認中...")
 
@@ -105,16 +104,16 @@ class AutoUpdateWorker(
             try {
                 SettingsStore(applicationContext).setLastAutoUpdateRunAt(System.currentTimeMillis())
             } catch (e: Exception) {
-                Log.w(TAG, "最終自動更新実行時刻の保存に失敗", e)
+                AppLogger.w(TAG, "最終自動更新実行時刻の保存に失敗", e)
             }
 
-            Log.d(TAG, "自動更新処理完了")
+            AppLogger.d(TAG, "自動更新処理完了")
             Result.success()
         } catch (e: CancellationException) {
             // WorkManager による正常キャンセル（REPLACE, 10分制限等）はエラー通知しない
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "自動更新処理中にエラーが発生", e)
+            AppLogger.e(TAG, "自動更新処理中にエラーが発生", e)
             val errorMsg = e.message ?: "不明なエラー"
             sendErrorNotification(errorMsg)
 
@@ -135,7 +134,7 @@ class AutoUpdateWorker(
                     )
                 )
             } catch (logErr: Exception) {
-                Log.e(TAG, "致命的エラーのログ保存に失敗", logErr)
+                AppLogger.e(TAG, "致命的エラーのログ保存に失敗", logErr)
             }
 
             Result.failure()
@@ -157,7 +156,7 @@ class AutoUpdateWorker(
             try {
                 // 自動更新開始時にupdate_queueをリセット
                 repository.clearAllUpdateQueue()
-                Log.d(TAG, "update_queueをリセットしました")
+                AppLogger.d(TAG, "update_queueをリセットしました")
 
                 // 更新対象の小説を取得（全ての小説）
                 val allNovels = repository.getNovelsForUpdate()
@@ -172,7 +171,7 @@ class AutoUpdateWorker(
                     (!excludeShort || novel.site_type != NovelSiteAdapter.SITE_TYPE_SYOSETU || novel.noveltype != 2) &&
                     (!excludeCompleted || novel.end_flag != 1)
                 }
-                Log.d(TAG, "更新対象小説数: ${novels.size} (全${allNovels.size}件, 短編除外=$excludeShort, 完結除外=$excludeCompleted)")
+                AppLogger.d(TAG, "更新対象小説数: ${novels.size} (全${allNovels.size}件, 短編除外=$excludeShort, 完結除外=$excludeCompleted)")
 
                 // なろう作品はAPI一括取得（ncode OR検索）でリクエスト数を削減する
                 // （1作品=1リクエスト → 最大100作品=1リクエスト）
@@ -183,11 +182,11 @@ class AutoUpdateWorker(
                     val r18Ncodes = syosetuNovels.filter { it.rating == 1 }.map { it.ncode }
                     syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(generalNcodes, isR18 = false))
                     syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(r18Ncodes, isR18 = true))
-                    Log.d(TAG, "なろう一括取得完了: 対象${syosetuNovels.size}件中 ${syosetuInfoMap.size}件取得")
+                    AppLogger.d(TAG, "なろう一括取得完了: 対象${syosetuNovels.size}件中 ${syosetuInfoMap.size}件取得")
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "なろう一括取得エラー（個別取得にフォールバック）", e)
+                    AppLogger.e(TAG, "なろう一括取得エラー（個別取得にフォールバック）", e)
                 }
 
                 // 更新キュー（エピソード数確認の結果）
@@ -207,7 +206,7 @@ class AutoUpdateWorker(
                                     // ロック機構を使用して同時実行を防ぐ
                                     val session = NovelUpdateCoordinator.beginUpdate(novel.ncode)
                                     if (session == null) {
-                                        Log.d(TAG, "小説 ${novel.ncode} は既に更新処理中のためスキップ")
+                                        AppLogger.d(TAG, "小説 ${novel.ncode} は既に更新処理中のためスキップ")
                                         return@async Pair(Pair(0, 0), Pair(null, null))
                                     }
 
@@ -226,7 +225,10 @@ class AutoUpdateWorker(
                                                         ncode = novel.ncode,
                                                         isR18 = isR18
                                                     )
-                                                    apiInfo?.generalAllNo ?: novel.total_ep
+                                                    // 取得失敗を「更新なし」として扱わない（M8）。
+                                                    // 例外として扱い、エラー記録・確認日時を更新せずに次回再確認させる。
+                                                    apiInfo?.generalAllNo
+                                                        ?: throw IllegalStateException("なろうAPIから最新話数を取得できませんでした")
                                                 }
                                             }
                                             NovelSiteAdapter.SITE_TYPE_KAKUYOMU -> {
@@ -238,8 +240,14 @@ class AutoUpdateWorker(
                                             else -> novel.total_ep
                                         }
 
-                                        // エピソード数を比較して更新キューに追加
+                                        // 更新判定: サイト上の最新話数（general_all_no）> 取得済み話数（total_ep）
+                                        // UpdateInfoScreen / UpdateService と同じ基準（M5）。
+                                        // update_queue: total_ep=取得済み話数、general_all_no=最新話数
                                         if (latestEpisodeCount > novel.total_ep) {
+                                            // 最新話数を永続化（画面側の件数計算で古い general_all_no が混入しないように）
+                                            if (latestEpisodeCount != novel.general_all_no) {
+                                                repository.updateGeneralAllNo(novel.ncode, latestEpisodeCount)
+                                            }
                                             updateQueueItem = UpdateQueueEntity(
                                                 ncode = novel.ncode,
                                                 total_ep = novel.total_ep,
@@ -253,7 +261,7 @@ class AutoUpdateWorker(
                                                 localUpdatedCount = 1
                                             }
 
-                                            Log.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)")
+                                            AppLogger.d(TAG, "更新検出: ${novel.title} (${novel.total_ep} -> $latestEpisodeCount)")
                                         }
                                         // 更新確認日時を記録
                                         val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -262,7 +270,7 @@ class AutoUpdateWorker(
                                         NovelUpdateCoordinator.finishUpdate(session)
                                     }
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "小説 ${novel.ncode} の更新確認エラー", e)
+                                    AppLogger.e(TAG, "小説 ${novel.ncode} の更新確認エラー", e)
                                     error = "${novel.title}: ${e.message}"
 
                                     try {
@@ -314,20 +322,20 @@ class AutoUpdateWorker(
                 // エピソードをダウンロード（更新があった小説のみ）
                 val autoDownloadEnabled = settingsStore.autoDownloadEnabled.first()
                 if (autoDownloadEnabled && updateQueueItems.isNotEmpty()) {
-                    Log.d(TAG, "エピソードダウンロードを開始します: ${updateQueueItems.size}作品")
+                    AppLogger.d(TAG, "エピソードダウンロードを開始します: ${updateQueueItems.size}作品")
 
                     updateQueueItems.forEach { queueItem ->
                     try {
                         val session = NovelUpdateCoordinator.beginUpdate(queueItem.ncode)
                         if (session == null) {
-                            Log.d(TAG, "小説 ${queueItem.ncode} は既にダウンロード処理中のためスキップ")
+                            AppLogger.d(TAG, "小説 ${queueItem.ncode} は既にダウンロード処理中のためスキップ")
                             return@forEach
                         }
 
                         try {
                             val novel = repository.getNovelByNcode(queueItem.ncode)
                             if (novel == null) {
-                                Log.e(TAG, "小説情報が見つかりません: ${queueItem.ncode}")
+                                AppLogger.e(TAG, "小説情報が見つかりません: ${queueItem.ncode}")
                                 return@forEach
                             }
 
@@ -369,14 +377,14 @@ class AutoUpdateWorker(
                                         // 末尾まで保存済み（途中の欠番はエラー修正で再取得可能）
                                         repository.deleteUpdateQueueByNcode(queueItem.ncode)
                                     }
-                                    Log.w(TAG, "自動DLで${downloadInfo.failedEpisodes.size}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
+                                    AppLogger.w(TAG, "自動DLで${downloadInfo.failedEpisodes.size}件失敗: ${queueItem.ncode} (保存済み最大話数: $maxSavedEp)")
                                 }
                             }
                         } finally {
                             NovelUpdateCoordinator.finishUpdate(session)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "エピソードダウンロードエラー: ${queueItem.ncode}", e)
+                        AppLogger.e(TAG, "エピソードダウンロードエラー: ${queueItem.ncode}", e)
                         errors.add("${queueItem.ncode}: ダウンロードエラー - ${e.message}")
 
                         try {
@@ -399,11 +407,11 @@ class AutoUpdateWorker(
                     }
                 }
                 } else {
-                    Log.d(TAG, "自動ダウンロードが無効のため、エピソードのダウンロードをスキップしました")
+                    AppLogger.d(TAG, "自動ダウンロードが無効のため、エピソードのダウンロードをスキップしました")
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "更新確認処理全体でエラー", e)
+                AppLogger.e(TAG, "更新確認処理全体でエラー", e)
                 errors.add("全体処理エラー: ${e.message}")
             }
 
@@ -420,7 +428,7 @@ class AutoUpdateWorker(
         val failedEpisodes = mutableListOf<EpisodeInfo>()
 
         val episodeNos = (startEpisodeNo + 1)..endEpisodeNo
-        Log.d(TAG, "「${novel.title}」のエピソードをダウンロード: ${episodeNos.first} - ${episodeNos.last}")
+        AppLogger.d(TAG, "「${novel.title}」のエピソードをダウンロード: ${episodeNos.first} - ${episodeNos.last}")
 
         try {
             if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
@@ -429,7 +437,7 @@ class AutoUpdateWorker(
                 downloadSyosetuEpisodes(novel, episodeNos, successEpisodes, failedEpisodes)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "「${novel.title}」のダウンロード中にエラー", e)
+            AppLogger.e(TAG, "「${novel.title}」のダウンロード中にエラー", e)
         }
 
         return NovelDownloadInfo(
@@ -472,7 +480,7 @@ class AutoUpdateWorker(
                     }
                 } catch (e: Exception) {
                     errorMessage = e.message
-                    Log.w(TAG, "エピソード ${episodeNo} のダウンロード失敗 (試行 ${retry}/${MAX_RETRIES})", e)
+                    AppLogger.w(TAG, "エピソード ${episodeNo} のダウンロード失敗 (試行 ${retry}/${MAX_RETRIES})", e)
                     if (retry < MAX_RETRIES) {
                         kotlinx.coroutines.delay((1000 * retry).toLong()) // 指数バックオフ: 1秒、2秒、4秒
                     }
@@ -508,9 +516,9 @@ class AutoUpdateWorker(
             val fetched = kakuyomuAdapter.fetchNovelMetadataWithEpisodeListAndMappings(workId)
             episodeListFromWeb = fetched.episodes
             mappings = fetched.episodeMappings
-            Log.d(TAG, "カクヨムエピソードリスト再取得完了: ${novel.ncode}, ${fetched.episodes.size}話")
+            AppLogger.d(TAG, "カクヨムエピソードリスト再取得完了: ${novel.ncode}, ${fetched.episodes.size}話")
         } catch (e: Exception) {
-            Log.e(TAG, "カクヨムエピソードリスト再取得エラー: ${novel.ncode}", e)
+            AppLogger.e(TAG, "カクヨムエピソードリスト再取得エラー: ${novel.ncode}", e)
 
             try {
                 val sw = java.io.StringWriter()
@@ -557,9 +565,9 @@ class AutoUpdateWorker(
                     )
                 }
                 repository.insertEpisodeMappings(mappingEntities)
-                Log.d(TAG, "episode_mapping 保存完了: ${novel.ncode}, ${mappingEntities.size}件")
+                AppLogger.d(TAG, "episode_mapping 保存完了: ${novel.ncode}, ${mappingEntities.size}件")
             } catch (e: Exception) {
-                Log.w(TAG, "episode_mapping 保存失敗: ${novel.ncode}", e)
+                AppLogger.w(TAG, "episode_mapping 保存失敗: ${novel.ncode}", e)
             }
         }
 
@@ -569,7 +577,7 @@ class AutoUpdateWorker(
 
             val kakuyomuEpisodeId = mappings[episodeNo]
             if (kakuyomuEpisodeId == null) {
-                Log.e(TAG, "カクヨムエピソードIDが見つかりません: ${novel.ncode} エピソード${episodeNo}")
+                AppLogger.e(TAG, "カクヨムエピソードIDが見つかりません: ${novel.ncode} エピソード${episodeNo}")
                 failedEpisodes.add(EpisodeInfo(
                     episodeNo = episodeNo,
                     title = "第${episodeNo}話",
@@ -606,7 +614,7 @@ class AutoUpdateWorker(
                     }
                 } catch (e: Exception) {
                     errorMessage = e.message
-                    Log.w(TAG, "カクヨム エピソード ${episodeNo} のダウンロード失敗 (試行 ${retry}/${MAX_RETRIES})", e)
+                    AppLogger.w(TAG, "カクヨム エピソード ${episodeNo} のダウンロード失敗 (試行 ${retry}/${MAX_RETRIES})", e)
                     if (retry < MAX_RETRIES) {
                         kotlinx.coroutines.delay((1000 * retry).toLong()) // 指数バックオフ
                     }
@@ -639,7 +647,7 @@ class AutoUpdateWorker(
             saveAppNotification(results)
         }
 
-        Log.d(TAG, "更新結果: 新規${results.newNovelsCount}件、更新${results.updatedNovelsCount}件、DL成功${results.totalSuccessEpisodes}話、DL失敗${results.totalFailedEpisodes}話")
+        AppLogger.d(TAG, "更新結果: 新規${results.newNovelsCount}件、更新${results.updatedNovelsCount}件、DL成功${results.totalSuccessEpisodes}話、DL失敗${results.totalFailedEpisodes}話")
     }
 
     private fun sendSystemNotification(results: UpdateResult, hasPendingDownloads: Boolean) {
@@ -782,8 +790,8 @@ class AutoUpdateWorker(
             timestamp = System.currentTimeMillis(),
             type = NotificationType.ERROR
         )
-            notificationStore.addNotification(appNotification)
-            AppLogger.logNotification(appNotification.title, appNotification.content)
+        notificationStore.addNotification(appNotification)
+        AppLogger.logNotification(appNotification.title, appNotification.content)
     }
 
     private fun createForegroundInfo(progress: String): ForegroundInfo {

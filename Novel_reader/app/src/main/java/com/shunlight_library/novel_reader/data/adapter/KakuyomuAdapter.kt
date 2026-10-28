@@ -25,6 +25,12 @@ import java.util.Date
 import java.util.Locale
 
 /**
+ * HTTPステータスエラー（200以外）を表す型付き例外。
+ * 呼び出し側はメッセージ文字列ではなく [statusCode] でステータスを判定する。
+ */
+class HttpStatusException(val statusCode: Int, message: String) : Exception(message)
+
+/**
  * カクヨムのエピソード取得結果（内部使用）
  * エピソードとマッピング情報を一緒に保持する
  */
@@ -181,7 +187,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         // エピソード一覧を抽出（本文なし）＋連番→カクヨムIDマッピング
         val (episodesWithoutBody, mappings) = parseEpisodeList(workId, novelDesc.ncode, doc)
 
-        android.util.Log.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
+        AppLogger.d("KakuyomuAdapter", "エピソード本文のダウンロード開始: ${episodesWithoutBody.size}話")
 
         // repositoryが指定されている場合は1話ずつ保存
         if (repository != null) {
@@ -203,7 +209,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             val actualCount = episodesWithoutBody.size
 
             if (expectedCount != actualCount) {
-                android.util.Log.e("KakuyomuAdapter", """
+                AppLogger.e("KakuyomuAdapter", """
                     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     エピソード数の不一致を検出しました！
                     - 期待されるエピソード数: ${expectedCount}話
@@ -214,10 +220,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 """.trimIndent())
             } else {
-                android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了（1話ずつ保存）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
+                AppLogger.d("KakuyomuAdapter", "小説とエピソード取得完了（1話ずつ保存）: ${novelDesc.title}, ${episodesWithoutBody.size}話")
             }
 
-            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappings.size}件 (例: ${mappings.entries.take(3)})")
+            AppLogger.d("KakuyomuAdapter", "マッピング情報: ${mappings.size}件 (例: ${mappings.entries.take(3)})")
 
             // 空リストを返す（すでに保存済み）
             return@withContext NovelWithEpisodesAndMappings(novelDesc, emptyList(), mappings)
@@ -233,7 +239,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
             val actualCount = episodesWithBody.size
 
             if (expectedCount != actualCount) {
-                android.util.Log.e("KakuyomuAdapter", """
+                AppLogger.e("KakuyomuAdapter", """
                     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     エピソード数の不一致を検出しました！
                     - 期待されるエピソード数: ${expectedCount}話
@@ -244,10 +250,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 """.trimIndent())
             } else {
-                android.util.Log.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
+                AppLogger.d("KakuyomuAdapter", "小説とエピソード取得完了: ${novelDesc.title}, ${episodesWithBody.size}話")
             }
 
-            android.util.Log.d("KakuyomuAdapter", "マッピング情報: ${mappings.size}件 (例: ${mappings.entries.take(3)})")
+            AppLogger.d("KakuyomuAdapter", "マッピング情報: ${mappings.size}件 (例: ${mappings.entries.take(3)})")
 
             return@withContext NovelWithEpisodesAndMappings(novelDesc, episodesWithBody, mappings)
         }
@@ -521,14 +527,14 @@ class KakuyomuAdapter : NovelSiteAdapter {
                     }
                     HttpURLConnection.HTTP_NOT_FOUND -> {
                         AppLogger.e("KakuyomuAdapter", "404 Not Found: $urlString")
-                        throw Exception("HTTP 404: ページが見つかりません")
+                        throw HttpStatusException(responseCode, "HTTP 404: ページが見つかりません")
                     }
                     HttpURLConnection.HTTP_FORBIDDEN -> {
                         AppLogger.e("KakuyomuAdapter", "403 Forbidden: $urlString")
-                        throw Exception("HTTP 403: アクセスが拒否されました")
+                        throw HttpStatusException(responseCode, "HTTP 403: アクセスが拒否されました")
                     }
                     else -> {
-                        throw Exception("HTTP error: $responseCode")
+                        throw HttpStatusException(responseCode, "HTTP error: $responseCode")
                     }
                 }
             } catch (e: java.net.SocketTimeoutException) {
@@ -786,7 +792,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
         """.trimIndent())
 
         // 完結フラグ検出: HTMLに"完結済"や"Completed"表記があるか確認
-        val isCompleted = detectKakuyomuCompletion(doc, workData)
+        val isCompleted = detectKakuyomuCompletion(doc, workData, workId)
         val endFlag = if (isCompleted) 1 else 2
 
         return NovelDescEntity(
@@ -1504,7 +1510,8 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 // エラーチェック: HTMLページ読み込みエラーの検出（Pascalコード参考）
                 if (checkForLoadingError(episodeBody)) {
                     AppLogger.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
-                    return@withContext "★HTMLページ読み込みエラー\n本文を正しく取得できませんでした。\n後ほど再度お試しください。"
+                    // エラー文を本文として返さない（保存経路で本文化させない）。呼び出し側は空文字を取得失敗として扱う
+                    return@withContext ""
                 }
 
                 // 本文のクリーンアップ処理を適用
@@ -1526,7 +1533,7 @@ class KakuyomuAdapter : NovelSiteAdapter {
      * @param workId 作品ID
      * @param episodeId エピソードID
      * @param episodeNo エピソード番号（フォールバック用）
-     * @return Triple<章タイトル, エピソードタイトル, 本文>
+     * @return Triple<章タイトル, エピソードタイトル, 本文>（本文は取得失敗時に空文字）
      */
     suspend fun fetchEpisodeDetails(
         workId: String,
@@ -1609,10 +1616,10 @@ class KakuyomuAdapter : NovelSiteAdapter {
                 }
             }
 
-            // エラーチェック
+            // エラーチェック（エラー文を本文として返さず空文字＝取得失敗に統一）
             if (checkForLoadingError(episodeBody)) {
                 AppLogger.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
-                episodeBody = "★HTMLページ読み込みエラー"
+                episodeBody = ""
             } else {
                 // 本文のクリーンアップ処理を適用
                 episodeBody = cleanupEpisodeBody(episodeBody)
@@ -1820,25 +1827,32 @@ class KakuyomuAdapter : NovelSiteAdapter {
      */
     /**
      * カクヨム作品の完結フラグを検出する
-     * HTMLやJSONデータから完結済み情報を取得
+     *
+     * 目次ページにはおすすめ作品等の他作品カードも含まれ、それぞれに「完結済／連載中」が表示されるため、
+     * ページ全文の部分一致は使わない（L2）。
+     * 1. __NEXT_DATA__ の対象作品（Work:{workId}、id一致を確認）の `serialStatus`（COMPLETED / RUNNING）を優先
+     * 2. JSONが無い場合のみ、作品ヘッダのステータス項目（文書順で最初の「完結済／連載中」Meta項目）を参照
      */
-    private fun detectKakuyomuCompletion(doc: org.jsoup.nodes.Document, workData: org.json.JSONObject?): Boolean {
-        // JSONから完結情報を確認
-        workData?.let {
-            val isCompleted = it.optBoolean("isCompleted", false)
-            if (isCompleted) return true
-            val serializeState = it.optString("serialState", "")
-            if (serializeState.contains("COMPLETED", ignoreCase = true)) return true
+    private fun detectKakuyomuCompletion(
+        doc: org.jsoup.nodes.Document,
+        workData: org.json.JSONObject?,
+        workId: String
+    ): Boolean {
+        // extractNextDataJson は Work: キーのフォールバックで他作品を返し得るため、id一致時のみ信頼する
+        val targetWork = workData?.takeIf { it.optString("id", "") == workId }
+        if (targetWork != null) {
+            val serialStatus = targetWork.optString("serialStatus", "")
+            if (serialStatus.isNotEmpty()) {
+                return serialStatus.equals("COMPLETED", ignoreCase = true)
+            }
+            if (targetWork.optBoolean("isCompleted", false)) return true
         }
-        // HTML内の完結バッジ・ラベルを検索
-        val pageText = doc.text()
-        if (pageText.contains("完結済")) return true
-        // 完結バッジのクラス名パターン
-        if (doc.select("[class*='completed'], [class*='Completed'], [class*='complete']").isNotEmpty()) {
-            val badge = doc.select("[class*='completed'], [class*='Completed']").text()
-            if (badge.contains("完結", ignoreCase = false)) return true
-        }
-        return false
+        // HTMLフォールバック: 作品ヘッダのステータス表示（他作品カードより文書上で先に現れる）
+        val statusText = doc.select("div[class*=Meta_metaItem__]")
+            .asSequence()
+            .map { it.text().trim() }
+            .firstOrNull { it.startsWith("完結済") || it.startsWith("連載中") }
+        return statusText?.startsWith("完結済") == true
     }
 
     private fun getCurrentDate(): String {

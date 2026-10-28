@@ -138,14 +138,14 @@ private fun checkForLoadingError(html: String): Boolean {
 
 // エラーチェックの使用例
 if (checkForLoadingError(episodeBody)) {
-    android.util.Log.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
-    return@withContext "★HTMLページ読み込みエラー\n本文を正しく取得できませんでした。\n後ほど再度お試しください。"
+    AppLogger.w("KakuyomuAdapter", "HTMLページ読み込みエラーを検出: $episodeId")
+    return@withContext ""  // 失敗は空文字で返す（呼び出し側が取得失敗として扱う）
 }
 ```
 
 **重要なルール**:
 - 本文の先頭200文字以内に`<div class="dots-indicator" id="LoadingEpisode">`が含まれていればエラー
-- エラーを検出した場合は、分かりやすいエラーメッセージを返す
+- エラーを検出した場合は空文字を返し、呼び出し側が取得失敗として扱う（v2.1.3以降。以前はエラーメッセージ文字列を返していた）
 - エラーログを出力して問題の追跡を容易にする
 - v2.0.15以降、この文字列を本文として保存しないよう normalizeEpisodeBody で全保存経路にガードを追加済み（空文字に正規化）
 
@@ -426,3 +426,10 @@ val episodeUrl = "https://kakuyomu.jp/works/{workId}/episodes/{episodeId}"
 - ユーザーには適切なエラーメッセージを表示
 
 このルールは全てのカクヨム関連処理（小説情報取得、エピソード一覧取得、エピソード本文取得、更新確認）で統一して適用すること。
+
+## 完結判定（v2.1.3以降）
+
+- 目次ページの埋め込みJSONで、対象作品（workId が一致するもの）の `serialStatus` を優先して判定する（以前は誤ったキー `serialState` を参照しており、JSONの値が使われていなかった）。
+- JSONが使えない場合のみ、作品ヘッダ内で文書順に最初に現れる「完結済／連載中」の表示で判定する。
+- ページ全体のテキストに対する `contains("完結済")` は使わない（おすすめ作品欄などの文言で誤判定するため）。
+- HTTPエラーは型付き例外 `HttpStatusException(statusCode)` で投げる。メッセージは従来の形式を保ち、403判定はステータスコードで行う（スタックトレース文字列の検索はしない）。

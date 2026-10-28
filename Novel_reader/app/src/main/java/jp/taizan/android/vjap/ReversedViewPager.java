@@ -52,7 +52,7 @@ public class ReversedViewPager extends ViewPager {
 
             event.setLocation(virtualX, event.getY());
             prevX = ex;
-            Log.d("ex", virtualX + "");
+            if (com.shunlight_library.novel_reader.BuildConfig.ENABLE_LOGGING) Log.d("ex", virtualX + "");
         }
         return super.onTouchEvent(event);
     }
@@ -84,13 +84,13 @@ public class ReversedViewPager extends ViewPager {
         @Override
         public void onPageSelected(int position) {
             virtualX = 0;
-            if (MAX_PAGE - position > totalPage && totalPage > 0) {
+            if (MAX_PAGE - position > totalPage && totalPage >= 0) {
                 leftScrollDisabled = true;
             } else {
                 leftScrollDisabled = false;
             }
 
-            if (MAX_PAGE - position > totalPage + 1 && totalPage > 0) {
+            if (MAX_PAGE - position > totalPage + 1 && totalPage >= 0) {
                 setCurrentItem(totalPage + 1);
             } else {
                 currentPage = MAX_PAGE - position;

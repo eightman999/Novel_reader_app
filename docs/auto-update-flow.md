@@ -48,7 +48,9 @@
 ```
 
 **重要なポイント**:
-- 自動更新開始時に`update_queue`を必ずリセットする（`repository.clearAllUpdateQueue()`）
+- 自動更新開始時に`update_queue`を必ずリセットする（`repository.clearAllUpdateQueue()`）。更新情報画面の全更新確認も開始時に同様にリセットする（v2.1.3以降）
+- 「更新あり」は Worker・更新情報画面・UpdateService で共通して「最新話数（API/目次の general_all_no）> 取得済み話数（novels_descs.total_ep）」で判定する。Worker は更新検出時に最新話数を general_all_no に保存する。新着話数は「最新話数 − total_ep」
+- 最新話数の取得に失敗した作品は「更新なし」と扱わない。エラーとして記録し、最終確認日時を更新せず次回再確認する（v2.1.3以降）
 - 全ての小説を対象に更新確認を実行（お気に入りのみではない）
 - 30件ずつバッチ処理で並列実行してパフォーマンスを最適化
 - なろう小説: YAML API経由で最新話数を即座に取得

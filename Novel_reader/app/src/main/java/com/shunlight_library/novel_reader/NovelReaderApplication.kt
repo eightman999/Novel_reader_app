@@ -9,6 +9,7 @@ import android.app.Application
 import android.content.Context
 import com.shunlight_library.novel_reader.data.database.NovelDatabase
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
+import com.shunlight_library.novel_reader.utils.AppLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 
@@ -38,15 +39,21 @@ class NovelReaderApplication : Application() {
 
     companion object {
         private const val TAG = "NovelReaderApp"
-        private lateinit var instance: NovelReaderApplication
 
-        fun getAppContext(): Context = instance.applicationContext
+        /** onCreateで設定され、Worker/Service等の別スレッドからも参照されるため可視性を保証する */
+        @Volatile
+        private var instance: NovelReaderApplication? = null
+
+        private fun requireInstance(): NovelReaderApplication =
+            checkNotNull(instance) { "NovelReaderApplication is not initialized yet" }
+
+        fun getAppContext(): Context = requireInstance().applicationContext
 
         // リポジトリへの簡単なアクセス用
-        fun getRepository(): NovelRepository = instance.repository
+        fun getRepository(): NovelRepository = requireInstance().repository
 
         // アプリケーションスコープへのアクセス用
-        fun getApplicationScope(): CoroutineScope = instance.applicationScope
+        fun getApplicationScope(): CoroutineScope = requireInstance().applicationScope
     }
 
     /** アプリケーション全体で使用する構造化されたCoroutineScope */
@@ -68,7 +75,7 @@ class NovelReaderApplication : Application() {
                 com.shunlight_library.novel_reader.worker.AutoUpdateScheduler(this@NovelReaderApplication)
                     .scheduleAutoUpdate(enabled, time)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "自動更新スケジュール初期化エラー", e)
+                AppLogger.e(TAG, "自動更新スケジュール初期化エラー", e)
             }
         }
     }

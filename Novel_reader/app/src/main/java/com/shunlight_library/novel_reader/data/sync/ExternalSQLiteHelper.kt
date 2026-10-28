@@ -6,10 +6,10 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.net.Uri
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -32,12 +32,12 @@ class ExternalSQLiteHelper(private val context: Context) {
     suspend fun openExternalDatabase(uri: Uri): Pair<SQLiteDatabase, File>? {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "外部DBを開く: $uri")
+                AppLogger.d(TAG, "外部DBを開く: $uri")
 
                 // 一時ファイルを作成
                 val tempDbFile = createTempDbFile(uri)
                 if (tempDbFile == null) {
-                    Log.e(TAG, "一時データベースファイルの作成に失敗しました")
+                    AppLogger.e(TAG, "一時データベースファイルの作成に失敗しました")
                     return@withContext null
                 }
 
@@ -49,14 +49,14 @@ class ExternalSQLiteHelper(private val context: Context) {
                         SQLiteDatabase.OPEN_READONLY
                     )
                 } catch (e: SQLiteException) {
-                    Log.e(TAG, "SQLiteデータベースを開く際にエラーが発生しました", e)
+                    AppLogger.e(TAG, "SQLiteデータベースを開く際にエラーが発生しました", e)
                     tempDbFile.delete()
                     return@withContext null
                 }
 
                 return@withContext Pair(db, tempDbFile)
             } catch (e: Exception) {
-                Log.e(TAG, "外部DBを開く際にエラーが発生しました", e)
+                AppLogger.e(TAG, "外部DBを開く際にエラーが発生しました", e)
                 return@withContext null
             }
         }
@@ -79,13 +79,13 @@ class ExternalSQLiteHelper(private val context: Context) {
                         input.copyTo(output)
                     }
                 } ?: run {
-                    Log.e(TAG, "URIからの入力ストリームを開けませんでした: $uri")
+                    AppLogger.e(TAG, "URIからの入力ストリームを開けませんでした: $uri")
                     return@withContext null
                 }
 
                 return@withContext tempFile
             } catch (e: Exception) {
-                Log.e(TAG, "一時DBファイルの作成中にエラーが発生しました", e)
+                AppLogger.e(TAG, "一時DBファイルの作成中にエラーが発生しました", e)
                 return@withContext null
             }
         }
@@ -99,7 +99,7 @@ class ExternalSQLiteHelper(private val context: Context) {
             db?.close()
             tempFile?.delete()
         } catch (e: Exception) {
-            Log.e(TAG, "リソースのクリーンアップ中にエラーが発生しました", e)
+            AppLogger.e(TAG, "リソースのクリーンアップ中にエラーが発生しました", e)
         }
     }
 
@@ -128,7 +128,7 @@ class ExternalSQLiteHelper(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "テーブル $tableName のレコード数取得中にエラーが発生しました", e)
+            AppLogger.e(TAG, "テーブル $tableName のレコード数取得中にエラーが発生しました", e)
         }
         return count
     }
@@ -144,7 +144,7 @@ class ExternalSQLiteHelper(private val context: Context) {
                 return it.moveToFirst() // バージョン情報が取得できればOK
             }
         } catch (e: Exception) {
-            Log.e(TAG, "SQLiteデータベースの検証中にエラーが発生しました", e)
+            AppLogger.e(TAG, "SQLiteデータベースの検証中にエラーが発生しました", e)
             return false
         }
     }

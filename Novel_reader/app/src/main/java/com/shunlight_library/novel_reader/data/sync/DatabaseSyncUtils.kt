@@ -6,7 +6,7 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.database.Cursor
-import android.util.Log
+import com.shunlight_library.novel_reader.utils.AppLogger
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -38,7 +38,7 @@ object DatabaseSyncUtils {
             val index = cursor.getColumnIndex(columnName)
             if (index >= 0) index else null
         } catch (e: Exception) {
-            Log.e(TAG, "カラム '$columnName' のインデックス取得中にエラーが発生しました", e)
+            AppLogger.e(TAG, "カラム '$columnName' のインデックス取得中にエラーが発生しました", e)
             null
         }
     }
@@ -58,7 +58,7 @@ object DatabaseSyncUtils {
                 defaultValue
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Int値の取得中にエラーが発生しました", e)
+            AppLogger.e(TAG, "Int値の取得中にエラーが発生しました", e)
             defaultValue
         }
     }
@@ -78,7 +78,7 @@ object DatabaseSyncUtils {
                 defaultValue
             }
         } catch (e: Exception) {
-            Log.e(TAG, "文字列値の取得中にエラーが発生しました", e)
+            AppLogger.e(TAG, "文字列値の取得中にエラーが発生しました", e)
             defaultValue
         }
     }
@@ -98,7 +98,7 @@ object DatabaseSyncUtils {
                 defaultValue
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Long値の取得中にエラーが発生しました", e)
+            AppLogger.e(TAG, "Long値の取得中にエラーが発生しました", e)
             defaultValue
         }
     }

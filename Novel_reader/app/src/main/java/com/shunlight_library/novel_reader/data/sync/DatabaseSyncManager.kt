@@ -6,10 +6,10 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -46,19 +46,19 @@ class DatabaseSyncManager(private val context: Context) {
     suspend fun syncFromExternalDb(uri: Uri): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "外部DBから同期を開始: $uri")
+                AppLogger.d(TAG, "外部DBから同期を開始: $uri")
 
                 // 一時ファイルを作成
                 val tempDbFile = createTempDbFile(uri)
                 if (tempDbFile == null) {
-                    Log.e(TAG, "一時データベースファイルの作成に失敗しました")
+                    AppLogger.e(TAG, "一時データベースファイルの作成に失敗しました")
                     return@withContext false
                 }
 
                 // 外部DBを開く
                 val externalDb = openExternalDatabase(tempDbFile.absolutePath)
                 if (externalDb == null) {
-                    Log.e(TAG, "外部データベースを開けませんでした")
+                    AppLogger.e(TAG, "外部データベースを開けませんでした")
                     tempDbFile.delete()
                     return@withContext false
                 }
@@ -70,10 +70,10 @@ class DatabaseSyncManager(private val context: Context) {
                 externalDb.close()
                 tempDbFile.delete()
 
-                Log.d(TAG, "外部DBからの同期完了: $syncSuccess")
+                AppLogger.d(TAG, "外部DBからの同期完了: $syncSuccess")
                 return@withContext syncSuccess
             } catch (e: Exception) {
-                Log.e(TAG, "外部DBからの同期中にエラーが発生しました", e)
+                AppLogger.e(TAG, "外部DBからの同期中にエラーが発生しました", e)
                 return@withContext false
             }
         }
@@ -96,13 +96,13 @@ class DatabaseSyncManager(private val context: Context) {
                         input.copyTo(output)
                     }
                 } ?: run {
-                    Log.e(TAG, "URIからの入力ストリームを開けませんでした: $uri")
+                    AppLogger.e(TAG, "URIからの入力ストリームを開けませんでした: $uri")
                     return@withContext null
                 }
 
                 return@withContext tempFile
             } catch (e: Exception) {
-                Log.e(TAG, "一時DBファイルの作成中にエラーが発生しました", e)
+                AppLogger.e(TAG, "一時DBファイルの作成中にエラーが発生しました", e)
                 return@withContext null
             }
         }
@@ -120,7 +120,7 @@ class DatabaseSyncManager(private val context: Context) {
                 SQLiteDatabase.OPEN_READONLY
             )
         } catch (e: Exception) {
-            Log.e(TAG, "データベースを開く際にエラーが発生しました: $dbPath", e)
+            AppLogger.e(TAG, "データベースを開く際にエラーが発生しました: $dbPath", e)
             null
         }
     }
@@ -138,34 +138,34 @@ class DatabaseSyncManager(private val context: Context) {
             val tables = listOf("novels_descs", "episodes", "last_read_novel")
             for (table in tables) {
                 if (!isTableExists(externalDb, table)) {
-                    Log.e(TAG, "外部DBにテーブルが存在しません: $table")
+                    AppLogger.e(TAG, "外部DBにテーブルが存在しません: $table")
                     return false
                 }
             } 
             
             // 小説説明の同期
             try { syncNovelDescs(externalDb) }
-            catch (e: Exception) { Log.e(TAG, "[Step1/3] 小説説明の同期に失敗", e); throw e }
+            catch (e: Exception) { AppLogger.e(TAG, "[Step1/3] 小説説明の同期に失敗", e); throw e }
 
             // エピソードの同期（設定を反映）
             try { syncEpisodes(externalDb, dbSyncSettings.preserveExistingEpisodes) }
-            catch (e: Exception) { Log.e(TAG, "[Step2/3] エピソードの同期に失敗", e); throw e }
+            catch (e: Exception) { AppLogger.e(TAG, "[Step2/3] エピソードの同期に失敗", e); throw e }
 
             // カクヨムのエピソードマッピングを同期（外部DBに存在する場合のみ）
             try { syncEpisodeMappings(externalDb) }
-            catch (e: Exception) { Log.e(TAG, "エピソードマッピングの同期に失敗", e) }
+            catch (e: Exception) { AppLogger.e(TAG, "エピソードマッピングの同期に失敗", e) }
 
             // 最後に読んだ記録の同期
             try { syncLastReadNovels(externalDb) }
-            catch (e: Exception) { Log.e(TAG, "[Step3/3] 読書履歴の同期に失敗", e); throw e }
+            catch (e: Exception) { AppLogger.e(TAG, "[Step3/3] 読書履歴の同期に失敗", e); throw e }
 
             // M15: episodes 実件数で total_ep を再計算
             try { repository.recalculateAllTotalEpFromEpisodes() }
-            catch (e: Exception) { Log.e(TAG, "total_ep 再計算に失敗", e) }
+            catch (e: Exception) { AppLogger.e(TAG, "total_ep 再計算に失敗", e) }
             
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "データ同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "データ同期中にエラーが発生しました", e)
             return false
         }
     }
@@ -303,9 +303,9 @@ class DatabaseSyncManager(private val context: Context) {
                 repository.insertURLs(urlEntities)
             }
 
-            Log.d(TAG, "小説説明の同期が完了しました")
+            AppLogger.d(TAG, "小説説明の同期が完了しました")
         } catch (e: Exception) {
-            Log.e(TAG, "小説説明の同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "小説説明の同期中にエラーが発生しました", e)
             throw e
         } finally {
             cursor?.close()
@@ -375,9 +375,9 @@ class DatabaseSyncManager(private val context: Context) {
                 repository.insertEpisodes(episodes, preserveExisting)
             } 
             
-            Log.d(TAG, "エピソードの同期が完了しました (既存保持: $preserveExisting)")
+            AppLogger.d(TAG, "エピソードの同期が完了しました (既存保持: $preserveExisting)")
         } catch (e: Exception) {
-            Log.e(TAG, "エピソードの同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "エピソードの同期中にエラーが発生しました", e)
             throw e
         } finally {
             cursor?.close()
@@ -418,9 +418,9 @@ class DatabaseSyncManager(private val context: Context) {
             if (mappings.isNotEmpty()) {
                 repository.insertEpisodeMappings(mappings.toList())
             }
-            Log.d(TAG, "エピソードマッピングの同期が完了しました")
+            AppLogger.d(TAG, "エピソードマッピングの同期が完了しました")
         } catch (e: Exception) {
-            Log.e(TAG, "エピソードマッピングの同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "エピソードマッピングの同期中にエラーが発生しました", e)
         } finally {
             cursor?.close()
         }
@@ -463,9 +463,9 @@ class DatabaseSyncManager(private val context: Context) {
                 repository.updateLastRead(lastRead.ncode, lastRead.episode_no)
             }
 
-            Log.d(TAG, "最終読書記録の同期が完了しました")
+            AppLogger.d(TAG, "最終読書記録の同期が完了しました")
         } catch (e: Exception) {
-            Log.e(TAG, "最終読書記録の同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "最終読書記録の同期中にエラーが発生しました", e)
             throw e
         } finally {
             cursor?.close()

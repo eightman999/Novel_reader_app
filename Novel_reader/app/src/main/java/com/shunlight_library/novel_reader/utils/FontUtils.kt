@@ -8,7 +8,6 @@ package com.shunlight_library.novel_reader.utils
 import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
-import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.io.FileOutputStream
@@ -58,11 +57,11 @@ object FontUtils {
             if (file.exists()) {
                 Typeface.createFromFile(file)
             } else {
-                Log.e(TAG, "カスタムフォントファイルが見つかりません: $fontPath")
+                AppLogger.e(TAG, "カスタムフォントファイルが見つかりません: $fontPath")
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "カスタムフォントのロードに失敗しました: $fontPath", e)
+            AppLogger.e(TAG, "カスタムフォントのロードに失敗しました: $fontPath", e)
             null
         }
     }
@@ -81,7 +80,7 @@ object FontUtils {
             val extension = fileName.substringAfterLast('.', "").lowercase(Locale.getDefault())
 
             if (extension !in SUPPORTED_FONT_TYPES) {
-                Log.e(TAG, "未対応のフォント形式です: $fileName")
+                AppLogger.e(TAG, "未対応のフォント形式です: $fileName")
                 return null
             }
 
@@ -102,7 +101,7 @@ object FontUtils {
                     input.copyTo(output)
                 }
             } ?: run {
-                Log.e(TAG, "ファイルの読み込みに失敗しました: $uri")
+                AppLogger.e(TAG, "ファイルの読み込みに失敗しました: $uri")
                 return null
             }
 
@@ -114,7 +113,7 @@ object FontUtils {
                 fontType = extension
             )
         } catch (e: Exception) {
-            Log.e(TAG, "フォントのインポートに失敗しました: ${e.message}", e)
+            AppLogger.e(TAG, "フォントのインポートに失敗しました: ${e.message}", e)
             return null
         }
     }
@@ -158,7 +157,7 @@ object FontUtils {
             val file = File(fontPath)
             return file.exists() && file.delete()
         } catch (e: Exception) {
-            Log.e(TAG, "フォントの削除に失敗しました: $fontPath", e)
+            AppLogger.e(TAG, "フォントの削除に失敗しました: $fontPath", e)
             return false
         }
     }

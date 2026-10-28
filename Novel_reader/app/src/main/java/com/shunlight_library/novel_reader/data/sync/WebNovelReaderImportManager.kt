@@ -17,9 +17,9 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.util.Log
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.SettingsStore
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
@@ -149,7 +149,7 @@ class WebNovelReaderImportManager(private val context: Context) {
                 val source = target.source
                 if (source == null) {
                     skippedNovels++
-                    Log.w(TAG, "非対応サイトのためスキップ: ${target.url}")
+                    AppLogger.w(TAG, "非対応サイトのためスキップ: ${target.url}")
                     continue
                 }
 
@@ -168,7 +168,7 @@ class WebNovelReaderImportManager(private val context: Context) {
                     )
                     novelCount++
                 } catch (e: Exception) {
-                    Log.e(TAG, "作品「${target.rawTitle}」(${source.ncode})の取り込み中にエラー", e)
+                    AppLogger.e(TAG, "作品「${target.rawTitle}」(${source.ncode})の取り込み中にエラー", e)
                     skippedNovels++
                 }
             }
@@ -177,7 +177,7 @@ class WebNovelReaderImportManager(private val context: Context) {
             try {
                 repository.recalculateAllTotalEpFromEpisodes()
             } catch (e: Exception) {
-                Log.e(TAG, "total_ep 再計算に失敗", e)
+                AppLogger.e(TAG, "total_ep 再計算に失敗", e)
             }
 
             val message = buildString {
@@ -195,7 +195,7 @@ class WebNovelReaderImportManager(private val context: Context) {
             callback?.onComplete(result)
             return@withContext result
         } catch (e: Exception) {
-            Log.e(TAG, "ZIP復元中に予期しないエラー", e)
+            AppLogger.e(TAG, "ZIP復元中に予期しないエラー", e)
             return@withContext fail(callback, "予期しないエラー: ${e.message}")
         } finally {
             try { db?.close() } catch (_: Exception) {}
@@ -360,7 +360,7 @@ class WebNovelReaderImportManager(private val context: Context) {
             callback, novelIndex, totalNovels, 1.0f,
             cumulativeEpisodes + imported, grandTotalEpisodes, source.ncode, title
         )
-        Log.d(TAG, "作品「$title」(${source.ncode}) を${imported}話取り込みました")
+        AppLogger.d(TAG, "作品「$title」(${source.ncode}) を${imported}話取り込みました")
         return imported
     }
 
@@ -473,7 +473,7 @@ class WebNovelReaderImportManager(private val context: Context) {
                     ?: doc.selectFirst("div.js-novel-text"))?.outerHtml() ?: ""
             }
         } catch (e: Exception) {
-            Log.w(TAG, "なろう本文抽出に失敗", e)
+            AppLogger.w(TAG, "なろう本文抽出に失敗", e)
             ""
         }
     }
@@ -489,7 +489,7 @@ class WebNovelReaderImportManager(private val context: Context) {
             // 読み込みエラーページ本文は保存しない
             if (body.take(200).contains("<div class=\"dots-indicator\" id=\"LoadingEpisode\">")) "" else body
         } catch (e: Exception) {
-            Log.w(TAG, "カクヨム本文抽出に失敗", e)
+            AppLogger.w(TAG, "カクヨム本文抽出に失敗", e)
             ""
         }
     }
@@ -571,7 +571,7 @@ class WebNovelReaderImportManager(private val context: Context) {
             } ?: return@withContext null
             tempFile
         } catch (e: Exception) {
-            Log.e(TAG, "ZIPコピー中にエラー", e)
+            AppLogger.e(TAG, "ZIPコピー中にエラー", e)
             null
         }
     }
@@ -629,7 +629,7 @@ class WebNovelReaderImportManager(private val context: Context) {
     }
 
     private fun fail(callback: SyncProgressCallback?, message: String): SyncResult {
-        Log.e(TAG, message)
+        AppLogger.e(TAG, message)
         callback?.onProgressUpdate(
             SyncProgress(step = SyncStep.ERROR, message = message, progress = 0f)
         )

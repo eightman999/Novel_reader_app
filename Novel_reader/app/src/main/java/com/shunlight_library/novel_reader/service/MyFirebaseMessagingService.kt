@@ -11,11 +11,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import com.shunlight_library.novel_reader.BuildConfig
 import com.shunlight_library.novel_reader.MainActivity
 import com.shunlight_library.novel_reader.R
 import com.shunlight_library.novel_reader.utils.AppLogger
@@ -24,7 +22,6 @@ import com.shunlight_library.novel_reader.utils.AppLogger
  * Firebase Cloud Messagingからの通知を受信するサービス
  *
  * このサービスは以下の機能を提供します：
- * - FCMトークンの更新管理
  * - リモート通知の受信と表示
  * - 通知データの処理
  */
@@ -35,19 +32,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         private const val CHANNEL_ID = "fcm_notification_channel"
         private const val CHANNEL_NAME = "プッシュ通知"
         private var notificationId = 1000
-    }
-
-    /**
-     * FCMトークンが新規作成または更新された時に呼ばれる
-     *
-     * @param token 新しいFCMトークン
-     */
-    override fun onNewToken(token: String) {
-        super.onNewToken(token)
-        AppLogger.d(TAG, "新しいFCMトークンが生成されました: $token")
-
-        // TODO: トークンをサーバーに送信する処理を実装
-        // 例: sendTokenToServer(token)
     }
 
     /**
@@ -92,7 +76,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         when (data["type"]) {
             "novel_update" -> {
                 // 小説更新通知
-                val ncode = data["ncode"] ?: return false
+                if (data["ncode"].isNullOrBlank()) return false
                 val title = data["title"] ?: "小説が更新されました"
                 val body = data["body"] ?: "新しいエピソードが公開されました"
                 sendNotification(title, body, data)

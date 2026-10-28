@@ -54,6 +54,7 @@ fun RecentlyReadNovelsScreen(
     // データの取得
     LaunchedEffect(Unit) {
         useSimpleListMode = settingsStore.getUseSimpleListMode()
+        filterSettings = settingsStore.getRecentlyReadFilterSettings()
         val lastReadNovels = repository.allLastReadNovels.first()
         val ncodes = lastReadNovels.map { it.ncode }
         val novels = repository.getNovelsByNcodes(ncodes)
@@ -161,10 +162,18 @@ fun RecentlyReadNovelsScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { filterSettings = tempFilter; showFilterDialog = false }) { Text("適用") }
+                Button(onClick = {
+                    filterSettings = tempFilter
+                    showFilterDialog = false
+                    scope.launch { settingsStore.saveRecentlyReadFilterSettings(tempFilter) }
+                }) { Text("適用") }
             },
             dismissButton = {
-                TextButton(onClick = { filterSettings = FilterSettings(); showFilterDialog = false }) { Text("リセット") }
+                TextButton(onClick = {
+                    filterSettings = FilterSettings()
+                    showFilterDialog = false
+                    scope.launch { settingsStore.saveRecentlyReadFilterSettings(FilterSettings()) }
+                }) { Text("リセット") }
             }
         )
     }

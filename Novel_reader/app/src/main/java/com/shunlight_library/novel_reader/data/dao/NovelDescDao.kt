@@ -52,6 +52,9 @@ interface NovelDescDao {
     @Query("UPDATE novels_descs SET end_flag = :endFlag WHERE ncode = :ncode")
     suspend fun updateEndFlag(ncode: String, endFlag: Int)
 
+    @Query("UPDATE novels_descs SET general_all_no = :generalAllNo WHERE ncode = :ncode")
+    suspend fun updateGeneralAllNo(ncode: String, generalAllNo: Int)
+
     @Query("UPDATE novels_descs SET last_checked_at = :dateTime WHERE ncode = :ncode")
     suspend fun updateLastCheckedAt(ncode: String, dateTime: String)
 

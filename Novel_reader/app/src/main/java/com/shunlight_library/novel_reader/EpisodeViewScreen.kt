@@ -6,7 +6,9 @@
 package com.shunlight_library.novel_reader
 
 import android.graphics.Color as AndroidColor
-import android.util.Log
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.webkit.JavascriptInterface
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
@@ -22,7 +24,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +57,7 @@ import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
 import com.shunlight_library.novel_reader.ui.components.VjapPageController
 import com.shunlight_library.novel_reader.ui.components.VjapVerticalTextView
+import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.utils.FontUtils
 import com.shunlight_library.novel_reader.utils.VolumeKeyPaging
 import kotlinx.coroutines.CoroutineScope
@@ -86,6 +101,42 @@ fun EpisodeViewScreen(
     var readerMargins by remember { mutableStateOf(ReaderMargins()) }
     var volumeKeyPagingEnabled by remember { mutableStateOf(false) }
     var autoNextEpisodeAtEnd by remember { mutableStateOf(false) }
+    var lineHeight by remember { mutableStateOf(SettingsStore.DEFAULT_LINE_HEIGHT) }
+    var showReadingProgress by remember { mutableStateOf(true) }
+
+    // 設定の読み込み完了まで本文を描画しない（既定値の横書きで一瞬描画→縦書きへ差し替わるのを防ぐ）
+    var settingsLoaded by remember { mutableStateOf(false) }
+
+    // 横書き: JSブリッジから通知される現在の読書率（保存は終了・中断時にこの値を使う）
+    var horizontalReadingRate by remember { mutableStateOf(0f) }
+
+    // 現在表示中の話の読書位置が読み込み済みか（未読み込みの 0 で保存済み位置を上書きしないため）
+    var readingRateReady by remember { mutableStateOf(false) }
+
+    // 縦書きのページ情報（1始まり、未計算は -1）
+    var vjapPage by remember { mutableStateOf(1) }
+    var vjapLastPage by remember { mutableStateOf(-1) }
+
+    // ページ移動スライダー・本文内検索の表示状態
+    var showNavigator by remember { mutableStateOf(false) }
+    var showSearchBar by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchMatchCount by remember { mutableStateOf(0) }
+    var searchMatchIndex by remember { mutableStateOf(0) }
+    var verticalSearchMatches by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+
+    // 検索バーを開いたら入力欄にフォーカスしてキーボードを出す
+    LaunchedEffect(showSearchBar) {
+        if (showSearchBar) {
+            try {
+                searchFocusRequester.requestFocus()
+            } catch (e: IllegalStateException) {
+                // 入力欄がまだ配置されていない場合は無視（タップで入力できる）
+            }
+        }
+    }
 
     // 縦書きビューを音量キーからページ送りするためのハンドル
     val vjapPageController = remember { VjapPageController() }
@@ -123,6 +174,8 @@ fun EpisodeViewScreen(
             readerMargins = settingsStore.readerMargins.first()
             volumeKeyPagingEnabled = settingsStore.volumeKeyPagingEnabled.first()
             autoNextEpisodeAtEnd = settingsStore.autoNextEpisodeAtEnd.first()
+            lineHeight = settingsStore.readerLineHeight.first()
+            showReadingProgress = settingsStore.showReadingProgress.first()
 
             // カスタムフォント情報を読み込む
             customFonts = settingsStore.getAllCustomFontInfo()
@@ -137,7 +190,9 @@ fun EpisodeViewScreen(
                 customFontPath = ""
             }
         } catch (e: Exception) {
-            Log.e("EpisodeViewScreen", "設定の読み込みエラー: ${e.message}")
+            AppLogger.e("EpisodeViewScreen", "設定の読み込みエラー: ${e.message}")
+        } finally {
+            settingsLoaded = true
         }
     }
 
@@ -146,6 +201,12 @@ fun EpisodeViewScreen(
         // （nullの間はローディング表示になり、新データ到着時にWebView/縦書きViewが再生成される）
         episode = null
         nextEpisodeRequested = false
+        readingRateReady = false
+        vjapPage = 1
+        vjapLastPage = -1
+        searchMatchCount = 0
+        searchMatchIndex = 0
+        verticalSearchMatches = emptyList()
 
         scrollState.scrollTo(0)
         scope.launch {
@@ -157,6 +218,8 @@ fun EpisodeViewScreen(
                 // 縦書き進捗の初期値を保存済みの値に合わせる
                 // （開いた直後に戻った場合に0で上書きされるのを防ぐ）
                 vjapReadingRate = episode?.reading_rate ?: 0f
+                horizontalReadingRate = episode?.reading_rate ?: 0f
+                readingRateReady = episode != null
 
                 // 削除済み作品の検出
                 if (novel == null) {
@@ -181,7 +244,7 @@ fun EpisodeViewScreen(
                 // 最後に読んだ情報を更新（従来の処理）
                 repository.updateLastRead(ncode, episodeNumber)
             } catch (e: Exception) {
-                Log.e("EpisodeViewScreen", "データ取得エラー: ${e.message}")
+                AppLogger.e("EpisodeViewScreen", "データ取得エラー: ${e.message}")
             }
         }
     }
@@ -201,6 +264,18 @@ fun EpisodeViewScreen(
         lastTapTime = currentTime
     }
 
+    // 既定背景はテーマに追従する（ダークテーマで白背景に固定しない）
+    val isDarkDefault = useDefaultBackground && MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val themeBackgroundHex = colorToHex(MaterialTheme.colorScheme.background)
+    val themeTextHex = colorToHex(MaterialTheme.colorScheme.onBackground)
+    // 本文描画に使う背景色・文字色（既定背景時: ライトは従来どおり白、ダークはテーマ色）
+    val contentBackgroundHex = when {
+        !useDefaultBackground -> backgroundColor
+        isDarkDefault -> themeBackgroundHex
+        else -> "#FFFFFF"
+    }
+    val contentFontColor = if (isDarkDefault) themeTextHex else fontColor
+
     // 背景色の設定を計算
     val actualBackgroundColor = if (useDefaultBackground) {
         MaterialTheme.colorScheme.background
@@ -211,30 +286,34 @@ fun EpisodeViewScreen(
             MaterialTheme.colorScheme.background
         }
     }
+    // 読書位置の保存。画面離脱直後に画面のスコープがキャンセルされても保存が落ちないよう
+    // アプリ全体のスコープで書き込み、横書きは JS ブリッジで追跡済みの値を使う
+    // （離脱時に evaluateJavascript すると WebView 破棄と競合してコールバックが来ない）
     fun saveReadingRate() {
-        if (textOrientation == "Vertical") {
-            // vjap縦書きモード: ページベースの進捗率を直接保存
-            scope.launch(Dispatchers.IO) {
-                repository.updateReadingRate(ncode, episodeNo, vjapReadingRate)
-            }
-        } else {
-            // WebView横書きモード: JavaScriptでスクロール位置を取得
-            webView?.evaluateJavascript("""
-            (function() {
-                var maxScroll = document.body.scrollHeight - window.innerHeight;
-                var currentScroll = window.scrollY;
-                if (maxScroll <= 0) return 0;
-                var scrollRatio = currentScroll / maxScroll;
-                return Math.max(0, Math.min(1, scrollRatio));
-            })();
-        """.trimIndent()) { result ->
-                val readingRate = result.toFloatOrNull() ?: 0f
-                scope.launch(Dispatchers.IO) {
-                    repository.updateReadingRate(ncode, episodeNo, readingRate)
-                }
+        if (!readingRateReady) return
+        val rate = if (textOrientation == "Vertical") vjapReadingRate else horizontalReadingRate
+        val targetNcode = ncode
+        val targetEpisodeNo = episodeNo
+        NovelReaderApplication.getApplicationScope().launch(Dispatchers.IO) {
+            try {
+                repository.updateReadingRate(targetNcode, targetEpisodeNo, rate.coerceIn(0f, 1f))
+            } catch (e: Exception) {
+                AppLogger.e("EpisodeViewScreen", "読書位置の保存エラー: ${e.message}")
             }
         }
     }
+
+    // バックグラウンド移行（ホーム・画面オフ・アプリ切替・構成変更）時にも読書位置を保存する
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentSaveReadingRate by rememberUpdatedState(::saveReadingRate)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) currentSaveReadingRate()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     fun canGoNext(): Boolean {
         val currentEp = episodeNo.toIntOrNull() ?: return false
         return novel?.let { currentEp < it.total_ep } ?: false
@@ -266,7 +345,7 @@ fun EpisodeViewScreen(
         // 横書き: WebView内を画面の9割ずつスクロール。末尾でさらに送ると次話へ
         val direction = if (forward) 1 else -1
         webView?.evaluateJavascript(
-            "(function(){var b=window.scrollY;" +
+            "(function(){if(window.__stopRestoring)window.__stopRestoring();var b=window.scrollY;" +
                 "window.scrollBy(0,$direction*window.innerHeight*0.9);" +
                 "return window.scrollY!==b;})()"
         ) { moved ->
@@ -283,17 +362,132 @@ fun EpisodeViewScreen(
         }
     }
 
+    // ---- 本文内検索 ----
+    fun jumpToVerticalMatch(index: Int) {
+        val matches = verticalSearchMatches
+        if (matches.isEmpty()) return
+        val page = vjapPageController.findPageOfChar(matches[index])
+        if (page < 0) {
+            Toast.makeText(context, "ページ計算中です。少し待ってから再度お試しください", Toast.LENGTH_SHORT).show()
+            return
+        }
+        vjapPageController.goToPage(page)
+    }
+
+    fun runSearch() {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) return
+        if (textOrientation == "Vertical") {
+            val text = vjapPageController.text ?: return
+            val matches = mutableListOf<Int>()
+            var from = text.indexOf(query, 0, ignoreCase = true)
+            while (from >= 0) {
+                matches.add(from)
+                from = text.indexOf(query, from + query.length, ignoreCase = true)
+            }
+            verticalSearchMatches = matches
+            searchMatchCount = matches.size
+            searchMatchIndex = 0
+            if (matches.isEmpty()) {
+                Toast.makeText(context, "見つかりませんでした", Toast.LENGTH_SHORT).show()
+            } else {
+                jumpToVerticalMatch(0)
+            }
+        } else {
+            // 結果件数・現在位置は WebView の FindListener から反映される
+            webView?.findAllAsync(query)
+        }
+    }
+
+    fun searchStep(forward: Boolean) {
+        if (searchMatchCount <= 0) return
+        if (textOrientation == "Vertical") {
+            val count = verticalSearchMatches.size
+            searchMatchIndex = (searchMatchIndex + (if (forward) 1 else -1) + count) % count
+            jumpToVerticalMatch(searchMatchIndex)
+        } else {
+            webView?.findNext(forward)
+        }
+    }
+
+    fun closeSearch() {
+        showSearchBar = false
+        searchQuery = ""
+        searchMatchCount = 0
+        searchMatchIndex = 0
+        verticalSearchMatches = emptyList()
+        webView?.clearMatches()
+    }
+
+    // ---- 表示設定のクイック変更 ----
+    fun changeFontSize(delta: Int) {
+        val newSize = (fontSize + delta).coerceIn(12, 24)
+        if (newSize == fontSize) return
+        fontSize = newSize
+        scope.launch { settingsStore.saveFontSize(newSize) }
+    }
+
+    fun changeLineHeight(delta: Float) {
+        val newHeight = ((lineHeight + delta) * 10).let { Math.round(it) / 10f }
+            .coerceIn(SettingsStore.MIN_LINE_HEIGHT, SettingsStore.MAX_LINE_HEIGHT)
+        if (newHeight == lineHeight) return
+        lineHeight = newHeight
+        scope.launch { settingsStore.saveReaderLineHeight(newHeight) }
+    }
+
+    // 横書き: 指定の読書率までスクロールする（復元中なら復元を打ち切る）
+    fun scrollHorizontalTo(rate: Float) {
+        val clamped = rate.coerceIn(0f, 1f)
+        webView?.evaluateJavascript(
+            "(function(){if(window.__stopRestoring)window.__stopRestoring();" +
+                "var m=document.body.scrollHeight-window.innerHeight;" +
+                "if(m>0)window.scrollTo(0,m*$clamped);})()",
+            null
+        )
+        horizontalReadingRate = clamped
+    }
+
+    // 進捗表示用の文字列
+    val progressLabel: String = if (textOrientation == "Vertical") {
+        if (vjapLastPage > 0) {
+            val percent = (vjapPage.toFloat() / vjapLastPage * 100).toInt().coerceIn(0, 100)
+            "$vjapPage / $vjapLastPage ページ（$percent%）"
+        } else {
+            "ページ計算中…"
+        }
+    } else {
+        "${(horizontalReadingRate * 100).toInt().coerceIn(0, 100)}%"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = episode?.e_title ?: "エピソード $episodeNo",
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable { onTitleTap() }
-                    )
+                    if (showSearchBar) {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("本文内を検索") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { runSearch() }),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocusRequester)
+                        )
+                    } else {
+                        Text(
+                            text = episode?.e_title ?: "エピソード $episodeNo",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { onTitleTap() }
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -304,6 +498,32 @@ fun EpisodeViewScreen(
                     }
                 },
                 actions = {
+                    if (showSearchBar) {
+                        if (searchMatchCount > 0) {
+                            Text(
+                                "${searchMatchIndex + 1}/$searchMatchCount",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        IconButton(onClick = { searchStep(false) }, enabled = searchMatchCount > 0) {
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "前の検索結果")
+                        }
+                        IconButton(onClick = { searchStep(true) }, enabled = searchMatchCount > 0) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "次の検索結果")
+                        }
+                        IconButton(onClick = { closeSearch() }) {
+                            Icon(Icons.Default.Close, contentDescription = "検索を閉じる")
+                        }
+                        return@TopAppBar
+                    }
+
+                    IconButton(onClick = { showSearchBar = true }, enabled = episode != null) {
+                        Icon(Icons.Default.Search, contentDescription = "本文内を検索")
+                    }
+                    IconButton(onClick = { showNavigator = !showNavigator }, enabled = episode != null) {
+                        Icon(Icons.Default.Tune, contentDescription = "ページ移動スライダー")
+                    }
+
                     // しおりボタン
                     episode?.let {
                         IconButton(
@@ -321,7 +541,7 @@ fun EpisodeViewScreen(
                                         val message = if (newBookmarkStatus == 1) "しおりを追加しました" else "しおりを削除しました"
                                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
-                                        Log.e("EpisodeViewScreen", "しおり更新エラー: ${e.message}")
+                                        AppLogger.e("EpisodeViewScreen", "しおり更新エラー: ${e.message}")
                                     }
                                 }
                             }
@@ -334,31 +554,66 @@ fun EpisodeViewScreen(
                         }
                     }
 
-                    // 既存のフォントサイズボタン
-                    IconButton(onClick = {
-                        if (fontSize > 12) {
-                            fontSize--
-                            scope.launch {
-                                settingsStore.saveFontSize(fontSize)
-                            }
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "表示設定")
                         }
-                    }) {
-                        Icon(Icons.Default.ZoomOut, contentDescription = "フォントサイズを小さく")
-                    }
-                    IconButton(onClick = {
-                        if (fontSize < 24) {
-                            fontSize++
-                            scope.launch {
-                                settingsStore.saveFontSize(fontSize)
-                            }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("文字を大きく（$fontSize）") },
+                                leadingIcon = { Icon(Icons.Default.ZoomIn, contentDescription = null) },
+                                enabled = fontSize < 24,
+                                onClick = { changeFontSize(1) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("文字を小さく") },
+                                leadingIcon = { Icon(Icons.Default.ZoomOut, contentDescription = null) },
+                                enabled = fontSize > 12,
+                                onClick = { changeFontSize(-1) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("行間を広く（${"%.1f".format(lineHeight)}）") },
+                                leadingIcon = { Icon(Icons.Default.UnfoldMore, contentDescription = null) },
+                                enabled = lineHeight < SettingsStore.MAX_LINE_HEIGHT,
+                                onClick = { changeLineHeight(0.1f) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("行間を狭く") },
+                                leadingIcon = { Icon(Icons.Default.UnfoldLess, contentDescription = null) },
+                                enabled = lineHeight > SettingsStore.MIN_LINE_HEIGHT,
+                                onClick = { changeLineHeight(-0.1f) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (showReadingProgress) "進捗表示を隠す" else "進捗表示を出す") },
+                                leadingIcon = { Icon(Icons.Default.Percent, contentDescription = null) },
+                                onClick = {
+                                    val newValue = !showReadingProgress
+                                    showReadingProgress = newValue
+                                    showOverflowMenu = false
+                                    scope.launch { settingsStore.saveShowReadingProgress(newValue) }
+                                }
+                            )
                         }
-                    }) {
-                        Icon(Icons.Default.ZoomIn, contentDescription = "フォントサイズを大きく")
                     }
                 }
             )
         },
         bottomBar = {
+          Column {
+            if (showNavigator && episode != null) {
+                ReadingNavigatorPanel(
+                    isVertical = textOrientation == "Vertical",
+                    page = vjapPage,
+                    lastPage = vjapLastPage,
+                    readingRate = horizontalReadingRate,
+                    progressLabel = progressLabel,
+                    onPageSelected = { vjapPageController.goToPage(it) },
+                    onRateSelected = { scrollHorizontalTo(it) }
+                )
+            }
             BottomAppBar {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -542,6 +797,7 @@ fun EpisodeViewScreen(
                     }
                 }
             }
+          }
         }
     ) { innerPadding ->
         // システムバックボタンで直前の画面に戻る
@@ -551,13 +807,13 @@ fun EpisodeViewScreen(
         }
         
         // エピソード本文の表示
-        if (episode != null) {
+        if (episode != null && settingsLoaded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     // 本文（縦書きvjap・横書きWebViewとも）は既定背景を白で描画するため、余白部分も同じ色に揃える
-                    .background(if (useDefaultBackground) Color.White else actualBackgroundColor)
+                    .background(parseColorOr(contentBackgroundHex, actualBackgroundColor))
                     .pointerInput(episodeNo, textOrientation, swipeEnabled, tapEnabled) {
                         // スワイプとスクロールを区別するための改善されたジェスチャー検出
                         awaitPointerEventScope {
@@ -735,17 +991,22 @@ fun EpisodeViewScreen(
                         }
                     } else if (textOrientation == "Vertical") {
                         // 縦書きモード: vjapライブラリで描画
-                        val bgColor = if (useDefaultBackground) "#FFFFFF" else backgroundColor
                         key(ncode, episodeNo) {
                             VjapVerticalTextView(
                                 htmlContent = applyRubyFixes(episode!!.body, autoRubyEnabled),
                                 episodeTitle = episode!!.e_title ?: "第${episodeNo}話",
                                 fontSize = fontSize,
-                                fontColor = fontColor,
-                                backgroundColor = bgColor,
+                                fontColor = contentFontColor,
+                                backgroundColor = contentBackgroundHex,
                                 customFontPath = if (isCustomFont && customFontPath.isNotEmpty()) customFontPath else null,
+                                // 縦書きはルビを行間に描くため横書きの行間より 0.2 広く取る
+                                lineSpaceRate = lineHeight + 0.2f,
                                 savedReadingRate = episode!!.reading_rate,
                                 onReadingRateChanged = { rate -> vjapReadingRate = rate },
+                                onPageInfoChanged = { page, last ->
+                                    vjapPage = page
+                                    vjapLastPage = last
+                                },
                                 // 「画面タップで話を移動」ON時はタップ自体が話移動になるため二重遷移させない
                                 onNextAtEnd = { if (!tapEnabled) goToNextEpisodeFromEnd() },
                                 controller = vjapPageController,
@@ -761,8 +1022,9 @@ fun EpisodeViewScreen(
                                 htmlContent = episode!!.body,
                                 fontSize = fontSize,
                                 rubyFontSize = (fontSize * 0.6).toInt(),
-                                backgroundColor = if (useDefaultBackground) null else backgroundColor,
-                                fontColor = fontColor,
+                                backgroundColor = contentBackgroundHex,
+                                fontColor = contentFontColor,
+                                lineHeight = lineHeight,
                                 fontFamily = fontFamily,
                                 isCustomFont = isCustomFont,
                                 customFontPath = customFontPath,
@@ -772,10 +1034,38 @@ fun EpisodeViewScreen(
                                 episodeNo = episodeNo,
                                 savedReadingRate = episode!!.reading_rate,
                                 modifier = Modifier.padding(bottom = 32.dp),
-                                onWebViewCreated = { webView = it }
+                                onReadingRateChanged = { rate -> horizontalReadingRate = rate },
+                                onWebViewCreated = { created ->
+                                    webView = created
+                                    created.setFindListener { activeMatchOrdinal, numberOfMatches, isDoneCounting ->
+                                        if (isDoneCounting) {
+                                            searchMatchCount = numberOfMatches
+                                            searchMatchIndex = activeMatchOrdinal
+                                            if (numberOfMatches == 0 && searchQuery.isNotBlank()) {
+                                                Toast.makeText(context, "見つかりませんでした", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                onWebViewReleased = { released ->
+                                    if (webView === released) webView = null
+                                }
                             )
                         }
                     }
+                }
+
+                // 読書進捗（ページ数・％）
+                if (showReadingProgress && !devModeEnabled) {
+                    Text(
+                        text = progressLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = parseColorOr(contentFontColor, MaterialTheme.colorScheme.onBackground)
+                            .copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .align(if (textOrientation == "Vertical") Alignment.BottomStart else Alignment.BottomEnd)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
                 }
             }
         } else {
@@ -827,28 +1117,59 @@ private fun convertPlainTextToHtml(plainText: String): String {
     }
 }
 
-// EpisodeViewScreen.kt内に追加するWebViewScrollInterfaceクラス
+/**
+ * 横書き WebView と読書位置をやり取りする JS ブリッジ。
+ * - スクロールのたびに現在位置を Compose 側へ通知し、一定以上変化したら DB へ保存する
+ * - 再読み込み（文字サイズ・行間変更など）時は直前の位置を復元位置として JS へ渡す
+ */
 class WebViewScrollInterface(
     private val ncode: String,
     private val episodeNo: String,
     private val repo: NovelRepository,
-    private val scope: CoroutineScope,
+    initialRate: Float,
+    private val onPositionChanged: (Float) -> Unit,
     private val updateThreshold: Float = 0.01f // 更新する最小変化量
 ) {
-    private var lastSavedPosition = 0f
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** 次回ページ読み込み時に復元する読書率 */
+    @Volatile
+    private var restoreRate = initialRate.coerceIn(0f, 1f)
+
+    /** JS から通知された最新の読書率 */
+    @Volatile
+    private var lastPosition = initialRate.coerceIn(0f, 1f)
+
+    private var lastSavedPosition = initialRate.coerceIn(0f, 1f)
+
+    @JavascriptInterface
+    fun getRestoreRate(): Float = restoreRate
 
     @JavascriptInterface
     fun saveScrollPosition(position: Float) {
         // 本文はサニタイズ済みだが、ブリッジ境界は信頼できない値が来うる前提で
         // ネイティブ側でも読書率を必ず 0f〜1f にクランプし reading_rate の破壊を防ぐ
-        val clamped = position.coerceIn(0f, 1f)
-        // 前回保存した位置との差が閾値を超えた場合のみ保存処理を実行
-        if (abs(clamped - lastSavedPosition) > updateThreshold) {
-            scope.launch(Dispatchers.IO) {
-                repo.updateReadingRate(ncode, episodeNo, clamped)
-                lastSavedPosition = clamped
+        val clamped = if (position.isNaN()) return else position.coerceIn(0f, 1f)
+        lastPosition = clamped
+        mainHandler.post { onPositionChanged(clamped) }
+
+        // 先頭・末尾への到達は変化量が閾値未満でも保存する（0.995→1.0 の取りこぼし防止）
+        val reachedEdge = (clamped == 0f || clamped == 1f) && clamped != lastSavedPosition
+        if (reachedEdge || abs(clamped - lastSavedPosition) > updateThreshold) {
+            lastSavedPosition = clamped
+            NovelReaderApplication.getApplicationScope().launch(Dispatchers.IO) {
+                try {
+                    repo.updateReadingRate(ncode, episodeNo, clamped)
+                } catch (e: Exception) {
+                    AppLogger.e("WebViewScrollInterface", "読書位置の保存エラー: ${e.message}")
+                }
             }
         }
+    }
+
+    /** 再読み込み前に、現在位置を次回の復元位置として確定する */
+    fun prepareReload() {
+        restoreRate = lastPosition
     }
 }
 
@@ -865,9 +1186,38 @@ private val episodeBodySafelist: Safelist by lazy {
         .addProtocols("img", "src", "http", "https", "file", "content", "data")
 }
 
-private fun sanitizeEpisodeHtml(html: String): String {
+/** content:// の挿絵として許可するプロバイダ（画像保存先に選べる SAF のストレージ） */
+private val allowedImageContentAuthorities = setOf(
+    "com.android.externalstorage.documents",
+    "com.android.providers.downloads.documents"
+)
+
+/**
+ * 挿絵の参照先を検証する。file:// はアプリ専用領域（画像キャッシュ）のみ、
+ * content:// は画像保存先として使うストレージプロバイダのみ許可し、
+ * 本文経由で端末内の任意ファイルを読み込ませない。
+ */
+private fun isAllowedImageSource(src: String, appFilesDir: String?): Boolean {
+    val lower = src.lowercase()
+    return when {
+        lower.startsWith("https://") || lower.startsWith("http://") || lower.startsWith("data:image/") -> true
+        lower.startsWith("file://") -> {
+            val path = Uri.parse(src).path ?: return false
+            appFilesDir != null && !path.contains("..") && path.startsWith(appFilesDir)
+        }
+        lower.startsWith("content://") -> Uri.parse(src).authority in allowedImageContentAuthorities
+        else -> false
+    }
+}
+
+private fun sanitizeEpisodeHtml(html: String, appFilesDir: String? = null): String {
     return try {
-        Jsoup.clean(html, episodeBodySafelist)
+        val cleaned = Jsoup.clean(html, episodeBodySafelist)
+        val document = Jsoup.parseBodyFragment(cleaned)
+        document.select("img[src]").forEach { img ->
+            if (!isAllowedImageSource(img.attr("src"), appFilesDir)) img.remove()
+        }
+        document.body().html()
     } catch (e: Exception) {
         // 想定外の失敗時はテキスト化してでも安全側に倒す（生HTMLは絶対に流さない）
         Jsoup.clean(html, Safelist.none())
@@ -888,14 +1238,23 @@ fun EnhancedHtmlRubyWebView(
     customFontPath: String = "",
     textOrientation: String = "Horizontal",
     autoRubyEnabled: Boolean = true,
+    lineHeight: Float = SettingsStore.DEFAULT_LINE_HEIGHT,
     ncode: String,
     episodeNo: String,
     savedReadingRate: Float = 0f,
     repository: NovelRepository = NovelReaderApplication.getRepository(),
-   onWebViewCreated: (WebView) -> Unit = {}
+    onReadingRateChanged: (Float) -> Unit,
+    onWebViewCreated: (WebView) -> Unit,
+    onWebViewReleased: (WebView) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val currentOnReadingRateChanged by rememberUpdatedState(onReadingRateChanged)
+    // 話ごと（呼び出し側の key(ncode, episodeNo)）に1つのブリッジを保持する
+    val scrollInterface: WebViewScrollInterface = remember {
+        WebViewScrollInterface(ncode, episodeNo, repository, savedReadingRate, { rate ->
+            currentOnReadingRateChanged(rate)
+        })
+    }
 
     // HTMLを修正する関数（共通実装は applyRubyFixes に委譲）
     fun fixRubyTags(html: String): String = applyRubyFixes(html, autoRubyEnabled)
@@ -936,7 +1295,7 @@ fun EnhancedHtmlRubyWebView(
         body {
             font-family: $actualFontFamily;
             font-size: ${fontSize}px;
-            line-height: 1.8;
+            line-height: $lineHeight;
             padding: 16px;
             margin: 0;
             background-color: $bgColor;
@@ -991,7 +1350,7 @@ fun EnhancedHtmlRubyWebView(
 
     // 外部サイト由来の本文HTMLをサニタイズ（script/on*除去、XSS防止）。
     // アプリが注入する scrollMonitorScript は別途head内に置くため影響を受けない。
-    val sanitizedHtml = sanitizeEpisodeHtml(fixedHtml)
+    val sanitizedHtml = sanitizeEpisodeHtml(fixedHtml, context.filesDir.absolutePath)
 
     // スクロール位置を保存・復元するためのJavaScriptを追加
     val isVertical = textOrientation == "Vertical"
@@ -1000,8 +1359,13 @@ fun EnhancedHtmlRubyWebView(
         // ページ読み込み完了後の処理
         window.onload = function() {
             var isVertical = ${isVertical};
+            // 復元位置はブリッジから取得する（文字サイズ変更などの再読み込み時は直前の位置になる）
+            var restoreRate = (typeof Android !== 'undefined') ? Number(Android.getRestoreRate()) : 0;
+            if (!(restoreRate >= 0 && restoreRate <= 1)) restoreRate = 0;
             // 位置復元中は保存しない（復元途中の位置で保存済みの読書位置を上書きしないため）
             var restoring = false;
+            // 音量キー・スライダー操作から復元を打ち切れるよう公開する（復元中でなければ何もしない）
+            window.__stopRestoring = function() {};
 
             // スクロール位置を復元
             var maxScroll;
@@ -1012,9 +1376,9 @@ fun EnhancedHtmlRubyWebView(
                 // scrollX=maxScroll が先頭(rate=0)、scrollX=0 が末尾(rate=1)
                 maxScroll = document.body.scrollWidth - window.innerWidth;
                 if (maxScroll > 0) {
-                    if (${savedReadingRate} > 0) {
+                    if (restoreRate > 0) {
                         // 保存済みレートから位置を復元（反転: rate=0→右端, rate=1→左端）
-                        targetPosition = maxScroll * (1.0 - ${savedReadingRate});
+                        targetPosition = maxScroll * (1.0 - restoreRate);
                     } else {
                         // 未読: 先頭（右端）にスクロール
                         targetPosition = maxScroll;
@@ -1027,17 +1391,18 @@ fun EnhancedHtmlRubyWebView(
                 // 横書き: 縦スクロール
                 // 読み込み直後は本文の高さが確定せず（文字サイズ自動調整等）位置がずれるため、
                 // 一定時間（または利用者の操作まで）高さの変化に合わせて復元をかけ直す
-                if (${savedReadingRate} > 0) {
+                if (restoreRate > 0) {
                     restoring = true;
                     var applyRestore = function() {
                         if (!restoring) return;
                         var m = document.body.scrollHeight - window.innerHeight;
-                        if (m > 0) window.scrollTo(0, m * ${savedReadingRate});
+                        if (m > 0) window.scrollTo(0, m * restoreRate);
                     };
                     var stopRestoring = function() {
                         restoring = false;
                         if (resizeObserver) resizeObserver.disconnect();
                     };
+                    window.__stopRestoring = stopRestoring;
                     var resizeObserver = (typeof ResizeObserver !== 'undefined')
                         ? new ResizeObserver(applyRestore) : null;
                     if (resizeObserver) resizeObserver.observe(document.body);
@@ -1126,10 +1491,7 @@ fun EnhancedHtmlRubyWebView(
                 }
                 onWebViewCreated(this)
                 // JavaScriptインターフェースを追加
-                addJavascriptInterface(
-                    WebViewScrollInterface(ncode, episodeNo, repository, scope),
-                    "Android"
-                )
+                attachScrollBridge(scrollInterface)
                 // HTMLをロード
                 loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
                 tag = formattedHtml
@@ -1145,15 +1507,96 @@ fun EnhancedHtmlRubyWebView(
             // HTMLが実際に変わった場合のみ再ロード
             // （無条件に再ロードすると再コンポーズのたびにスクロール位置がリセットされる）
             if (view.tag != formattedHtml) {
+                scrollInterface.prepareReload()
                 view.loadDataWithBaseURL(null, formattedHtml, "text/html", "UTF-8", null)
                 view.tag = formattedHtml
             }
         },
         onRelease = { view ->
+            onWebViewReleased(view)
             view.stopLoading()
             view.destroy()
         },
         modifier = modifier.fillMaxSize()
     )
 
+}
+
+/** 読書位置ブリッジを JS の `Android` オブジェクトとして公開する */
+private fun WebView.attachScrollBridge(bridge: WebViewScrollInterface) {
+    addJavascriptInterface(bridge, "Android")
+}
+
+/** "#RRGGBB" 等の色文字列を解析し、失敗時は [fallback] を返す */
+private fun parseColorOr(hex: String, fallback: Color): Color =
+    try {
+        Color(AndroidColor.parseColor(hex))
+    } catch (e: Exception) {
+        fallback
+    }
+
+/** Compose の色を "#RRGGBB" 形式へ変換する（WebView の CSS・vjap に渡すため） */
+private fun colorToHex(color: Color): String =
+    String.format("#%06X", 0xFFFFFF and color.toArgb())
+
+/**
+ * 読書画面下部のページ移動パネル。
+ * 縦書きはページ番号、横書きはスクロール位置（％）をスライダーで指定する。
+ * 縦書きは右から左へ読み進むため、スライダーも右端を先頭にする。
+ */
+@Composable
+private fun ReadingNavigatorPanel(
+    isVertical: Boolean,
+    page: Int,
+    lastPage: Int,
+    readingRate: Float,
+    progressLabel: String,
+    onPageSelected: (Int) -> Unit,
+    onRateSelected: (Float) -> Unit
+) {
+    // ドラッグ中の値（null のときは現在位置に追従）
+    var dragValue by remember { mutableStateOf<Float?>(null) }
+    Surface(tonalElevation = 3.dp) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            if (isVertical && lastPage <= 0) {
+                Text("ページ計算中…", style = MaterialTheme.typography.labelMedium)
+                return@Column
+            }
+            val label = when {
+                dragValue == null -> progressLabel
+                isVertical -> "${dragValue!!.toInt()} / $lastPage ページ"
+                else -> "${(dragValue!! * 100).toInt()}%"
+            }
+            Text(label, style = MaterialTheme.typography.labelMedium)
+            val slider: @Composable () -> Unit = {
+                if (isVertical) {
+                    Slider(
+                        value = (dragValue ?: page.toFloat()).coerceIn(1f, lastPage.toFloat()),
+                        // タップでも確実に移動するよう、値の変化ごとに即座に反映する
+                        onValueChange = {
+                            val target = Math.round(it)
+                            dragValue = target.toFloat()
+                            if (target != page) onPageSelected(target)
+                        },
+                        onValueChangeFinished = { dragValue = null },
+                        valueRange = 1f..maxOf(lastPage, 2).toFloat()
+                    )
+                } else {
+                    Slider(
+                        value = (dragValue ?: readingRate).coerceIn(0f, 1f),
+                        onValueChange = {
+                            dragValue = it
+                            onRateSelected(it)
+                        },
+                        onValueChangeFinished = { dragValue = null }
+                    )
+                }
+            }
+            if (isVertical) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { slider() }
+            } else {
+                slider()
+            }
+        }
+    }
 }

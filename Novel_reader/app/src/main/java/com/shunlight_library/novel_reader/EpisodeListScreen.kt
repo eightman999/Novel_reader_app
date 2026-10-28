@@ -5,8 +5,8 @@
  */
 package com.shunlight_library.novel_reader
 
-import android.util.Log
 import android.widget.Toast
+import com.shunlight_library.novel_reader.utils.AppLogger
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -129,17 +129,19 @@ fun EpisodeListScreen(
             subTag = it.sub_tag
         }
 
-        // カクヨム目次復帰チェック（エピソードFlowが最初のemitをするまで待機）
+        // カクヨム目次復帰チェック
+        // 固定時間の待機に頼らず、DB上のエピソード件数を直接取得して判定する
+        // （大量話数で一覧Flowの初回emitが遅れても誤発火・取りこぼしをしない）
         val currentNovel = novel
         if (currentNovel != null &&
             currentNovel.site_type == com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter.SITE_TYPE_KAKUYOMU &&
             currentNovel.general_all_no > 0) {
-            delay(500) // Flowの初回emitを待つ
-            if (episodes.size < currentNovel.general_all_no) {
+            val storedCount = repository.getEpisodeMetasByNcode(ncode).first().size
+            if (storedCount < currentNovel.general_all_no) {
                 val mappings = withContext(Dispatchers.IO) {
                     repository.getEpisodeMappings(ncode)
                 }
-                if (mappings.size > episodes.size) {
+                if (mappings.size > storedCount) {
                     tocRecoveryMappings = mappings
                     showTocRecoveryBanner = true
                 }
@@ -687,7 +689,7 @@ fun EpisodeListScreen(
                         updateProgress = 1.0f
                         updateMessage = "保存完了: ${successCount}話"
 
-                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード保存完了: ${successCount}話, マッピング: ${mappings.size}件")
+                        AppLogger.d("EpisodeListScreen", "カクヨムエピソード保存完了: ${successCount}話, マッピング: ${mappings.size}件")
                     } else {
                         // 小説家になろうの場合は逐次取得
                         // エピソード番号のリスト
@@ -991,7 +993,7 @@ fun EpisodeListScreen(
 
                             val episodeNo = episodeNoStr.toIntOrNull()
                             if (episodeNo == null) {
-                                android.util.Log.w("EpisodeListScreen", "無効なエピソード番号: $episodeNoStr")
+                                AppLogger.w("EpisodeListScreen", "無効なエピソード番号: $episodeNoStr")
                                 failCount++
                                 continue
                             }
@@ -1002,7 +1004,7 @@ fun EpisodeListScreen(
                             }
 
                             if (kakuyomuEpisodeId == null) {
-                                android.util.Log.w("EpisodeListScreen", "マッピングが見つかりません: episode_no=$episodeNo")
+                                AppLogger.w("EpisodeListScreen", "マッピングが見つかりません: episode_no=$episodeNo")
                                 failCount++
                                 continue
                             }
@@ -1013,7 +1015,7 @@ fun EpisodeListScreen(
 
                                 // 取得失敗・エラー本文は保存しない（エラー文の本文保存による恒久化防止）
                                 if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
-                                    android.util.Log.w("EpisodeListScreen", "本文取得失敗のため保存をスキップ: episode_no=$episodeNo")
+                                    AppLogger.w("EpisodeListScreen", "本文取得失敗のため保存をスキップ: episode_no=$episodeNo")
                                     failCount++
                                 } else {
                                     // 既存エピソードを取得して更新
@@ -1027,14 +1029,14 @@ fun EpisodeListScreen(
                                             repository.insertEpisode(updatedEpisode)
                                         }
                                         successCount++
-                                        android.util.Log.d("EpisodeListScreen", "カクヨムエピソード修正成功: episode_no=$episodeNo, kakuyomu_id=$kakuyomuEpisodeId")
+                                        AppLogger.d("EpisodeListScreen", "カクヨムエピソード修正成功: episode_no=$episodeNo, kakuyomu_id=$kakuyomuEpisodeId")
                                     } else {
-                                        android.util.Log.w("EpisodeListScreen", "既存エピソードが見つかりません: episode_no=$episodeNo")
+                                        AppLogger.w("EpisodeListScreen", "既存エピソードが見つかりません: episode_no=$episodeNo")
                                         failCount++
                                     }
                                 }
                             } catch (e: Exception) {
-                                android.util.Log.e("EpisodeListScreen", "カクヨムエピソード取得エラー: episode_no=$episodeNo", e)
+                                AppLogger.e("EpisodeListScreen", "カクヨムエピソード取得エラー: episode_no=$episodeNo", e)
                                 failCount++
                             }
 
@@ -1144,7 +1146,7 @@ fun EpisodeListScreen(
                                     novel = updatedNovel
                                     Toast.makeText(context, "タグを更新しました", Toast.LENGTH_SHORT).show()
                                 } catch (e: Exception) {
-                                    Log.e("EpisodeListScreen", "タグ更新エラー: ${e.message}")
+                                    AppLogger.e("EpisodeListScreen", "タグ更新エラー: ${e.message}")
                                     Toast.makeText(context, "タグの更新に失敗しました", Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -1403,7 +1405,7 @@ fun EpisodeListScreen(
                                     Toast.makeText(context, "小説を削除しました", Toast.LENGTH_SHORT).show()
                                     onBack()
                                 } catch (e: Exception) {
-                                    Log.e("EpisodeListScreen", "小説削除エラー: ${e.message}", e)
+                                    AppLogger.e("EpisodeListScreen", "小説削除エラー: ${e.message}", e)
                                     Toast.makeText(context, "小説の削除に失敗しました: ${e.message}", Toast.LENGTH_SHORT).show()
                                 } finally {
                                     isDeletingNovel = false
@@ -1551,7 +1553,7 @@ fun EpisodeListScreen(
                                             lastRead = null
                                             Toast.makeText(context, "しおりを削除しました", Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
-                                            Log.e("EpisodeListScreen", "しおり削除エラー: ${e.message}")
+                                            AppLogger.e("EpisodeListScreen", "しおり削除エラー: ${e.message}")
                                             Toast.makeText(context, "しおりの削除に失敗しました", Toast.LENGTH_SHORT).show()
                                         }
                                     }
@@ -2046,7 +2048,7 @@ fun EpisodeItem(
 //                null
 //            }
 //        } catch (e: Exception) {
-//            Log.e("UpdateInfoScreen", "エピソード取得エラー: $episodeNo", e)
+//            AppLogger.e("UpdateInfoScreen", "エピソード取得エラー: $episodeNo", e)
 //            null
 //        }
 //    }

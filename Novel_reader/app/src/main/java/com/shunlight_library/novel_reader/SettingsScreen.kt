@@ -6,13 +6,13 @@
 package com.shunlight_library.novel_reader
 
 import android.app.Activity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.net.Uri
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -201,13 +201,13 @@ fun SettingsScreenUpdated(
                     runCatching {
                         contentResolver.releasePersistableUriPermission(Uri.parse(previousUri), flags)
                     }.onFailure { e ->
-                        Log.w("SettingsScreen", "前の保存先の権限解放に失敗: ${e.message}", e)
+                        AppLogger.w("SettingsScreen", "前の保存先の権限解放に失敗: ${e.message}", e)
                     }
                 }
 
                 Toast.makeText(context, "画像の保存先を設定しました", Toast.LENGTH_SHORT).show()
             } catch (e: SecurityException) {
-                Log.e("SettingsScreen", "保存先ディレクトリの権限取得に失敗: ${e.message}", e)
+                AppLogger.e("SettingsScreen", "保存先ディレクトリの権限取得に失敗: ${e.message}", e)
                 Toast.makeText(context, "フォルダへのアクセス権限を取得できませんでした", Toast.LENGTH_LONG).show()
             }
         }
@@ -260,7 +260,7 @@ fun SettingsScreenUpdated(
             // カスタムフォント情報の読み込み
             customFonts = settingsStore.getAllCustomFontInfo()
         } catch (e: Exception) {
-            Log.e("SettingsScreen", "設定の読み込みエラー: ${e.message}")
+            AppLogger.e("SettingsScreen", "設定の読み込みエラー: ${e.message}")
         }
     }
 
@@ -435,7 +435,7 @@ fun SettingsScreenUpdated(
                                     isSyncing = false
                                     showDBSyncDialog = false
                                 } catch (e: Exception) {
-                                    Log.e("SettingsScreen", "同期エラー: ${e.message}", e)
+                                    AppLogger.e("SettingsScreen", "同期エラー: ${e.message}", e)
                                     Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_LONG).show()
                                     isSyncing = false
                                     showDBSyncDialog = false
@@ -570,7 +570,7 @@ fun SettingsScreenUpdated(
                                 // 設定画面を閉じる
                                 onBack()
                             } catch (e: Exception) {
-                                Log.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
+                                AppLogger.e("SettingsScreen", "設定保存エラー: ${e.message}", e)
                                 Toast.makeText(context, "設定の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         }
@@ -1120,7 +1120,7 @@ fun SettingsScreenUpdated(
                                             context.contentResolver.releasePersistableUriPermission(uri, flags)
                                         }
                                     }.onFailure { e ->
-                                        Log.w("SettingsScreen", "保存先の権限解放に失敗: ${e.message}", e)
+                                        AppLogger.w("SettingsScreen", "保存先の権限解放に失敗: ${e.message}", e)
                                     }
                                 }
 
@@ -1875,6 +1875,8 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
     var volumeKeyPagingEnabled by remember { mutableStateOf(false) }
     var autoNextEpisodeAtEnd by remember { mutableStateOf(false) }
     var readerMargins by remember { mutableStateOf(ReaderMargins()) }
+    var lineHeight by remember { mutableStateOf(SettingsStore.DEFAULT_LINE_HEIGHT) }
+    var showReadingProgress by remember { mutableStateOf(true) }
 
     val backgroundOptions = listOf("White" to "#FFFFFF", "Cream" to "#F5F5DC", "Light Gray" to "#EEEEEE", "Light Blue" to "#E6F2FF", "Dark Gray" to "#303030", "Black" to "#000000")
     val fontColorOptions = listOf("Black" to "#000000", "Dark Gray" to "#333333", "Navy" to "#000080", "Dark Green" to "#006400", "White" to "#FFFFFF")
@@ -1888,6 +1890,8 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
         volumeKeyPagingEnabled = settingsStore.volumeKeyPagingEnabled.first()
         autoNextEpisodeAtEnd = settingsStore.autoNextEpisodeAtEnd.first()
         readerMargins = settingsStore.readerMargins.first()
+        lineHeight = settingsStore.readerLineHeight.first()
+        showReadingProgress = settingsStore.showReadingProgress.first()
     }
 
     Scaffold(
@@ -1912,6 +1916,8 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                                 settingsStore.saveVolumeKeyPagingEnabled(volumeKeyPagingEnabled)
                                 settingsStore.saveAutoNextEpisodeAtEnd(autoNextEpisodeAtEnd)
                                 settingsStore.saveReaderMargins(readerMargins)
+                                settingsStore.saveReaderLineHeight(lineHeight)
+                                settingsStore.saveShowReadingProgress(showReadingProgress)
                                 android.widget.Toast.makeText(context, "設定を保存しました", android.widget.Toast.LENGTH_SHORT).show()
                                 onBack()
                             } catch (e: Exception) {
@@ -1996,6 +2002,34 @@ fun SettingsReadingScreen(onBack: () -> Unit) {
                         )
                     }
                     Switch(checked = autoNextEpisodeAtEnd, onCheckedChange = { autoNextEpisodeAtEnd = it })
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("読書進捗を表示")
+                        Text(
+                            text = "本文の隅にページ数（縦書き）や読了率（％）を表示します",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = showReadingProgress, onCheckedChange = { showReadingProgress = it })
+                }
+            }
+            HorizontalDivider()
+            SettingSection(title = "行間 (エピソード表示時)") {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("行間: ${"%.1f".format(lineHeight)}（文字サイズに対する倍率）")
+                    Slider(
+                        value = lineHeight,
+                        onValueChange = { lineHeight = Math.round(it * 10) / 10f },
+                        valueRange = SettingsStore.MIN_LINE_HEIGHT..SettingsStore.MAX_LINE_HEIGHT,
+                        steps = Math.round((SettingsStore.MAX_LINE_HEIGHT - SettingsStore.MIN_LINE_HEIGHT) * 10) - 1
+                    )
+                    Text(
+                        text = "縦書きではルビの表示領域を確保するため、少し広めに適用されます",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             HorizontalDivider()
@@ -2499,8 +2533,8 @@ fun SettingsDeveloperScreen(onBack: () -> Unit) {
                         }) { Text("コピー") }
                         TextButton(onClick = {
                             val tag = "NovelReader_Dev"
-                            Log.e(tag, "[${log.errorType}] ${log.novelTitle} (${log.ncode}) - ${log.errorMessage}")
-                            log.stackTrace?.let { Log.e(tag, it) }
+                            AppLogger.e(tag, "[${log.errorType}] ${log.novelTitle} (${log.ncode}) - ${log.errorMessage}")
+                            log.stackTrace?.let { AppLogger.e(tag, it) }
                             Toast.makeText(context, "Logcatに出力しました", Toast.LENGTH_SHORT).show()
                         }) { Text("Logcat") }
                     }
@@ -2694,8 +2728,8 @@ fun SettingsDeveloperScreen(onBack: () -> Unit) {
                         onClick = {
                             val tag = "NovelReader_Dev"
                             filteredLogs.forEach { log ->
-                                Log.e(tag, "[${log.errorType}] ${log.novelTitle} (${log.ncode}) ${log.episodeTitle ?: "第${log.episodeNo}話"} - ${log.errorMessage}")
-                                log.stackTrace?.let { Log.e(tag, it) }
+                                AppLogger.e(tag, "[${log.errorType}] ${log.novelTitle} (${log.ncode}) ${log.episodeTitle ?: "第${log.episodeNo}話"} - ${log.errorMessage}")
+                                log.stackTrace?.let { AppLogger.e(tag, it) }
                             }
                             Toast.makeText(context, "Logcatに${filteredLogs.size}件出力しました", Toast.LENGTH_SHORT).show()
                         },

@@ -5,9 +5,13 @@
  */
 package com.shunlight_library.novel_reader.navigation
 
+import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.ViewModel
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * シンプルなバックスタック方式で画面遷移を管理するナビゲーションコントローラ。
@@ -54,19 +58,16 @@ class NavigationManager {
 
     /**
      * 指定した [screen] が現れるまで戻る。
+     * スタックに [screen] が無い場合はスタックを変更せず false を返す（中間画面を失わない）。
      */
     fun navigateBackTo(screen: Screen): Boolean {
-        // 目的の画面が見つかるまでスタックを巻き戻す
-        while (screenStack.isNotEmpty() && screenStack.last() != screen) {
+        val index = screenStack.lastIndexOf(screen)
+        if (index < 0) return false
+        while (screenStack.size > index + 1) {
             screenStack.removeAt(screenStack.lastIndex)
         }
-
-        return if (screenStack.isNotEmpty() && screenStack.last() == screen) {
-            _currentScreen.value = screenStack.removeAt(screenStack.lastIndex)
-            true
-        } else {
-            false
-        }
+        _currentScreen.value = screenStack.removeAt(screenStack.lastIndex)
+        return true
     }
 
     /**
@@ -102,6 +103,102 @@ class NavigationManager {
      */
     fun clearScrollPosition(screenKey: String) {
         scrollPositions.remove(screenKey)
+    }
+
+    /** プロセス再生成に備えて現在画面・バックスタック・スクロール位置を Bundle へ保存する */
+    fun saveState(): Bundle = Bundle().apply {
+        putString(KEY_CURRENT, ScreenCodec.encode(_currentScreen.value).toString())
+        putString(KEY_STACK, JSONArray().apply {
+            screenStack.forEach { put(ScreenCodec.encode(it)) }
+        }.toString())
+        putString(KEY_SCROLL, JSONObject().apply {
+            scrollPositions.forEach { (key, pos) -> put(key, JSONArray().put(pos.first).put(pos.second)) }
+        }.toString())
+    }
+
+    /** [saveState] で保存した状態を復元する。壊れたデータは無視して Main のままにする */
+    fun restoreState(bundle: Bundle) {
+        try {
+            val current = bundle.getString(KEY_CURRENT)?.let { ScreenCodec.decode(JSONObject(it)) } ?: return
+            val stack = bundle.getString(KEY_STACK)?.let { json ->
+                val array = JSONArray(json)
+                (0 until array.length()).mapNotNull { ScreenCodec.decode(array.getJSONObject(it)) }
+            } ?: emptyList()
+            val scroll = bundle.getString(KEY_SCROLL)?.let { json ->
+                val obj = JSONObject(json)
+                obj.keys().asSequence().associateWith { key ->
+                    val pos = obj.getJSONArray(key)
+                    Pair(pos.getInt(0), pos.getInt(1))
+                }
+            } ?: emptyMap()
+            screenStack.clear()
+            screenStack.addAll(stack)
+            scrollPositions.clear()
+            scrollPositions.putAll(scroll)
+            _currentScreen.value = current
+        } catch (e: Exception) {
+            // 復元に失敗した場合は初期状態のまま起動する
+        }
+    }
+
+    private companion object {
+        const val KEY_CURRENT = "nav_current"
+        const val KEY_STACK = "nav_stack"
+        const val KEY_SCROLL = "nav_scroll"
+    }
+}
+
+/**
+ * 構成変更（回転・ダークモード切替など）をまたいで [NavigationManager] を保持する ViewModel。
+ */
+class NavigationViewModel : ViewModel() {
+    val navigationManager = NavigationManager()
+
+    /** savedInstanceState からの復元を一度だけ行うためのフラグ */
+    var restored = false
+}
+
+/** [Screen] を JSON へ相互変換する（source の入れ子も再帰的に扱う） */
+internal object ScreenCodec {
+    private val objects: Map<String, Screen> by lazy {
+        listOf(
+            Screen.Main, Screen.Settings, Screen.RecentlyReadNovels, Screen.RecentlyUpdatedNovels,
+            Screen.UpdateInfo, Screen.DatabaseSync, Screen.DownloadQueue, Screen.SettingsMenu,
+            Screen.SettingsDisplay, Screen.SettingsReading, Screen.SettingsNetwork,
+            Screen.SettingsAutoUpdate, Screen.SettingsStorage, Screen.SettingsDeveloper
+        ).associateBy { it::class.java.simpleName }
+    }
+
+    fun encode(screen: Screen): JSONObject {
+        val json = JSONObject().put("type", screen::class.java.simpleName)
+        when (screen) {
+            is Screen.NovelList -> screen.source?.let { json.put("source", encode(it)) }
+            is Screen.EpisodeList -> {
+                json.put("ncode", screen.ncode)
+                screen.source?.let { json.put("source", encode(it)) }
+            }
+            is Screen.EpisodeView -> {
+                json.put("ncode", screen.ncode).put("episodeNo", screen.episodeNo)
+                screen.source?.let { json.put("source", encode(it)) }
+            }
+            is Screen.WebView -> {
+                json.put("url", screen.url)
+                screen.source?.let { json.put("source", encode(it)) }
+            }
+            else -> Unit
+        }
+        return json
+    }
+
+    fun decode(json: JSONObject): Screen? {
+        val source = json.optJSONObject("source")?.let { decode(it) }
+        return when (val type = json.optString("type")) {
+            "NovelList" -> Screen.NovelList(source)
+            "EpisodeList" -> Screen.EpisodeList(json.getString("ncode"), source)
+            "EpisodeView" -> Screen.EpisodeView(json.getString("ncode"), json.getString("episodeNo"), source)
+            "WebView" -> Screen.WebView(json.getString("url"), source)
+            else -> objects[type]
+        }
     }
 }
 

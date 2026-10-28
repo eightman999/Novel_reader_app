@@ -1,7 +1,6 @@
 package com.shunlight_library.novel_reader.utils
 
 import android.net.Uri
-import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.SettingsStore
@@ -103,10 +102,10 @@ object ImageCacheUtils {
                         null
                     }
                 } catch (e: SecurityException) {
-                    Log.w(TAG, "外部保存先への書き込み権限がありません: ${e.message}")
+                    AppLogger.w(TAG, "外部保存先への書き込み権限がありません: ${e.message}")
                     null
                 } catch (e: Exception) {
-                    Log.w(TAG, "選択された保存先への書き込みに失敗: ${e.message}", e)
+                    AppLogger.w(TAG, "選択された保存先への書き込みに失敗: ${e.message}", e)
                     null
                 } ?: run {
                     val file = File(context.filesDir, hash + extension)
@@ -125,7 +124,7 @@ object ImageCacheUtils {
 
                 resolveLocalUri(storedPath)
             } catch (e: Exception) {
-                Log.e(TAG, "画像ダウンロード失敗: ${e.message}", e)
+                AppLogger.e(TAG, "画像ダウンロード失敗: ${e.message}", e)
                 null
             } finally {
                 connection?.disconnect()

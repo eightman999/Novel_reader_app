@@ -21,7 +21,8 @@ public class VTextView extends View {
     private static final int FONT_COLOR = Color.BLACK;
     private static final int TOP_SPACE = 18;     // dp
     private static final int BOTTOM_SPACE = 18;  // dp
-    public static final int MAX_PAGE = 1024;
+    // ViewPager のページ数上限。超える長さの本文は最終ページで打ち切る（計算スレッドの範囲外書き込み防止）
+    public static final int MAX_PAGE = 4096;
 
     // 行頭禁則文字（行頭に来てはならない文字。前の文字での改行を抑止し、ぶら下げで処理する）
     private static final String LINE_HEAD_PROHIBITED =
@@ -42,6 +43,9 @@ public class VTextView extends View {
     Context mContext;
 
     private Typeface mFace;
+
+    // 行送り（文字サイズに対する倍率）。ルビを行間に描くため 1.5 未満にはしない
+    private float lineSpaceRate = 2.0f;
 
     private TextStyle titleStyle;
     private TextStyle bodyStyle;
@@ -115,6 +119,37 @@ public class VTextView extends View {
 
     public int getTotalPage() {
         return this.totalPage;
+    }
+
+    /** 描画対象の本文（青空文庫形式に変換済み） */
+    public String getText() {
+        return this.text;
+    }
+
+    /**
+     * 本文中の文字位置を含むページ添字（0始まり）を返す。ページ計算前は -1。
+     */
+    public int findPageOf(int charIndex) {
+        if (totalPage < 0) return -1;
+        for (int page = 0; page <= totalPage; page++) {
+            int next = pageStart(page + 1);
+            if (page == totalPage || charIndex < next) return page;
+        }
+        return totalPage;
+    }
+
+    /** ページ先頭の文字位置（画像ページは負値で記録されているため絶対値に戻す） */
+    private int pageStart(int page) {
+        int index = pageIndex[page];
+        return index >= 0 ? index : -index - 2;
+    }
+
+    /** 行送りの倍率を設定する（1.5〜3.0 に丸める） */
+    public void setLineSpaceRate(float rate) {
+        float clamped = Math.max(1.5f, Math.min(3.0f, rate));
+        if (clamped == lineSpaceRate) return;
+        lineSpaceRate = clamped;
+        setFontSize(FONT_SIZE);
     }
 
     public void setColor(String fontColor, String backgroundColor) {
@@ -317,7 +352,7 @@ public class VTextView extends View {
     public void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         this.textDraw(canvas, currentIndex, true, this);
-        Log.d("draw", "draw vtext");
+        if (com.shunlight_library.novel_reader.BuildConfig.ENABLE_LOGGING) Log.d("draw", "draw vtext");
         // 計算中に onDraw が繰り返されても同一レイアウトの計算は1本だけ走らせる
         if (this.totalPage < 0 && calcGeneration != layoutGeneration) this.calcPages();
     }
@@ -327,25 +362,31 @@ public class VTextView extends View {
     public void calcPages() {
         final int generation = layoutGeneration;
         calcGeneration = generation;
+        // 計算は専用の配列で行い、完了時に UI スレッドで差し替える
+        // （描画中の pageIndex と共有すると、無効化後の古い計算結果が混入するため）
+        final int[] calcIndex = new int[MAX_PAGE];
         new Thread(new Runnable() {
             @Override
             public void run() {
                 int current = 0;
-                while (!textDraw(null, current, false, null)) {
+                while (!textDraw(null, current, false, null, calcIndex)) {
                     if (generation != layoutGeneration) return; // 設定変更で無効化された計算
+                    if (current >= MAX_PAGE - 2) break; // 上限を超える本文は打ち切る
                     current++;
                 }
+                if (generation != layoutGeneration) return;
                 // 本文がページ末尾ちょうどで終わると最後に空ページができるため除外する
-                if (current > 0 && pageIndex[current] >= text.length()) {
+                if (current > 0 && calcIndex[current] >= text.length()) {
                     current--;
                 }
-                Log.d("page", "last page: " + current);
+                if (com.shunlight_library.novel_reader.BuildConfig.ENABLE_LOGGING) Log.d("page", "last page: " + current);
                 // 以前は current - 1 としており、最終描画ページへ遷移できなかった（#164）
                 final int calculated = current;
                 mainHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         if (generation != layoutGeneration) return;
+                        System.arraycopy(calcIndex, 0, pageIndex, 0, MAX_PAGE);
                         totalPage = calculated;
                         if (onPageClacListener != null) onPageClacListener.onPageClac(totalPage);
                     }
@@ -359,6 +400,11 @@ public class VTextView extends View {
     }
 
     public String checkImage(int page) {
+        return checkImage(page, pageIndex);
+    }
+
+    private String checkImage(int page, int[] pageIndex) {
+        if (page + 1 >= MAX_PAGE) return null;
         int index = pageIndex[page];
 
         if (index < 0) {
@@ -368,7 +414,7 @@ public class VTextView extends View {
                 if (text.charAt(i) == '$') break;
                 urlStr += text.charAt(i);
             }
-            Log.d("url", urlStr);
+            if (com.shunlight_library.novel_reader.BuildConfig.ENABLE_LOGGING) Log.d("url", urlStr);
             pageIndex[page + 1] = i + 1;
             return urlStr;
         }
@@ -377,6 +423,11 @@ public class VTextView extends View {
     }
 
     public boolean textDraw(Canvas canvas, int page, boolean enable, View v) {
+        if (page + 1 >= MAX_PAGE) return true;
+        return textDraw(canvas, page, enable, v, pageIndex);
+    }
+
+    private boolean textDraw(Canvas canvas, int page, boolean enable, View v, int[] pageIndex) {
         CurrentState state = new CurrentState();
         initPos(state.pos);
         initPos(state.rpos);
@@ -400,7 +451,7 @@ public class VTextView extends View {
 
         int index = pageIndex[page];
 
-        if (checkImage(page) != null) {
+        if (checkImage(page, pageIndex) != null) {
             if (pageIndex[page + 1] < text.length()) {
                 return false;
             } else {
@@ -576,7 +627,7 @@ public class VTextView extends View {
             this.paint.setSubpixelText(true);
 
             this.fontSpace = size;
-            this.lineSpace = this.fontSpace * 2;
+            this.lineSpace = this.fontSpace * lineSpaceRate;
         }
     }
 

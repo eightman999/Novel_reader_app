@@ -14,6 +14,9 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import com.shunlight_library.novel_reader.navigation.NavigationViewModel
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -97,11 +100,29 @@ class MainActivity : ComponentActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBundle(KEY_NAVIGATION_STATE, navigationManager.saveState())
+    }
+
+    private companion object {
+        const val KEY_NAVIGATION_STATE = "navigation_state"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ナビゲーションマネージャーの作成
-        navigationManager = NavigationManager()
+        // ナビゲーションマネージャーは構成変更をまたいで ViewModel に保持し、
+        // プロセス再生成時は savedInstanceState から画面スタックを復元する
+        val navigationViewModel: NavigationViewModel by viewModels()
+        navigationManager = navigationViewModel.navigationManager
+        if (!navigationViewModel.restored) {
+            savedInstanceState?.getBundle(KEY_NAVIGATION_STATE)?.let { navigationManager.restoreState(it) }
+            navigationViewModel.restored = true
+        }
+        if (savedInstanceState == null) {
+            handleNotificationIntent(intent)
+        }
 
         // Android 13+ で通知権限をリクエスト（POST_NOTIFICATIONS）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -138,17 +159,6 @@ class MainActivity : ComponentActivity() {
             val themeMode by settingsStore.themeMode.collectAsState(initial = "System")
             val scope = rememberCoroutineScope()
 
-            // アプリ起動時に未読通知をチェック
-            LaunchedEffect(key1 = Unit) {
-                scope.launch {
-                    val unreadNotifications = notificationStore.getUnreadNotifications()
-                    if (unreadNotifications.isNotEmpty()) {
-                        // 通知があることを示すフラグを設定
-                        // 実際の通知表示はメイン画面で行う
-                    }
-                }
-            }
-
             // GitHubの最新リリースをバックグラウンドで確認
             LaunchedEffect(Unit) {
                 scope.launch {
@@ -169,6 +179,29 @@ class MainActivity : ComponentActivity() {
                     navigationManager = navigationManager,
                     notificationStore = notificationStore
                 )
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    private fun handleNotificationIntent(notificationIntent: Intent?) {
+        if (notificationIntent?.getStringExtra("type") != "novel_update") return
+        val ncode = notificationIntent.getStringExtra("ncode")?.trim().orEmpty()
+        notificationIntent.removeExtra("type")
+        notificationIntent.removeExtra("ncode")
+        if (ncode.isEmpty()) return
+
+        lifecycleScope.launch {
+            val current = navigationManager.currentScreen
+            if (NovelReaderApplication.getRepository().getNovelByNcode(ncode) != null &&
+                (current !is Screen.EpisodeList || current.ncode != ncode)
+            ) {
+                navigationManager.navigateTo(Screen.EpisodeList(ncode, current))
             }
         }
     }
@@ -379,17 +412,25 @@ fun NovelReaderApp(
             ncode = currentScreen.ncode,
             episodeNo = currentScreen.episodeNo,
             onBack = {
-                currentScreen.source?.let { source ->
-                    navigationManager.navigateBackTo(source)
-                } ?: navigationManager.navigateBack()
+                // 遷移元がスタックに無い場合は通常の1画面戻りにフォールバックする
+                val source = currentScreen.source
+                if (source == null || !navigationManager.navigateBackTo(source)) {
+                    navigationManager.navigateBack()
+                }
             },
             onBackToToc = {
-                currentScreen.source?.let { source ->
-                    navigationManager.navigateBackTo(source)
-                    if (source !is Screen.EpisodeList) {
-                        navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, source))
+                val source = currentScreen.source
+                when {
+                    source == null ->
+                        navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
+                    navigationManager.navigateBackTo(source) -> {
+                        if (source !is Screen.EpisodeList) {
+                            navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode, source))
+                        }
                     }
-                } ?: navigationManager.navigateTo(Screen.EpisodeList(currentScreen.ncode))
+                    // 遷移元が見つからない場合は読書画面を目次へ差し替える
+                    else -> navigationManager.replaceCurrent(Screen.EpisodeList(currentScreen.ncode, source))
+                }
             },
             onPrevious = {
                 val prevEpisodeNo = currentScreen.episodeNo.toIntOrNull()?.let { it - 1 }?.toString() ?: "1"
@@ -535,7 +576,7 @@ fun MenuButton(
 fun MainScreen(
     onNavigate: (Screen) -> Unit,
     notificationStore: NotificationStore? = null,
-    onDeveloperUnlocked: () -> Unit = {}
+    onDeveloperUnlocked: () -> Unit
 ) {
     val repository = NovelReaderApplication.getRepository()
     val context = LocalContext.current

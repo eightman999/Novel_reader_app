@@ -177,3 +177,7 @@
   - 音量キーでページ送り: `volumeKeyPagingEnabled`（既定OFF）。`MainActivity.onKeyDown/onKeyUp` から `VolumeKeyPaging` 経由で、読書画面が登録したハンドラへ渡す（音量下=次、音量上=前）。縦書きは `VjapPageController` でページ送り、横書きは画面の9割ずつスクロール。ハンドラ未登録時は通常の音量操作。
   - 最終ページから次話へ: `autoNextEpisodeAtEnd`（既定OFF）。縦書きの最終ページでの次ページタップ、または縦書き・横書きの末尾での音量キー送りで次話へ遷移（前後話ナビと同じ `onNext`、二重遷移ガードあり）。最新話では「最新話です」と表示。「画面タップで話を移動」がONのときは、縦書きのタップによる自動遷移は行わない。
   - 横書きの読書位置復元: 本文WebViewが外側の Compose `verticalScroll` 内に全高で置かれていたため `window.scrollY` が常に0になり、読書位置の保存・復元が効いていなかった。外側スクロールは開発者モード（HTMLソース表示）だけに限定し、WebView自体をスクロールさせる。読み込み直後は本文の高さが変わるため、1.5秒間（または利用者が触るまで）`ResizeObserver` で復元位置をかけ直し、その間はスクロール位置を保存しない（復元途中の位置での上書き防止）。
+- Audit fixes & reader features (v2.1.3): DB schema の変更はなし（DAOに `updateGeneralAllNo` を追加、設定は DataStore）。
+  - 追加した DataStore キー: `reader_line_height`（Float、1.2〜2.8に丸め、既定1.8）、`show_reading_progress`（既定ON）、`recently_read_filter`（最近読んだ画面のフィルター、JSON。破損時は既定値）。
+  - トランザクション化: カクヨム新規登録の小説情報＋episode_mapping 保存（`insertNovelWithEpisodeMappings`）、`mergeTempEpisodesToMain`、登録キュー削除と temp_episodes 削除（queue_id 単位）。
+  - minSdk 21〜25 で `java.time` を使うため core library desugaring を有効化。

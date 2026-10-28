@@ -5,7 +5,7 @@
  */
 package com.shunlight_library.novel_reader
 
-import android.util.Log
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -240,9 +240,11 @@ fun UpdateInfoScreen(
                                     scanNovels = scanNovels.filter { it.registered_at <= capturedDateEnd + " 23:59:59" }
                                 }
                             }
-                            // 短編除外
+                            // 短編除外（noveltype がAPI由来で確実ななろう作品のみ。カクヨムの noveltype は推定値のため対象外）
                             if (capturedExcludeShort) {
-                                scanNovels = scanNovels.filter { it.noveltype != 2 }
+                                scanNovels = scanNovels.filter {
+                                    it.site_type != NovelSiteAdapter.SITE_TYPE_SYOSETU || it.noveltype != 2
+                                }
                             }
                             // 完結除外
                             if (capturedExcludeCompleted) {
@@ -282,7 +284,7 @@ fun UpdateInfoScreen(
                                 syosetuScanInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuScanList.filter { it.rating != 1 }.map { it.ncode }, isR18 = false))
                                 syosetuScanInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuScanList.filter { it.rating == 1 }.map { it.ncode }, isR18 = true))
                             } catch (e: Exception) {
-                                Log.e("UpdateInfo", "なろう一括取得エラー（個別取得にフォールバック）: ${e.message}")
+                                AppLogger.e("UpdateInfo", "なろう一括取得エラー（個別取得にフォールバック）: ${e.message}")
                             }
 
                             scanNovels.forEachIndexed { index, novel ->
@@ -363,7 +365,7 @@ fun UpdateInfoScreen(
 
                                     delay(100)
                                 } catch (e: Exception) {
-                                    Log.e("UpdateInfo", "小説のエラーチェックに失敗: ${novel.ncode} - ${e.message}")
+                                    AppLogger.e("UpdateInfo", "小説のエラーチェックに失敗: ${novel.ncode} - ${e.message}")
                                 }
                             }
 
@@ -468,7 +470,7 @@ fun UpdateInfoScreen(
                                             failCount++
                                         }
                                     } catch (e: Exception) {
-                                        Log.e("UpdateInfo", "エピソード取得エラー: $ncode-$episodeNo - ${e.message}")
+                                        AppLogger.e("UpdateInfo", "エピソード取得エラー: $ncode-$episodeNo - ${e.message}")
                                         failCount++
                                     }
 
@@ -492,7 +494,7 @@ fun UpdateInfoScreen(
                                         repository.updateNovel(updatedNovel)
                                     }
                                 } catch (e: Exception) {
-                                    Log.e("UpdateInfo", "小説情報の更新に失敗: ${novel.ncode} - ${e.message}")
+                                    AppLogger.e("UpdateInfo", "小説情報の更新に失敗: ${novel.ncode} - ${e.message}")
                                 }
                             }
 
@@ -551,6 +553,10 @@ fun UpdateInfoScreen(
 
                         scope.launch {
                             try {
+                                // 全更新確認の開始時に update_queue をリセット（AutoUpdateWorker と同じ。古いキューの残存を防ぐ）（M6）
+                                // 判定は「最新話数 > 取得済み話数(total_ep)」のため、未ダウンロード分は再検出される
+                                repository.clearAllUpdateQueue()
+
                                 // 更新対象の小説を取得
                                 var novelsForUpdate = repository.getNovelsForUpdate()
                                 // 短編は新規エピソードが増えないため、設定により更新確認から除外
@@ -576,7 +582,7 @@ fun UpdateInfoScreen(
                                     syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuList.filter { it.rating != 1 }.map { it.ncode }, isR18 = false))
                                     syosetuInfoMap.putAll(NovelApiUtils.fetchNovelInfoBatch(syosetuList.filter { it.rating == 1 }.map { it.ncode }, isR18 = true))
                                 } catch (e: Exception) {
-                                    Log.e("UpdateCheck", "なろう一括取得エラー（個別取得にフォールバック）: ${e.message}")
+                                    AppLogger.e("UpdateCheck", "なろう一括取得エラー（個別取得にフォールバック）: ${e.message}")
                                 }
 
                                 // 進捗状態の更新関数
@@ -597,12 +603,14 @@ fun UpdateInfoScreen(
                                 var processedNovels = 0
                                 var workCount = 0  // 新着・更新された作品数
                                 var episodeCount = 0  // 新着・更新された話数の合計
+                                // 並列asyncからは共有カウンタを直接変更せず、各asyncが「追加話数（更新なしはnull）」を返し
+                                // awaitAll 後に集計する（L15: データ競合防止）
 
                                 // 各バッチを処理
                                 for (batch in novelBatches) {
                                     // 高速化: 並列処理で複数の小説を同時に処理
                                     val deferreds = batch.map { novel ->
-                                        async(Dispatchers.IO) {
+                                        async<Int?>(Dispatchers.IO) {
                                             try {
                                                 if (novel.site_type == NovelSiteAdapter.SITE_TYPE_KAKUYOMU) {
                                                     // カクヨムの場合、HTMLスクレイピングで更新確認
@@ -636,18 +644,11 @@ fun UpdateInfoScreen(
                                                         )
                                                         repository.insertUpdateQueue(updateQueue)
 
-                                                        workCount++
-
-                                                        if (novel.general_all_no == 0) {
-                                                            episodeCount += generalAllNo
-                                                        } else {
-                                                            episodeCount += (generalAllNo - novel.general_all_no)
-                                                        }
-
-                                                        return@async true
+                                                        // 新着・更新話数 = 最新話数 - 取得済み話数
+                                                        return@async generalAllNo - novel.total_ep
                                                     }
 
-                                                    false
+                                                    null
                                                 } else {
                                                     // 小説家になろうの場合、一括取得の結果を優先（無ければ個別取得にフォールバック）
                                                     val info = syosetuInfoMap[novel.ncode.lowercase()]
@@ -667,7 +668,9 @@ fun UpdateInfoScreen(
                                                         }
 
                                                         // 新規エピソードのチェック
-                                                        if (info.generalAllNo > novel.general_all_no) {
+                                                        // 判定: 最新話数（general_all_no）> 取得済み話数（total_ep）。
+                                                        // AutoUpdateWorker / UpdateService / カクヨム分岐と同じ基準（M5）
+                                                        if (info.generalAllNo > novel.total_ep) {
                                                             val updatedNovel = novel.copy(
                                                                 general_all_no = info.generalAllNo,
                                                                 updated_at = info.updatedAt
@@ -682,33 +685,33 @@ fun UpdateInfoScreen(
                                                             )
                                                             repository.insertUpdateQueue(updateQueue)
 
-                                                            if (novel.general_all_no == 0) {
-                                                                // 新着作品：全話数を加算
-                                                                episodeCount += info.generalAllNo
-                                                            } else {
-                                                                // 更新作品：新しく追加された話数を加算
-                                                                episodeCount += (info.generalAllNo - novel.general_all_no)
-                                                            }
-
-                                                            workCount++
-                                                            return@async true
+                                                            // 新着・更新話数 = 最新話数 - 取得済み話数（新着は total_ep=0 なので全話数）
+                                                            return@async info.generalAllNo - novel.total_ep
                                                         }
 
                                                         // API情報で更新がない場合は処理完了
                                                         // （改稿チェックは削除：API情報が取得できる場合は目次ページ取得不要）
+                                                    } else {
+                                                        AppLogger.w("UpdateCheck", "なろうAPIから最新情報を取得できませんでした（更新なし扱いにせずスキップ）: ${novel.ncode}")
                                                     }
 
-                                                    false
+                                                    null
                                                 }
                                             } catch (e: Exception) {
-                                                Log.e("UpdateCheck", "小説処理エラー: ${novel.ncode} - ${e.message}")
-                                                false
+                                                AppLogger.e("UpdateCheck", "小説処理エラー: ${novel.ncode} - ${e.message}")
+                                                null
                                             }
                                         }
                                     }
 
-                                    // バッチの全処理が完了するまで待機
-                                    deferreds.awaitAll()
+                                    // バッチの全処理が完了するまで待機し、結果を集計
+                                    val batchResults: List<Int?> = deferreds.awaitAll()
+                                    batchResults.forEach { added ->
+                                        if (added != null) {
+                                            workCount++
+                                            episodeCount += added
+                                        }
+                                    }
 
                                     // 処理済み小説数を更新
                                     processedNovels += batch.size
@@ -741,7 +744,7 @@ fun UpdateInfoScreen(
                                         val novelsList = repository.getNovelsByNcodes(ncodes)
                                         novels = novelsList.associateBy { it.ncode }
                                     } catch (e: Exception) {
-                                        Log.e("UpdateCheck", "更新情報再取得エラー: ${e.message}")
+                                        AppLogger.e("UpdateCheck", "更新情報再取得エラー: ${e.message}")
                                     }
 
                                     // 処理完了
@@ -749,7 +752,7 @@ fun UpdateInfoScreen(
                                     isSyncing = false  // 同期状態をOFFに
                                 }
                             } catch (e: Exception) {
-                                Log.e("UpdateCheck", "更新チェックエラー: ${e.message}")
+                                AppLogger.e("UpdateCheck", "更新チェックエラー: ${e.message}")
 
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
@@ -871,7 +874,7 @@ fun UpdateInfoScreen(
                                                     // 既に更新済みの場合はキューから削除してスキップ
                                                     if (startEpisode > endEpisode) {
                                                         repository.deleteUpdateQueueByNcode(queueItem.ncode)
-                                                        Log.d("UpdateInfo", "小説「${novel.title}」は既に更新済みのためキューから削除しました")
+                                                        AppLogger.d("UpdateInfo", "小説「${novel.title}」は既に更新済みのためキューから削除しました")
                                                         continue
                                                     }
 
@@ -923,7 +926,7 @@ fun UpdateInfoScreen(
 
                                                                         // エピソード情報が見つからない場合、mapping情報が古い可能性があるため再取得
                                                                         if (existingEpisode == null && !mappingRefreshed) {
-                                                                            Log.w(
+                                                                            AppLogger.w(
                                                                                 "UpdateInfo",
                                                                                 "カクヨムエピソード情報が見つかりません（mapping再取得を試行）: ${queueItem.ncode}-$episodeNoStr"
                                                                             )
@@ -946,7 +949,7 @@ fun UpdateInfoScreen(
                                                                                 }
                                                                                 repository.insertEpisodeMappings(mappings)
 
-                                                                                Log.d(
+                                                                                AppLogger.d(
                                                                                     "UpdateInfo",
                                                                                     "カクヨムエピソード一覧とマッピング情報を再取得完了（既読情報保持）: ${novel.ncode}, ${refreshedEpisodes.size}話, mapping: ${mappings.size}件"
                                                                                 )
@@ -961,7 +964,7 @@ fun UpdateInfoScreen(
 
                                                                                 syncMessage = "「${novel.title}」の第${episodeNoStr}話を取得中..."
                                                                             } catch (refreshError: Exception) {
-                                                                                Log.e(
+                                                                                AppLogger.e(
                                                                                     "UpdateInfo",
                                                                                     "カクヨムエピソード一覧の再取得エラー: ${novel.ncode}",
                                                                                     refreshError
@@ -989,13 +992,13 @@ fun UpdateInfoScreen(
 
                                                                                 retryCount++
                                                                                 if (retryCount < maxRetries) {
-                                                                                    Log.w("UpdateInfo", "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): ${queueItem.ncode}-$episodeNoStr")
+                                                                                    AppLogger.w("UpdateInfo", "Episode body is empty or error, retrying (${retryCount}/${maxRetries}): ${queueItem.ncode}-$episodeNoStr")
                                                                                     delay(1000) // 1秒待機してから再試行
                                                                                 }
                                                                             }
 
                                                                             if (episodeBody.isEmpty() || episodeBody.startsWith("★HTMLページ読み込みエラー")) {
-                                                                                Log.e("UpdateInfo", "Failed to fetch episode body after ${maxRetries} retries: ${queueItem.ncode}-$episodeNoStr")
+                                                                                AppLogger.e("UpdateInfo", "Failed to fetch episode body after ${maxRetries} retries: ${queueItem.ncode}-$episodeNoStr")
                                                                             }
 
                                                                             // エピソード情報を更新（本文を追加）
@@ -1005,18 +1008,18 @@ fun UpdateInfoScreen(
                                                                             repository.insertEpisode(updatedEpisode)
                                                                             episodes.add(updatedEpisode)
 
-                                                                            Log.d(
+                                                                            AppLogger.d(
                                                                                 "UpdateInfo",
                                                                                 "カクヨムエピソード取得成功: ${queueItem.ncode}-$episodeNoStr (ID: $kakuyomuEpisodeId)"
                                                                             )
                                                                         } else {
-                                                                            Log.e(
+                                                                            AppLogger.e(
                                                                                 "UpdateInfo",
                                                                                 "カクヨムエピソード情報が見つかりません（再取得後も見つからず）: ${queueItem.ncode}-$episodeNoStr"
                                                                             )
                                                                         }
                                                                     } catch (e: Exception) {
-                                                                        Log.e(
+                                                                        AppLogger.e(
                                                                             "UpdateInfo",
                                                                             "カクヨムエピソード取得エラー: ${queueItem.ncode}-$episodeNoStr",
                                                                             e
@@ -1055,18 +1058,18 @@ fun UpdateInfoScreen(
                                                                             // 1話ずつデータベースに保存
                                                                             repository.insertEpisode(episode)
                                                                             episodes.add(episode)
-                                                                            Log.d(
+                                                                            AppLogger.d(
                                                                                 "UpdateInfo",
                                                                                 "エピソード取得成功: ${queueItem.ncode}-$episodeNoStr"
                                                                             )
                                                                         } else {
-                                                                            Log.e(
+                                                                            AppLogger.e(
                                                                                 "UpdateInfo",
                                                                                 "エピソード取得失敗: ${queueItem.ncode}-$episodeNoStr"
                                                                             )
                                                                         }
                                                                     } catch (e: Exception) {
-                                                                        Log.e(
+                                                                        AppLogger.e(
                                                                             "UpdateInfo",
                                                                             "エピソード取得エラー: ${queueItem.ncode}-$episodeNoStr",
                                                                             e
@@ -1132,7 +1135,7 @@ fun UpdateInfoScreen(
                                             }
 
                                         } catch (e: Exception) {
-                                            Log.e("UpdateInfo", "一括更新エラー", e)
+                                            AppLogger.e("UpdateInfo", "一括更新エラー", e)
 
                                             withContext(Dispatchers.Main) {
                                                 Toast.makeText(

@@ -8,6 +8,7 @@
 package com.shunlight_library.novel_reader
 
 import android.content.Intent
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.view.ViewGroup
@@ -29,7 +30,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 
 import androidx.activity.compose.BackHandler
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.ui.graphics.Color
 import com.shunlight_library.novel_reader.api.NovelApiUtils
@@ -152,12 +152,12 @@ fun WebViewScreen(
                         return 'target="_blank" links processed: ' + links.length;
                     })();
                 """.trimIndent()) { result ->
-                    Log.d("WebViewScreen", "Target blank links processing result: $result")
+                    AppLogger.d("WebViewScreen", "Target blank links processing result: $result")
                 }
 
                 // 年齢確認ページかチェック
                 if (loadedUrl.contains("ageauth")) {
-                    Log.d("WebViewScreen", "年齢確認ページを検出しました")
+                    AppLogger.d("WebViewScreen", "年齢確認ページを検出しました")
                     view.evaluateJavascript("""
                     (function() {
                         var links = document.getElementsByTagName('a');
@@ -191,7 +191,7 @@ fun WebViewScreen(
                         return false;
                     })();
                 """.trimIndent()) { result ->
-                        Log.d("WebViewScreen", "年齢確認自動クリック結果: $result")
+                        AppLogger.d("WebViewScreen", "年齢確認自動クリック結果: $result")
                     }
                 }
 
@@ -201,7 +201,7 @@ fun WebViewScreen(
                     return document.cookie;
                 })();
             """.trimIndent()) { result ->
-                    Log.d("WebViewScreen", "Current cookies: $result")
+                    AppLogger.d("WebViewScreen", "Current cookies: $result")
                 }
 
                 // セッション維持のためのJavaScript実行
@@ -213,19 +213,19 @@ fun WebViewScreen(
                     return null;
                 })();
             """.trimIndent()) { result ->
-                    Log.d("WebViewScreen", "Session data: $result")
+                    AppLogger.d("WebViewScreen", "Session data: $result")
                 }
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                Log.d("WebViewScreen", "shouldOverrideUrlLoading called with URL: $url")
+                AppLogger.d("WebViewScreen", "shouldOverrideUrlLoading called with URL: $url")
                 // http(s)以外のスキーム（mailto:, intent://等）は外部アプリへ委譲
                 // （WebViewで読み込むと net::ERR_UNKNOWN_URL_SCHEME になるため）
                 if (!url.startsWith("http://") && !url.startsWith("https://")) {
                     try {
                         view.context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
                     } catch (e: Exception) {
-                        Log.w("WebViewScreen", "外部スキームを開けません: $url")
+                        AppLogger.w("WebViewScreen", "外部スキームを開けません: $url")
                     }
                     return true
                 }
@@ -259,14 +259,14 @@ fun WebViewScreen(
                 isUserGesture: Boolean,
                 resultMsg: Message?
             ): Boolean {
-                Log.d("WebViewScreen", "onCreateWindow called - redirecting to same WebView")
+                AppLogger.d("WebViewScreen", "onCreateWindow called - redirecting to same WebView")
 
                 // 新しいウィンドウを作成する代わりに、一時的なWebViewを作成して
                 // そのURLを元のWebViewで読み込む
                 val tempWebView = WebView(view!!.context)
                 tempWebView.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                        Log.d("WebViewScreen", "New window would load URL: $url, redirecting to main WebView")
+                        AppLogger.d("WebViewScreen", "New window would load URL: $url, redirecting to main WebView")
                         // 元のWebViewでURLを読み込む
                         webView.loadUrl(url)
                         return true
@@ -275,7 +275,7 @@ fun WebViewScreen(
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         super.onPageStarted(view, url, favicon)
                         if (url != null) {
-                            Log.d("WebViewScreen", "Temp WebView started loading: $url, redirecting to main WebView")
+                            AppLogger.d("WebViewScreen", "Temp WebView started loading: $url, redirecting to main WebView")
                             webView.loadUrl(url)
                         }
                     }
@@ -292,7 +292,7 @@ fun WebViewScreen(
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
                 if (newProgress == 100) {
-                    Log.d("WebViewScreen", "Page load completed")
+                    AppLogger.d("WebViewScreen", "Page load completed")
                 }
             }
         }
@@ -341,7 +341,7 @@ fun WebViewScreen(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("WebViewScreen", "キュー追加エラー", e)
+                AppLogger.e("WebViewScreen", "キュー追加エラー", e)
                 withContext(Dispatchers.Main) {
                     isLoading = false
                     callback(false, "エラー: ${e.message}")

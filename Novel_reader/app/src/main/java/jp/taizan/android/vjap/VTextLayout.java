@@ -135,7 +135,7 @@ public class VTextLayout extends RelativeLayout {
                             URL u = new URL(urlStr);
                             bmp = BitmapFactory.decodeStream(u.openConnection().getInputStream());
                         } catch (IOException e) {
-                            e.printStackTrace();
+                            if (com.shunlight_library.novel_reader.BuildConfig.ENABLE_LOGGING) Log.w("VTextLayout", "image load failed", e);
                         }
                         handler.post(new Runnable() {
                             @Override
@@ -215,7 +215,7 @@ public class VTextLayout extends RelativeLayout {
                     onPageEndListener.onPageEnd();
                 }
 
-                Log.d("page", currentPage + "");
+                if (com.shunlight_library.novel_reader.BuildConfig.ENABLE_LOGGING) Log.d("page", currentPage + "");
             }
 
             @Override
@@ -275,7 +275,7 @@ public class VTextLayout extends RelativeLayout {
     public boolean onInterceptTouchEvent(MotionEvent ev) {
         switch (ev.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                if (ev.getY() > getHeight() - PAGING_BAR_SIZE * density) {
+                if (pagingBarEnabled && ev.getY() > getHeight() - PAGING_BAR_SIZE * density) {
                     if (pagingBarLayout.getVisibility() != View.VISIBLE && vTextView.getTotalPage() > 0) {
                         updatePageNum(true);
                         return true;
@@ -311,6 +311,20 @@ public class VTextLayout extends RelativeLayout {
         return super.onInterceptTouchEvent(ev);
     }
 
+    // 下端タップで内蔵のページ送りバーを表示するか（アプリ側で独自のスライダーを出す場合は無効化する）
+    boolean pagingBarEnabled = true;
+
+    public void setPagingBarEnabled(boolean enabled) {
+        this.pagingBarEnabled = enabled;
+        if (!enabled) {
+            pagingBarLayout.setVisibility(View.GONE);
+            // ページ番号もアプリ側で表示するため内蔵の表示は隠す
+            pageNumText.setVisibility(View.INVISIBLE); // 行の領域は残し、アプリ側の進捗表示と本文が重ならないようにする
+        } else {
+            pageNumText.setVisibility(View.VISIBLE);
+        }
+    }
+
     public void setScrollDisabled(boolean isDisabled) {
         viewPager.setScrollDisabled(isDisabled);
     }
@@ -329,6 +343,9 @@ public class VTextLayout extends RelativeLayout {
     @Override
     public void onLayout(boolean changed, int l, int t, int r, int b) {
         if (changed) {
+            // サイズが変わるとページ割りも変わるため再計算する（計算完了時に OnReady で読書位置を復元）。
+            // ページャーだけ先頭へ戻して再計算しないと、復元されないまま1ページ目に留まる
+            vTextView.reset(true);
             reset();
         }
         super.onLayout(changed, l, t, r, b);
@@ -369,7 +386,9 @@ public class VTextLayout extends RelativeLayout {
     /** 次のページへ進む。最終ページで進めなかった場合は false。 */
     public boolean nextPage() {
         int last = getLastPage();
-        if (last < 0 || currentPage < last) {
+        // ページ計算中は総ページ数が不明なため移動しない（1ページ作品で空白ページへ進むのを防ぐ）
+        if (last < 0) return true;
+        if (currentPage < last) {
             viewPager.setCurrentItem(currentPage + 1, false);
             updatePageText();
             return true;
@@ -438,6 +457,25 @@ public class VTextLayout extends RelativeLayout {
     public void setFont(String path) {
         vTextView.setFont(path);
         reset();
+    }
+
+    /** 行送りの倍率を設定し、ページを再計算する */
+    public void setLineSpaceRate(float rate) {
+        vTextView.setLineSpaceRate(rate);
+        reset();
+    }
+
+    /**
+     * 本文中の文字位置を含むページ番号（1始まり）を返す。ページ計算前は -1。
+     */
+    public int findPageOfChar(int charIndex) {
+        int page = vTextView.findPageOf(charIndex);
+        return page < 0 ? -1 : page + 1;
+    }
+
+    /** 描画対象の本文（青空文庫形式） */
+    public String getText() {
+        return vTextView.getText();
     }
 
     public void setColor(String fontColor, String backgroundColor) {

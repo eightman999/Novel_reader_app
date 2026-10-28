@@ -12,7 +12,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.shunlight_library.novel_reader.AppInfo
 import com.shunlight_library.novel_reader.R
@@ -102,7 +101,7 @@ object ReleaseUtils {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "release check failed", e)
+                AppLogger.e(TAG, "release check failed", e)
             } finally {
                 connection?.disconnect()
             }
@@ -164,7 +163,7 @@ object ReleaseUtils {
                 .withZone(java.time.ZoneId.systemDefault())
             formatter.format(instant)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse date: $isoDate", e)
+            AppLogger.w(TAG, "Failed to parse date: $isoDate", e)
             isoDate
         }
     }

@@ -6,8 +6,8 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.net.Uri
-import android.util.Log
 import com.shunlight_library.novel_reader.data.database.NovelDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,26 +50,26 @@ class DatabaseExportManager(private val context: Context) {
                         if (cursor.moveToFirst()) {
                             val busy = cursor.getInt(0)
                             if (busy > 0) {
-                                Log.w(TAG, "WALチェックポイントが完全に完了していません (busy=$busy)")
+                                AppLogger.w(TAG, "WALチェックポイントが完全に完了していません (busy=$busy)")
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "walチェックポイント中にエラー", e)
+                    AppLogger.e(TAG, "walチェックポイント中にエラー", e)
                 }
 
                 val databaseFile = context.getDatabasePath(DATABASE_NAME)
                 if (databaseFile == null || !databaseFile.exists()) {
                     val message = "データベースファイルが見つかりません"
-                    Log.e(TAG, message)
+                    AppLogger.e(TAG, message)
                     return@withContext ExportResult(success = false, errorMessage = message)
                 }
 
                 val bytes = copyFileToUri(databaseFile, destinationUri)
-                Log.d(TAG, "データベースを書き出しました: ${bytes} bytes")
+                AppLogger.d(TAG, "データベースを書き出しました: ${bytes} bytes")
                 ExportResult(success = true, bytesCopied = bytes)
             } catch (e: Exception) {
-                Log.e(TAG, "データベース書き出し中にエラー", e)
+                AppLogger.e(TAG, "データベース書き出し中にエラー", e)
                 ExportResult(success = false, errorMessage = e.localizedMessage)
             }
         }

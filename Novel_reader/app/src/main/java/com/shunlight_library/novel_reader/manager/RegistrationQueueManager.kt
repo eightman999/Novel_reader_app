@@ -5,14 +5,13 @@
  */
 package com.shunlight_library.novel_reader.manager
 
-import android.util.Log
+import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapterFactory
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.RegistrationQueueEntity
 import com.shunlight_library.novel_reader.data.entity.TempEpisodeEntity
-import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.utils.PseudoNcodeGenerator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -25,9 +24,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 新規小説登録キューの管理クラス
@@ -60,7 +62,9 @@ object RegistrationQueueManager {
     private var monitoringJob: Job? = null
     private val processingQueues = mutableMapOf<Long, Job>()
     // 一時停止によるキャンセルかどうかを識別するためのセット
-    private val pausedQueueIds = mutableSetOf<Long>()
+    private val pausedQueueIds: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+    // addToQueue の重複チェック〜挿入を直列化し、同一作品の二重キュー登録を防ぐ（L9）
+    private val addQueueMutex = Mutex()
 
     /**
      * キューの監視を開始する
@@ -117,41 +121,44 @@ object RegistrationQueueManager {
                     rawNovelId
                 }
 
-                // 既に登録済みの場合
-                val existingNovel = repository.getNovelByNcode(novelId)
-                if (existingNovel != null) {
-                    throw Exception("この小説は既に登録されています: ${existingNovel.title}")
-                }
-
-                // 既にキューに存在する場合
-                val allQueues = repository.getAllRegistrationQueue().first()
-                if (allQueues.any { it.ncode == novelId }) {
-                    throw Exception("この小説は既にダウンロードキューに存在します")
-                }
-
                 // URLからR18判定を取得
-                val (ncode, isR18) = com.shunlight_library.novel_reader.api.NovelApiUtils.extractNcodeFromUrl(url)
+                val (_, isR18) = com.shunlight_library.novel_reader.api.NovelApiUtils.extractNcodeFromUrl(url)
 
-                // キューを作成
-                val queue = RegistrationQueueEntity(
-                    ncode = novelId,
-                    site_type = adapter.getSiteType(),
-                    title = "取得中...",
-                    url = url,
-                    is_r18 = isR18,
-                    status = RegistrationQueueEntity.STATUS_PENDING,
-                    current_episode = 0,
-                    total_episodes = 0,
-                    error_message = null,
-                    created_at = getCurrentDateTimeString(),
-                    started_at = null,
-                    completed_at = null
-                )
+                // 重複チェック〜挿入をMutexで直列化（check-then-insert の競合で二重登録しない）
+                addQueueMutex.withLock {
+                    // 既に登録済みの場合
+                    val existingNovel = repository.getNovelByNcode(novelId)
+                    if (existingNovel != null) {
+                        throw Exception("この小説は既に登録されています: ${existingNovel.title}")
+                    }
 
-                val queueId = repository.insertRegistrationQueue(queue)
-                AppLogger.d(TAG, "キューに追加: id=$queueId, ncode=$novelId")
+                    // 既にキューに存在する場合
+                    val allQueues = repository.getAllRegistrationQueue().first()
+                    if (allQueues.any { it.ncode == novelId }) {
+                        throw Exception("この小説は既にダウンロードキューに存在します")
+                    }
 
-                queueId
+                    // キューを作成
+                    val queue = RegistrationQueueEntity(
+                        ncode = novelId,
+                        site_type = adapter.getSiteType(),
+                        title = "取得中...",
+                        url = url,
+                        is_r18 = isR18,
+                        status = RegistrationQueueEntity.STATUS_PENDING,
+                        current_episode = 0,
+                        total_episodes = 0,
+                        error_message = null,
+                        created_at = getCurrentDateTimeString(),
+                        started_at = null,
+                        completed_at = null
+                    )
+
+                    val queueId = repository.insertRegistrationQueue(queue)
+                    AppLogger.d(TAG, "キューに追加: id=$queueId, ncode=$novelId")
+
+                    queueId
+                }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "キュー追加失敗: $url", e)
                 throw e
@@ -175,13 +182,9 @@ object RegistrationQueueManager {
             synchronized(processingQueues) { processingQueues.remove(id) }
             pausedQueueIds.remove(id)
 
-            val queue = repository.getRegistrationQueueById(id)
-            if (queue != null) {
-                // 一時エピソードも削除
-                repository.deleteTempEpisodesByNcode(queue.ncode)
-            }
-            // キューを削除
-            repository.deleteRegistrationQueue(id)
+            // このキューに紐づく一時エピソード（queue_id基準）とキューをアトミックに削除
+            // （ncode基準だと同一ncodeの他キューの一時データを巻き込むため）
+            repository.deleteRegistrationQueueWithTempEpisodes(id)
             AppLogger.d(TAG, "キューを削除: id=$id")
         }
     }
@@ -309,8 +312,7 @@ object RegistrationQueueManager {
                     if (existingNovel != null) {
                         withContext(Dispatchers.IO) {
                             updateQueueError(queue.id, "既に登録されています: ${existingNovel.title}")
-                            repository.deleteTempEpisodesByNcode(queue.ncode)
-                            deleteQueue(queue.id)
+                            repository.deleteRegistrationQueueWithTempEpisodes(queue.id)
                         }
                         com.shunlight_library.novel_reader.utils.NovelUpdateCoordinator.finishRegistration(session)
                         return@launch
@@ -450,18 +452,16 @@ object RegistrationQueueManager {
         } else {
             novelDesc
         }
-        repository.insertNovel(novelToSave)
-
-        // マッピング情報を保存
-        if (mappings.isNotEmpty()) {
-            val mappingEntities = mappings.map { (episodeNo, kakuyomuEpisodeId) ->
-                com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
-                    ncode = novelDesc.ncode,
-                    episode_no = episodeNo,
-                    kakuyomu_episode_id = kakuyomuEpisodeId
-                )
-            }
-            repository.insertEpisodeMappings(mappingEntities)
+        // 小説情報とマッピング情報を1トランザクションで保存（M3: 途中失敗で片方だけ残さない）
+        val mappingEntities = mappings.map { (episodeNo, kakuyomuEpisodeId) ->
+            com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity(
+                ncode = novelDesc.ncode,
+                episode_no = episodeNo,
+                kakuyomu_episode_id = kakuyomuEpisodeId
+            )
+        }
+        repository.insertNovelWithEpisodeMappings(novelToSave, mappingEntities)
+        if (mappingEntities.isNotEmpty()) {
             AppLogger.d(TAG, "カクヨムマッピング保存: ${mappingEntities.size}件")
         }
 
@@ -500,10 +500,8 @@ object RegistrationQueueManager {
             val tempEpisode = TempEpisodeEntity.fromEpisodeEntity(episodeWithBody, queue.id)
             repository.insertTempEpisode(tempEpisode)
 
-            // 進捗通知
-            scope.launch {
-                updateQueueProgress(queue.id, epNo, totalEpisodes)
-            }
+            // 進捗通知（順序保証・キャンセル伝播のため直接suspend呼び出し）
+            updateQueueProgress(queue.id, epNo, totalEpisodes)
         }
 
         AppLogger.d(TAG, "カクヨム小説取得完了（一時テーブル・ストリーミング）: ${novelDesc.title}, " +
@@ -574,10 +572,8 @@ object RegistrationQueueManager {
                 repository.insertTempEpisode(tempEpisode)
             }
 
-            // 進捗通知
-            scope.launch {
-                updateQueueProgress(queue.id, episodeNo, totalEpisodes)
-            }
+            // 進捗通知（順序保証・キャンセル伝播のため直接suspend呼び出し）
+            updateQueueProgress(queue.id, episodeNo, totalEpisodes)
         }
 
         AppLogger.d(TAG, "なろう小説取得完了（一時テーブル）: ${updatedNovelDesc.title}, ${totalEpisodes}話")
@@ -629,15 +625,6 @@ object RegistrationQueueManager {
      */
     private suspend fun updateQueueError(id: Long, errorMessage: String) {
         repository.updateRegistrationQueueStatus(id, RegistrationQueueEntity.STATUS_ERROR, errorMessage)
-    }
-
-    /**
-     * キューを削除する
-     *
-     * @param id キューID
-     */
-    private suspend fun deleteQueue(id: Long) {
-        repository.deleteRegistrationQueue(id)
     }
 
     /**

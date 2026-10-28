@@ -1,8 +1,8 @@
 {
   "Novel_reader/app/build.gradle.kts": {
-    "mtime": 1783210231.9057796,
-    "ast_hash": "f6569597a0a97c6908f48ea6e030ddf5",
-    "semantic_hash": "f6569597a0a97c6908f48ea6e030ddf5"
+    "mtime": 1790836726.3584366,
+    "ast_hash": "6fb957961b7e5776cc4d7a998935d65a",
+    "semantic_hash": ""
   },
   "Novel_reader/app/google-services.json": {
     "mtime": 1767261866.603891,
@@ -60,14 +60,14 @@
     "semantic_hash": "4b4bee35c9dd744e8131ffcf59d18235"
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/EpisodeViewScreen.kt": {
-    "mtime": 1783208854.6566603,
-    "ast_hash": "e90783e641806f05d0ba8992d18a516c",
-    "semantic_hash": "e90783e641806f05d0ba8992d18a516c"
+    "mtime": 1790838396.1452053,
+    "ast_hash": "b2a0115256f45b3271eedd9acd637bc9",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/MainActivity.kt": {
-    "mtime": 1783209835.715403,
-    "ast_hash": "4ea0ed682d327b0cad698aa066bc7457",
-    "semantic_hash": "4ea0ed682d327b0cad698aa066bc7457"
+    "mtime": 1790837739.4699657,
+    "ast_hash": "64063791dbe48e68f12f4464b3e1103f",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/NovelListScreen.kt": {
     "mtime": 1783209724.2282069,
@@ -95,14 +95,14 @@
     "semantic_hash": "0f089dc65e1027bea1632e3cfe9b0e42"
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/SettingsScreen.kt": {
-    "mtime": 1783208854.6580718,
-    "ast_hash": "08dc9ecbee358c9bfeccda3270e9cfd0",
-    "semantic_hash": "08dc9ecbee358c9bfeccda3270e9cfd0"
+    "mtime": 1790836668.1459851,
+    "ast_hash": "bd660ade9dce0b3f75d0bea07193555d",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/SettingsStore.kt": {
-    "mtime": 1783208767.409549,
-    "ast_hash": "4f0bfb8ecbecf4e720ebd1f6b6a0fd9b",
-    "semantic_hash": "4f0bfb8ecbecf4e720ebd1f6b6a0fd9b"
+    "mtime": 1790836640.1630402,
+    "ast_hash": "dd7bd7580fbdf5fe25bc83cd0a02bd2b",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/UpdateInfoScreen.kt": {
     "mtime": 1783209668.9479876,
@@ -355,9 +355,9 @@
     "semantic_hash": "1b5be41d3f190ca77f1ce70ff91bf1ea"
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/components/VjapVerticalTextView.kt": {
-    "mtime": 1781440674.344591,
-    "ast_hash": "276c3130960314fa27b884d80f0c1d34",
-    "semantic_hash": "276c3130960314fa27b884d80f0c1d34"
+    "mtime": 1790836701.7076564,
+    "ast_hash": "29f6cefdfec7fe3e9a55de11dc8ac28f",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/screens/DownloadQueueScreen.kt": {
     "mtime": 1783209670.0282485,
@@ -450,14 +450,14 @@
     "semantic_hash": "4f2615246d5075d166cf82ae58f0b70f"
   },
   "Novel_reader/app/src/main/java/jp/taizan/android/vjap/VTextLayout.java": {
-    "mtime": 1781440674.3467665,
-    "ast_hash": "71ed3d004d881e30853d48ff1144066b",
-    "semantic_hash": "71ed3d004d881e30853d48ff1144066b"
+    "mtime": 1790837219.5098035,
+    "ast_hash": "e6d7a79ceaa754480c4b3e84c304e170",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/main/java/jp/taizan/android/vjap/VTextView.java": {
-    "mtime": 1781440674.3476152,
-    "ast_hash": "b392b15f32ef93d2d3468b3f54bd3b42",
-    "semantic_hash": "b392b15f32ef93d2d3468b3f54bd3b42"
+    "mtime": 1790837219.5091512,
+    "ast_hash": "407a9cac142238828e2af4c77e633d08",
+    "semantic_hash": ""
   },
   "Novel_reader/app/src/test/java/com/shunlight_library/novel_reader/ExampleUnitTest.kt": {
     "mtime": 1752934177.1479733,
@@ -498,5 +498,240 @@
     "mtime": 1783208854.6708882,
     "ast_hash": "c2a5285f56b2bdfb0d8aac0743b40a03",
     "semantic_hash": "c2a5285f56b2bdfb0d8aac0743b40a03"
+  },
+  ".opencode/opencode.json": {
+    "mtime": 1785597614.621957,
+    "ast_hash": "abcc8b9dcd80bca5f9dde6d9f0c3ae79",
+    "semantic_hash": ""
+  },
+  ".opencode/plugins/graphify.js": {
+    "mtime": 1785597614.6218545,
+    "ast_hash": "3ea725724bc8ebe483c9f13d6aa1124f",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/SKILL.md": {
+    "mtime": 1785597614.620454,
+    "ast_hash": "a8188bdf35abb58e750eb1750272caf8",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/add-watch.md": {
+    "mtime": 1785597434.3604283,
+    "ast_hash": "d59d027fe449f06aa03905a01184e779",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/exports.md": {
+    "mtime": 1785597434.360604,
+    "ast_hash": "9da2a2152e60a22f07f05fed5158f287",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1785597434.3608289,
+    "ast_hash": "42fef56a01698118f7fd722acdadea34",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1785597434.3610544,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/hooks.md": {
+    "mtime": 1785597434.3613684,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/query.md": {
+    "mtime": 1785597434.3617074,
+    "ast_hash": "3c46f8ad006874260614ed8657d02307",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/transcribe.md": {
+    "mtime": 1785597434.36187,
+    "ast_hash": "67b6a5fa6c0974e18f60db9f8932fbd8",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/update.md": {
+    "mtime": 1785597434.3623347,
+    "ast_hash": "9378bd03d56baaf78bd738ab3848f142",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1788594562.1815865,
+    "ast_hash": "97d4c48102ef15f690ca28f92ffb71c6",
+    "semantic_hash": ""
+  },
+  "ANDROID_VERSION_REQUIREMENTS.md": {
+    "mtime": 1765535375.5844672,
+    "ast_hash": "135d6b060da47b5b4fff19f6f9df38fc",
+    "semantic_hash": ""
+  },
+  "AUDIT_PROMPT.md": {
+    "mtime": 1783208854.6508172,
+    "ast_hash": "97901be78951fc417c1b8a8ce284873b",
+    "semantic_hash": ""
+  },
+  "AUDIT_REPORT.md": {
+    "mtime": 1783208854.6513696,
+    "ast_hash": "d8514a5bfe66621be7e011f2f9853763",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1788594562.183089,
+    "ast_hash": "6d4111425f4ef9a242a13d9bfe6c56c5",
+    "semantic_hash": ""
+  },
+  "DEPENDENCY_ANALYSIS.md": {
+    "mtime": 1765535375.585175,
+    "ast_hash": "bef903c8dc54482cff442dda67dd6b77",
+    "semantic_hash": ""
+  },
+  "DEPENDENCY_VERSION_FIX.md": {
+    "mtime": 1765540898.447613,
+    "ast_hash": "25905b3ca16366ace07014389029fd83",
+    "semantic_hash": ""
+  },
+  "FUTURE_IMPROVEMENTS.md": {
+    "mtime": 1761974309.9417214,
+    "ast_hash": "f51a2c4678e33ee7348388b1260bcea9",
+    "semantic_hash": ""
+  },
+  "MISSION.template.md": {
+    "mtime": 1783208854.6520202,
+    "ast_hash": "9a79f857b35d1cf29920e3be197699f7",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1786164291.305624,
+    "ast_hash": "775d73c1de1406be86e6573883b9c009",
+    "semantic_hash": ""
+  },
+  "STRUCTURE.md": {
+    "mtime": 1752843321.6564553,
+    "ast_hash": "f83bc1d793ab1f5efc9051f1f7059931",
+    "semantic_hash": ""
+  },
+  "WORKMANAGER_COMPARISON.md": {
+    "mtime": 1765535375.5926158,
+    "ast_hash": "4915215182900c015fcd651793776881",
+    "semantic_hash": ""
+  },
+  "WORK_LOG.md": {
+    "mtime": 1759888125.826102,
+    "ast_hash": "44e19c10747b92651cc854ead5dd66de",
+    "semantic_hash": ""
+  },
+  "codebase_audit_2026-06-11.md": {
+    "mtime": 1781268147.648535,
+    "ast_hash": "06bb5087a5a160cd876f0acba95dfcb2",
+    "semantic_hash": ""
+  },
+  "docs/AI_ORCHESTRATION.md": {
+    "mtime": 1783208854.6673443,
+    "ast_hash": "c9bd7242027d8bad7ac5ed8d86e01bc0",
+    "semantic_hash": ""
+  },
+  "docs/api-spec.md": {
+    "mtime": 1783208854.6682863,
+    "ast_hash": "7086f35785cd14e04d6a40b52bd5e63b",
+    "semantic_hash": ""
+  },
+  "docs/architecture-detail.md": {
+    "mtime": 1783208854.6689057,
+    "ast_hash": "716d47d59c0da045ab5763ba38f6b13f",
+    "semantic_hash": ""
+  },
+  "docs/auto-update-flow.md": {
+    "mtime": 1783208854.6693425,
+    "ast_hash": "1222de708d6d12722b4b686dc7aea6f8",
+    "semantic_hash": ""
+  },
+  "docs/db-schema.md": {
+    "mtime": 1790838465.90763,
+    "ast_hash": "96e74242a2db42ba7c7fb438df7f5780",
+    "semantic_hash": ""
+  },
+  "docs/kakuyomu-protocol.md": {
+    "mtime": 1783208854.670418,
+    "ast_hash": "21d469bd300d6059af058bbba760115a",
+    "semantic_hash": ""
+  },
+  "howto.md": {
+    "mtime": 1767264732.0368364,
+    "ast_hash": "d3555a78b733f336ef79f98aba236324",
+    "semantic_hash": ""
+  },
+  "\u7d71\u5408\u30c6\u30b9\u30c8\u65b9\u6cd5.md": {
+    "mtime": 1764220119.7857978,
+    "ast_hash": "c7c805f53356d540e6e1a3501b961dfe",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-hdpi/ic_launcher.webp": {
+    "mtime": 1752843321.6541579,
+    "ast_hash": "39d9bb21eb48f128a71c3f01ad3cd427",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp": {
+    "mtime": 1752843321.6542315,
+    "ast_hash": "70d6f58af3c76ee221c829b1ce9daa04",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-mdpi/ic_launcher.webp": {
+    "mtime": 1752843321.654362,
+    "ast_hash": "d2acce71c7b46e5e9540d23a9f7b2166",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp": {
+    "mtime": 1752843321.6544437,
+    "ast_hash": "6376acb48f96a855ee95c113cd7fd616",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-xhdpi/ic_launcher.webp": {
+    "mtime": 1752843321.654574,
+    "ast_hash": "bd087d80b70bec05a43c745f29dc3ffc",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp": {
+    "mtime": 1752843321.6546543,
+    "ast_hash": "7479edd56ab712609f030054bffd7263",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp": {
+    "mtime": 1752843321.654781,
+    "ast_hash": "ea180e8d1a2e8300cc998b987266b736",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp": {
+    "mtime": 1752843321.6548738,
+    "ast_hash": "947842742b29eeda80ee0805e1600366",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp": {
+    "mtime": 1752843321.655011,
+    "ast_hash": "54ab624970c86c2146e76b93f27586f7",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp": {
+    "mtime": 1752843321.6551008,
+    "ast_hash": "9ee591be72fb336861a8044086054daa",
+    "semantic_hash": ""
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/VolumeKeyPaging.kt": {
+    "mtime": 1790836681.2486374,
+    "ast_hash": "5123c23bb20a456779291b17636add60",
+    "semantic_hash": ""
+  },
+  "verify.sh": {
+    "mtime": 1786770728.4735305,
+    "ast_hash": "990417dec1eae60dba4bc3ebeee7fac3",
+    "semantic_hash": ""
+  },
+  ".agent-context/legacy/AGENTS-before-2026-09-05.md": {
+    "mtime": 1788594562.1825314,
+    "ast_hash": "d33608abe03085793a4ae19006b61b6c",
+    "semantic_hash": ""
+  },
+  ".agent-context/legacy/CLAUDE-before-2026-09-05.md": {
+    "mtime": 1788594562.1840756,
+    "ast_hash": "51fde41bc11265e4f180888a33b13367",
+    "semantic_hash": ""
   }
 }

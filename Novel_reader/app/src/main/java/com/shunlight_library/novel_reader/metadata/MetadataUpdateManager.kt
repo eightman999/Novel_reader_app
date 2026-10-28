@@ -1,7 +1,7 @@
 package com.shunlight_library.novel_reader.metadata
 
-import android.util.Log
 import com.shunlight_library.novel_reader.api.NovelApiUtils
+import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.data.adapter.NovelSiteAdapter
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.repository.NovelRepository
@@ -43,7 +43,7 @@ object MetadataUpdateManager {
 
                 MetadataUpdateResult(targets.size, updatedCount)
             } catch (e: Exception) {
-                Log.e(TAG, "メタデータのバッチ更新中にエラーが発生しました: ${e.message}", e)
+                AppLogger.e(TAG, "メタデータのバッチ更新中にエラーが発生しました: ${e.message}", e)
                 MetadataUpdateResult(0, 0, hadError = true)
             }
         }
@@ -69,7 +69,7 @@ object MetadataUpdateManager {
             )
             val afterCount = updatedNovel.metadataCount()
 
-            Log.w(
+            AppLogger.w(
                 TAG,
                 "小説 ${novel.ncode} のメタデータが不足していたため取得しました (再取得前: ${beforeCount}項目, 再取得後: ${afterCount}項目)"
             )

@@ -15,3 +15,7 @@ CLAUDE.md.bak-*
 # graphify (local-only; graph.json/GRAPH_REPORT.md are committed)
 graphify-out/cost.json
 graphify-out/cache/
+
+# Release build outputs (signed APK/baseline profiles are not tracked)
+/release/
+/Novel_reader/release/

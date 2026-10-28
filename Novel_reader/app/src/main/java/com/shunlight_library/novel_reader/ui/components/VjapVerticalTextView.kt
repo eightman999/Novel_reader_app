@@ -21,6 +21,7 @@ private class VjapAppliedState(initialRate: Float) {
     var fontColor = ""
     var backgroundColor = ""
     var fontPath: String? = null
+    var lineSpaceRate = -1f
     var content: String? = null
     var title: String? = null
 
@@ -43,6 +44,20 @@ class VjapPageController {
 
     /** 前ページへ戻る。先頭（または未生成）で戻れなかった場合は false */
     fun prevPage(): Boolean = layout?.prevPage() ?: false
+
+    /** 指定ページ（1始まり）へ移動する。ページ計算前は何もしない */
+    fun goToPage(page: Int) {
+        val target = layout ?: return
+        val last = target.getLastPage()
+        if (last <= 0) return
+        target.setCurrentPage(page.coerceIn(1, last))
+    }
+
+    /** 描画中の本文（青空文庫形式）。未生成なら null */
+    val text: String? get() = layout?.getText()
+
+    /** 文字位置を含むページ番号（1始まり）。ページ計算前は -1 */
+    fun findPageOfChar(charIndex: Int): Int = layout?.findPageOfChar(charIndex) ?: -1
 }
 
 /**
@@ -63,9 +78,11 @@ fun VjapVerticalTextView(
     fontColor: String = "#000000",
     backgroundColor: String = "#FFFFFF",
     customFontPath: String? = null,
+    lineSpaceRate: Float = 2.0f,
     savedReadingRate: Float = 0f,
-    onReadingRateChanged: (Float) -> Unit = {},
-    onNextAtEnd: () -> Unit = {},
+    onReadingRateChanged: (Float) -> Unit,
+    onPageInfoChanged: (page: Int, lastPage: Int) -> Unit,
+    onNextAtEnd: () -> Unit,
     controller: VjapPageController? = null,
     modifier: Modifier = Modifier
 ) {
@@ -75,6 +92,7 @@ fun VjapVerticalTextView(
 
     val applied = remember { VjapAppliedState(savedReadingRate) }
     val currentOnNextAtEnd by rememberUpdatedState(onNextAtEnd)
+    val currentOnPageInfoChanged by rememberUpdatedState(onPageInfoChanged)
 
     AndroidView(
         factory = { context ->
@@ -86,6 +104,8 @@ fun VjapVerticalTextView(
 
                 // スワイプ無効 → タップでページ送りのページ分割モード
                 setScrollDisabled(true)
+                // ページ移動はアプリ側のスライダーで行うため内蔵のバーは使わない
+                setPagingBarEnabled(false)
 
                 // ページ計算完了後に保存済み（または設定変更直前の）ページを復元
                 setOnReadyListener { totalPage ->
@@ -96,12 +116,16 @@ fun VjapVerticalTextView(
                     val rate = if (totalPage > 0) getCurrentPage().toFloat() / totalPage else 0f
                     applied.currentRate = rate.coerceIn(0f, 1f)
                     onReadingRateChanged(applied.currentRate)
+                    currentOnPageInfoChanged(getCurrentPage(), totalPage)
                 }
 
                 // ページ送りのたびに進捗率を通知（読書位置の保存用）
                 setOnPageChangedListener { page, totalPage ->
+                    currentOnPageInfoChanged(page, totalPage)
                     if (totalPage > 0) {
                         applied.currentRate = (page.toFloat() / totalPage).coerceIn(0f, 1f)
+                        // 画面サイズ変更などで再計算された場合も現在位置へ戻す
+                        applied.restoreRate = applied.currentRate
                         onReadingRateChanged(applied.currentRate)
                     }
                 }
@@ -111,11 +135,13 @@ fun VjapVerticalTextView(
                 setOnPageEndListener {
                     if (getTotalPage() > 0) {
                         applied.currentRate = 1f
+                        applied.restoreRate = 1f
                         onReadingRateChanged(1f)
                     }
                 }
 
                 setFontSize(fontSizePx)
+                setLineSpaceRate(lineSpaceRate)
                 try {
                     setColor(fontColor, backgroundColor)
                 } catch (e: Exception) {
@@ -130,6 +156,7 @@ fun VjapVerticalTextView(
                 applied.fontColor = fontColor
                 applied.backgroundColor = backgroundColor
                 applied.fontPath = customFontPath
+                applied.lineSpaceRate = lineSpaceRate
                 applied.content = aozoraText
                 applied.title = episodeTitle
                 controller?.layout = this
@@ -143,7 +170,8 @@ fun VjapVerticalTextView(
             val settingsChanged = applied.fontSizePx != fontSizePx ||
                     applied.fontColor != fontColor ||
                     applied.backgroundColor != backgroundColor ||
-                    applied.fontPath != customFontPath
+                    applied.fontPath != customFontPath ||
+                    applied.lineSpaceRate != lineSpaceRate
 
             // 変更がある場合のみ適用（無条件に呼ぶと再レイアウトで読書位置が失われる）
             if (contentChanged || settingsChanged) {
@@ -162,6 +190,10 @@ fun VjapVerticalTextView(
                     }
                     applied.fontColor = fontColor
                     applied.backgroundColor = backgroundColor
+                }
+                if (applied.lineSpaceRate != lineSpaceRate) {
+                    layout.setLineSpaceRate(lineSpaceRate)
+                    applied.lineSpaceRate = lineSpaceRate
                 }
                 if (applied.fontPath != customFontPath) {
                     layout.setFont(if (customFontPath.isNullOrEmpty()) null else customFontPath)

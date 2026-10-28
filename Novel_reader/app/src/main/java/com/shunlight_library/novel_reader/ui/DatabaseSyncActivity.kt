@@ -6,10 +6,10 @@
 package com.shunlight_library.novel_reader.ui
 
 import android.app.Activity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -102,11 +102,11 @@ fun DatabaseSyncScreen(
 
                 try {
                     contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    Log.d(DatabaseSyncActivity.TAG, "取得した永続的なアクセス権限: $path")
+                    AppLogger.d(DatabaseSyncActivity.TAG, "取得した永続的なアクセス権限: $path")
                     addLog("データベースファイルを選択しました: $path")
                     Toast.makeText(context, "データベースファイルを選択しました", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
-                    Log.e(DatabaseSyncActivity.TAG, "権限取得エラー: ${e.message}", e)
+                    AppLogger.e(DatabaseSyncActivity.TAG, "権限取得エラー: ${e.message}", e)
                     Toast.makeText(context, "アクセス権限の取得中にエラーが発生しました", Toast.LENGTH_SHORT).show()
                     addLog("エラー: アクセス権限の取得に失敗しました")
                 }
@@ -224,7 +224,7 @@ fun DatabaseSyncScreen(
                     ImprovedDatabaseSyncManager(context).syncFromExternalDb(selectedUri!!, callback)
                 }
             } catch (e: Exception) {
-                Log.e(DatabaseSyncActivity.TAG, "同期処理中にエラーが発生しました", e)
+                AppLogger.e(DatabaseSyncActivity.TAG, "同期処理中にエラーが発生しました", e)
                 syncResult = ImprovedDatabaseSyncManager.SyncResult(
                     success = false,
                     novelDescsCount = 0,

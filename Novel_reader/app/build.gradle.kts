@@ -16,8 +16,8 @@ android {
         applicationId = "com.shunlight_library.novel_reader"
         minSdk = 21
         targetSdk = 36
-        versionCode = 227
-        versionName = "2.1.2"
+        versionCode = 229
+        versionName = "2.1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -43,6 +43,8 @@ android {
     }
 
     compileOptions {
+        // minSdk 21〜25 で java.time を使えるよう core library desugaring を有効化
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -66,6 +68,8 @@ ksp {
 }
 
 dependencies {
+    // java.time 等の API 26+ ライブラリを API 21〜25 で使うためのバックポート
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(libs.androidx.work.runtime.ktx)
     val room_version = "2.7.0"
     implementation("androidx.room:room-runtime:$room_version")

@@ -6,8 +6,8 @@
 // NovelApiUtils.kt
 package com.shunlight_library.novel_reader.api
 
-import android.util.Log
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import com.shunlight_library.novel_reader.data.entity.NovelDescEntity
 import com.shunlight_library.novel_reader.data.sync.DatabaseSyncUtils
 import com.shunlight_library.novel_reader.utils.ImageCacheUtils
@@ -205,7 +205,7 @@ object NovelApiUtils {
                         return result
                     }
 
-                    Log.w(
+                    AppLogger.w(
                         TAG,
                         "API応答から必要なデータを取得できませんでした (attempt=$attempt/$maxRetries, url=$candidateUrl)"
                     )
@@ -213,12 +213,12 @@ object NovelApiUtils {
                     throw cancellation
                 } catch (e: Exception) {
                     if (!isRetryableNetworkException(e)) {
-                        Log.e(TAG, "API取得エラー(非再試行): ${e.message}", e)
+                        AppLogger.e(TAG, "API取得エラー(非再試行): ${e.message}", e)
                         return null
                     }
 
                     lastException = e
-                    Log.w(
+                    AppLogger.w(
                         TAG,
                         "API取得エラー (attempt=$attempt/$maxRetries, url=$candidateUrl): ${e.message}",
                         e
@@ -228,12 +228,12 @@ object NovelApiUtils {
 
             if (attempt < maxRetries) {
                 val backoff = retryDelayMillis * attempt
-                Log.d(TAG, "fetchNovelInfo 再試行まで ${backoff}ms 待機します (attempt=$attempt/$maxRetries)")
+                AppLogger.d(TAG, "fetchNovelInfo 再試行まで ${backoff}ms 待機します (attempt=$attempt/$maxRetries)")
                 delay(backoff)
             }
         }
 
-        lastException?.let { Log.e(TAG, "API取得エラー: ${it.message}", it) }
+        lastException?.let { AppLogger.e(TAG, "API取得エラー: ${it.message}", it) }
         return null
     }
 
@@ -283,15 +283,15 @@ object NovelApiUtils {
                 try {
                     chunkResult = requestNovelInfoBatch(url, userAgent)
                     if (chunkResult != null) break
-                    Log.w(TAG, "一括API応答からデータを取得できませんでした (attempt=$attempt/$maxRetries, 件数=${chunk.size})")
+                    AppLogger.w(TAG, "一括API応答からデータを取得できませんでした (attempt=$attempt/$maxRetries, 件数=${chunk.size})")
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (e: Exception) {
                     if (!isRetryableNetworkException(e)) {
-                        Log.e(TAG, "一括API取得エラー(非再試行): ${e.message}", e)
+                        AppLogger.e(TAG, "一括API取得エラー(非再試行): ${e.message}", e)
                         break
                     }
-                    Log.w(TAG, "一括API取得エラー (attempt=$attempt/$maxRetries): ${e.message}", e)
+                    AppLogger.w(TAG, "一括API取得エラー (attempt=$attempt/$maxRetries): ${e.message}", e)
                 }
                 if (attempt < maxRetries) {
                     delay(retryDelayMillis * attempt)
@@ -320,7 +320,7 @@ object NovelApiUtils {
                 }
 
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                    Log.w(TAG, "HTTP ${connection.responseCode} 応答(一括): $url")
+                    AppLogger.w(TAG, "HTTP ${connection.responseCode} 応答(一括): $url")
                     return@withContext null
                 }
 
@@ -332,14 +332,14 @@ object NovelApiUtils {
                         try {
                             GZIPInputStream(connection.inputStream)
                         } catch (gzipError: Exception) {
-                            Log.w(TAG, "GZIP解凍エラー、非圧縮として再試行(一括): ${gzipError.message}")
+                            AppLogger.w(TAG, "GZIP解凍エラー、非圧縮として再試行(一括): ${gzipError.message}")
                             connection.inputStream
                         }
                     } else {
                         connection.inputStream
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "InputStream取得エラー(一括): ${e.message}", e)
+                    AppLogger.e(TAG, "InputStream取得エラー(一括): ${e.message}", e)
                     throw e
                 }
 
@@ -349,7 +349,7 @@ object NovelApiUtils {
                     }
 
                     if (responseContent.isBlank()) {
-                        Log.w(TAG, "一括APIレスポンスが空です: $url")
+                        AppLogger.w(TAG, "一括APIレスポンスが空です: $url")
                         return@withContext null
                     }
 
@@ -385,10 +385,10 @@ object NovelApiUtils {
                                 length = length
                             )
                         }
-                        Log.d(TAG, "一括YAML解析成功: 要素${yamlData.size}件 -> ${map.size}件突合")
+                        AppLogger.d(TAG, "一括YAML解析成功: 要素${yamlData.size}件 -> ${map.size}件突合")
                         map
                     } catch (e: Exception) {
-                        Log.e(TAG, "一括YAMLパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
+                        AppLogger.e(TAG, "一括YAMLパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
                         throw e
                     }
                 }
@@ -418,14 +418,14 @@ object NovelApiUtils {
                 .get()
             val href = doc.select("a[href*=xmypage.syosetu.com]").firstOrNull()?.attr("href")
             if (href == null) {
-                Log.w(TAG, "R18作者リンクが見つかりません: $ncode")
+                AppLogger.w(TAG, "R18作者リンクが見つかりません: $ncode")
                 return@withContext null
             }
             Regex("xmypage\\.syosetu\\.com/([^/?#]+)").find(href)?.groupValues?.get(1)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "R18作者ID取得エラー: $ncode - ${e.message}")
+            AppLogger.e(TAG, "R18作者ID取得エラー: $ncode - ${e.message}")
             null
         }
     }
@@ -447,7 +447,7 @@ object NovelApiUtils {
                 }
 
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                    Log.w(TAG, "HTTP ${connection.responseCode} 応答: $url")
+                    AppLogger.w(TAG, "HTTP ${connection.responseCode} 応答: $url")
                     return@withContext null
                 }
 
@@ -455,7 +455,7 @@ object NovelApiUtils {
                 val useGzip = url.contains("gzip=", ignoreCase = true) ||
                               connection.contentEncoding?.contains("gzip", ignoreCase = true) == true
 
-                Log.d(TAG, "GZIP使用: $useGzip (URL: $url, Content-Encoding: ${connection.contentEncoding})")
+                AppLogger.d(TAG, "GZIP使用: $useGzip (URL: $url, Content-Encoding: ${connection.contentEncoding})")
 
                 val inputStream = try {
                     if (useGzip) {
@@ -463,14 +463,14 @@ object NovelApiUtils {
                             GZIPInputStream(connection.inputStream)
                         } catch (gzipError: Exception) {
                             // GZIP解凍に失敗した場合、非圧縮として再試行
-                            Log.w(TAG, "GZIP解凍エラー、非圧縮として再試行: ${gzipError.message}")
+                            AppLogger.w(TAG, "GZIP解凍エラー、非圧縮として再試行: ${gzipError.message}")
                             connection.inputStream
                         }
                     } else {
                         connection.inputStream
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "InputStream取得エラー: ${e.message}", e)
+                    AppLogger.e(TAG, "InputStream取得エラー: ${e.message}", e)
                     throw e
                 }
 
@@ -481,11 +481,11 @@ object NovelApiUtils {
                     }
 
                     // レスポンス内容をログ出力（デバッグ用）
-                    Log.d(TAG, "API Response (first 500 chars): ${responseContent.take(500)}")
+                    AppLogger.d(TAG, "API Response (first 500 chars): ${responseContent.take(500)}")
 
                     // レスポンスが空の場合
                     if (responseContent.isBlank()) {
-                        Log.w(TAG, "APIレスポンスが空です: $url")
+                        AppLogger.w(TAG, "APIレスポンスが空です: $url")
                         return@withContext null
                     }
 
@@ -517,11 +517,11 @@ object NovelApiUtils {
                         val yaml = Yaml()
                         val yamlData = yaml.load<List<Map<String, Any>>>(fixedYaml)
 
-                        Log.d(TAG, "YAML解析成功: ${yamlData?.size ?: 0} 要素")
+                        AppLogger.d(TAG, "YAML解析成功: ${yamlData?.size ?: 0} 要素")
 
                         // データが2要素未満の場合（メタデータと小説情報）
                         if (yamlData == null || yamlData.size < 2) {
-                            Log.w(TAG, "APIレスポンスに小説情報が含まれていません")
+                            AppLogger.w(TAG, "APIレスポンスに小説情報が含まれていません")
                             return@withContext null
                         }
 
@@ -536,7 +536,7 @@ object NovelApiUtils {
                         val length = (novelData["length"] as? Number)?.toInt()
 
                         if (generalAllNo == null) {
-                            Log.w(TAG, "general_all_no フィールドが見つかりません")
+                            AppLogger.w(TAG, "general_all_no フィールドが見つかりません")
                             return@withContext null
                         }
 
@@ -551,7 +551,7 @@ object NovelApiUtils {
                             length = length
                         )
                     } catch (e: Exception) {
-                        Log.e(TAG, "YAMLパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
+                        AppLogger.e(TAG, "YAMLパースエラー: ${e.message}\nレスポンス内容: ${responseContent.take(1000)}", e)
                         throw e
                     }
                 }
@@ -674,7 +674,7 @@ object NovelApiUtils {
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "小説詳細取得エラー: ${e.message}", e)
+                AppLogger.e(TAG, "小説詳細取得エラー: ${e.message}", e)
                 null
             } finally {
                 connection?.disconnect()
@@ -746,7 +746,7 @@ object NovelApiUtils {
                             is_bookmark = 0
                         )
                     } else {
-                        Log.e(TAG, "カクヨムエピソード本文が空またはエラーです: workId=$workId, episodeId=$kakuyomuEpisodeId")
+                        AppLogger.e(TAG, "カクヨムエピソード本文が空またはエラーです: workId=$workId, episodeId=$kakuyomuEpisodeId")
                         null
                     }
                 }
@@ -793,7 +793,7 @@ object NovelApiUtils {
                 } catch (e: org.jsoup.HttpStatusException) {
                     // 404エラーかつepisodeNo == 1の場合、短編小説の可能性があるため話数なしURLを試す
                     if (e.statusCode == 404 && episodeNo == "1" && noveltype != 2) {
-                        Log.d(TAG, "404エラーを検出。短編小説として話数なしURLを試します: $baseUrl/$ncode/")
+                        AppLogger.d(TAG, "404エラーを検出。短編小説として話数なしURLを試します: $baseUrl/$ncode/")
                         val fallbackConnection = Jsoup.connect("$baseUrl/$ncode/")
                             .userAgent(randomUserAgent)
                             .timeout(30000)
@@ -818,13 +818,13 @@ object NovelApiUtils {
                 if (htmlContent.contains("年齢確認") || htmlContent.contains("Age Verification") ||
                     doc.location().contains("ageauth")) {
 
-                    Log.d(TAG, "年齢確認ページを検出しました。Enterリンクを探します")
+                    AppLogger.d(TAG, "年齢確認ページを検出しました。Enterリンクを探します")
 
                     // "Enter"リンクを探す
                     val enterLink = doc.select("a:contains(Enter)").firstOrNull() // firstOrNull() を使用
                     if (enterLink != null) { // nullチェック
                         val nextUrl = enterLink.absUrl("href")
-                        Log.d(TAG, "Enterリンクが見つかりました。次のURLに進みます: $nextUrl")
+                        AppLogger.d(TAG, "Enterリンクが見つかりました。次のURLに進みます: $nextUrl")
 
                         // "Enter"リンクにアクセス
                         doc = Jsoup.connect(nextUrl)
@@ -833,7 +833,7 @@ object NovelApiUtils {
                             .cookie("over18", "yes") // R18サイトの場合、再度Cookieが必要な場合がある
                             .get()
                     } else {
-                        Log.d(TAG, "Enterリンクが見つかりませんでした")
+                        AppLogger.d(TAG, "Enterリンクが見つかりませんでした")
                     }
                 }
 
@@ -943,11 +943,11 @@ object NovelApiUtils {
                         is_bookmark = 0
                     )
                 } else {
-                    Log.e(TAG, "タイトルまたは本文が空です: title=${title.isNotEmpty()}, body=${bodyString.isNotEmpty()}")
+                    AppLogger.e(TAG, "タイトルまたは本文が空です: title=${title.isNotEmpty()}, body=${bodyString.isNotEmpty()}")
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "エピソード取得エラー: $episodeNo", e)
+                AppLogger.e(TAG, "エピソード取得エラー: $episodeNo", e)
                 null
             }
         }
@@ -982,7 +982,7 @@ object NovelApiUtils {
                 ?.absUrl("href")
                 ?.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
-            Log.e(TAG, "ミテミン画像の取得に失敗しました: ${e.message}", e)
+            AppLogger.e(TAG, "ミテミン画像の取得に失敗しました: ${e.message}", e)
             null
         }
     }
@@ -1004,10 +1004,10 @@ object NovelApiUtils {
                 if (episode != null) {
                     return episode
                 }
-                Log.d(TAG, "試行 $attempt/$maxRetries 失敗しました。再試行します...")
+                AppLogger.d(TAG, "試行 $attempt/$maxRetries 失敗しました。再試行します...")
                 delay(1000) // 1秒待機してから再試行
             } catch (e: Exception) {
-                Log.e(TAG, "試行 $attempt/$maxRetries 中にエラー発生: ${e.message}")
+                AppLogger.e(TAG, "試行 $attempt/$maxRetries 中にエラー発生: ${e.message}")
                 if (attempt == maxRetries) throw e
                 delay(1000) // 1秒待機してから再試行
             }
@@ -1070,7 +1070,7 @@ object NovelApiUtils {
     ): List<EpisodeRevisionInfo> = withContext(Dispatchers.IO) {
         // 短編小説は除外
         if (noveltype == 2) {
-            Log.d(TAG, "短編小説のため改稿チェックをスキップ: $ncode")
+            AppLogger.d(TAG, "短編小説のため改稿チェックをスキップ: $ncode")
             return@withContext emptyList()
         }
 
@@ -1097,7 +1097,7 @@ object NovelApiUtils {
                 // レート制限を適用（各ページ取得前）
                 applyApiRateLimit()
 
-                Log.d(TAG, "目次ページを取得中: $tocUrl")
+                AppLogger.d(TAG, "目次ページを取得中: $tocUrl")
 
                 val doc = try {
                     val connection = Jsoup.connect(tocUrl)
@@ -1112,14 +1112,14 @@ object NovelApiUtils {
                     connection.get()
                 } catch (e: HttpStatusException) {
                     if (e.statusCode == 404) {
-                        Log.d(TAG, "ページが見つかりません（最終ページに到達）: $tocUrl")
+                        AppLogger.d(TAG, "ページが見つかりません（最終ページに到達）: $tocUrl")
                         hasMorePages = false
                         break
                     } else {
                         throw e
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "目次ページ取得エラー: $tocUrl", e)
+                    AppLogger.e(TAG, "目次ページ取得エラー: $tocUrl", e)
                     hasMorePages = false
                     break
                 }
@@ -1138,7 +1138,7 @@ object NovelApiUtils {
                 val episodeElements = doc.select("div.p-eplist div.p-eplist__sublist")
 
                 if (episodeElements.isEmpty()) {
-                    Log.d(TAG, "エピソードが見つかりません。最終ページに到達: page=$currentPage")
+                    AppLogger.d(TAG, "エピソードが見つかりません。最終ページに到達: page=$currentPage")
                     hasMorePages = false
                     break
                 }
@@ -1151,7 +1151,7 @@ object NovelApiUtils {
                         val episodeNo = episodeNoMatch?.groupValues?.get(1)?.toIntOrNull()
 
                         if (episodeNo == null) {
-                            Log.w(TAG, "エピソード番号が取得できません: $episodeLink")
+                            AppLogger.w(TAG, "エピソード番号が取得できません: $episodeLink")
                             continue
                         }
 
@@ -1184,7 +1184,7 @@ object NovelApiUtils {
                                 DatabaseSyncUtils.getCurrentDateTimeString()
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "日時パースエラー: $updateTimeStr", e)
+                            AppLogger.w(TAG, "日時パースエラー: $updateTimeStr", e)
                             DatabaseSyncUtils.getCurrentDateTimeString()
                         }
 
@@ -1196,12 +1196,12 @@ object NovelApiUtils {
                             )
                         )
                     } catch (e: Exception) {
-                        Log.e(TAG, "エピソード情報解析エラー", e)
+                        AppLogger.e(TAG, "エピソード情報解析エラー", e)
                         continue
                     }
                 }
 
-                Log.d(TAG, "目次ページ page=$currentPage: ${episodeElements.size}エピソード取得")
+                AppLogger.d(TAG, "目次ページ page=$currentPage: ${episodeElements.size}エピソード取得")
 
                 // 100エピソード未満の場合は最終ページ
                 if (episodeElements.size < 100) {
@@ -1213,10 +1213,10 @@ object NovelApiUtils {
                 }
             }
 
-            Log.d(TAG, "目次から取得完了: ${allEpisodes.size}エピソード")
+            AppLogger.d(TAG, "目次から取得完了: ${allEpisodes.size}エピソード")
             allEpisodes
         } catch (e: Exception) {
-            Log.e(TAG, "目次取得エラー: $ncode", e)
+            AppLogger.e(TAG, "目次取得エラー: $ncode", e)
             emptyList()
         }
     }

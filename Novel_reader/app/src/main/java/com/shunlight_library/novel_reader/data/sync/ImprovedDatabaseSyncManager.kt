@@ -6,10 +6,10 @@
 package com.shunlight_library.novel_reader.data.sync
 
 import android.content.Context
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.util.Log
 import com.shunlight_library.novel_reader.NovelReaderApplication
 import com.shunlight_library.novel_reader.data.entity.EpisodeEntity
 import com.shunlight_library.novel_reader.data.entity.EpisodeMappingEntity
@@ -154,9 +154,9 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                                     tableList.add(cursor.getString(nameIndex))
                                 }
                             }
-                            Log.e(TAG, "DBに存在するテーブル一覧: ${tableList.joinToString(", ")}")
+                            AppLogger.e(TAG, "DBに存在するテーブル一覧: ${tableList.joinToString(", ")}")
                         } catch (e: Exception) {
-                            Log.e(TAG, "テーブル一覧取得中にエラーが発生", e)
+                            AppLogger.e(TAG, "テーブル一覧取得中にエラーが発生", e)
                         }
                         val errorMsg = "必要なテーブルがありません: $table"
                         updateProgress(callback, SyncProgress(
@@ -197,7 +197,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 // これが無いとカクヨム作品は再DL・エラー修正時に本文を取得できない
                 val mappingCount = syncEpisodeMappings(db)
                 if (mappingCount > 0) {
-                    Log.d(TAG, "カクヨムのエピソードマッピングを${mappingCount}件同期しました")
+                    AppLogger.d(TAG, "カクヨムのエピソードマッピングを${mappingCount}件同期しました")
                 }
 
                 // 最後に読んだ記録の同期
@@ -211,7 +211,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 // M15: novels_descs と episodes は別フェーズのため、途中失敗で total_ep が乖離しうる。
                 // エピソード投入後に実件数で total_ep を再計算して半壊状態を修復する。
                 repository.recalculateAllTotalEpFromEpisodes()
-                Log.d(TAG, "total_ep を episodes 実件数で再計算しました")
+                AppLogger.d(TAG, "total_ep を episodes 実件数で再計算しました")
 
                 // 完了通知
                 val result = SyncResult(
@@ -232,7 +232,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
 
             } catch (e: Exception) {
                 val errorMsg = "データベース同期中にエラーが発生しました: ${e.message}"
-                Log.e(TAG, errorMsg, e)
+                AppLogger.e(TAG, errorMsg, e)
 
                 updateProgress(callback, SyncProgress(
                     step = SyncStep.ERROR,
@@ -285,7 +285,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 "[${progress.currentNcode}] ${progress.currentTitle}"
             else ""
 
-            Log.d(TAG, "[${progress.step}] ${progress.message} $novelInfo (${progress.progress * 100}%)")
+            AppLogger.d(TAG, "[${progress.step}] ${progress.message} $novelInfo (${progress.progress * 100}%)")
         }
     }
 
@@ -425,10 +425,10 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 repository.insertNovels(novels)
             }
 
-            Log.d(TAG, "小説説明の同期が完了しました: $count 件")
+            AppLogger.d(TAG, "小説説明の同期が完了しました: $count 件")
             return count
         } catch (e: Exception) {
-            Log.e(TAG, "小説説明の同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "小説説明の同期中にエラーが発生しました", e)
             throw e
         } finally {
             cursor?.close()
@@ -488,7 +488,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                     novelCount++
 
                     try {
-                        Log.d(TAG, "小説[$novelCount/$totalNovels] \"$title\"($ncode)のエピソードを同期中")
+                        AppLogger.d(TAG, "小説[$novelCount/$totalNovels] \"$title\"($ncode)のエピソードを同期中")
 
                         // このncodeのエピソードを取得
                         externalDb.query(
@@ -562,7 +562,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                                 episodes.clear()
                             }
 
-                            Log.d(TAG, "小説「$title」($ncode)の${novelEpisodeCount}件のエピソードを同期しました")
+                            AppLogger.d(TAG, "小説「$title」($ncode)の${novelEpisodeCount}件のエピソードを同期しました")
                         }
 
                         // この小説の同期完了を報告
@@ -577,7 +577,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                         ))
                     } catch (e: Exception) {
                         // この小説の処理中のエラーを記録し、次の小説に進む
-                        Log.e(TAG, "小説「$title」($ncode)のエピソード同期中にエラーが発生しました", e)
+                        AppLogger.e(TAG, "小説「$title」($ncode)のエピソード同期中にエラーが発生しました", e)
                         failedNcodes.add(Pair(ncode, e.message ?: "不明なエラー"))
 
                         // エラー進捗を報告
@@ -597,13 +597,13 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
             // 失敗した小説があれば記録
             if (failedNcodes.isNotEmpty()) {
                 val failedMsg = failedNcodes.joinToString("\n") { "${it.first}: ${it.second}" }
-                Log.w(TAG, "一部の小説のエピソード同期に失敗しました:\n$failedMsg")
+                AppLogger.w(TAG, "一部の小説のエピソード同期に失敗しました:\n$failedMsg")
             }
 
-            Log.d(TAG, "全小説のエピソード同期が完了しました: 成功${processedCount}件, 失敗${failedNcodes.size}件")
+            AppLogger.d(TAG, "全小説のエピソード同期が完了しました: 成功${processedCount}件, 失敗${failedNcodes.size}件")
             return processedCount
         } catch (e: Exception) {
-            Log.e(TAG, "エピソード同期の全体処理中にエラーが発生しました", e)
+            AppLogger.e(TAG, "エピソード同期の全体処理中にエラーが発生しました", e)
             throw e
         }
     }
@@ -647,7 +647,7 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 repository.insertEpisodeMappings(batch.toList())
             }
         } catch (e: Exception) {
-            Log.e(TAG, "エピソードマッピングの同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "エピソードマッピングの同期中にエラーが発生しました", e)
         }
         return count
     }
@@ -723,10 +723,10 @@ class ImprovedDatabaseSyncManager(private val context: Context) {
                 ))
             }
 
-            Log.d(TAG, "最終読書記録の同期が完了しました: $count 件")
+            AppLogger.d(TAG, "最終読書記録の同期が完了しました: $count 件")
             return count
         } catch (e: Exception) {
-            Log.e(TAG, "最終読書記録の同期中にエラーが発生しました", e)
+            AppLogger.e(TAG, "最終読書記録の同期中にエラーが発生しました", e)
             throw e
         } finally {
             cursor?.close()

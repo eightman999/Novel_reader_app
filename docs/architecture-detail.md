@@ -127,7 +127,7 @@ API/スクレイピング仕様の詳細は [api-spec.md](api-spec.md)（なろ�
 - `AutoUpdateWorker.kt` - WorkManager worker for scheduled updates
 - `AutoUpdateScheduler.kt` - Update scheduling logic
 - `UpdateService.kt` - Update service
-- `MyFirebaseMessagingService.kt` - FCM push messaging service
+- `MyFirebaseMessagingService.kt` - FCM notification display; a `novel_update` notification opens a registered novel's episode list. Device token registration with a server is not configured.
 
 自動更新の実行フローの詳細は [auto-update-flow.md](auto-update-flow.md) 参照。
 
@@ -159,8 +159,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // NavigationManager初期化
-        navigationManager = NavigationManager()
+        // NavigationManager は ViewModel に保持（回転・ダークモード切替で画面が初期化されない）
+        val navigationViewModel: NavigationViewModel by viewModels()
+        navigationManager = navigationViewModel.navigationManager
+        // プロセス再生成時は onSaveInstanceState で保存した画面スタックを復元する
+        if (!navigationViewModel.restored) {
+            savedInstanceState?.getBundle(KEY_NAVIGATION_STATE)?.let { navigationManager.restoreState(it) }
+            navigationViewModel.restored = true
+        }
 
         // OnBackPressedCallbackの設定
         backPressedCallback = object : OnBackPressedCallback(true) {
@@ -181,6 +187,17 @@ class MainActivity : ComponentActivity() {
 - deprecated な `onBackPressed()` は使用しない
 - `OnBackPressedDispatcher` を使用してシステムバックボタンとの統合を行う
 - NavigationManager と連携して適切なバック処理を実装する
+- 画面スタックは `NavigationManager.saveState()` / `restoreState()` で Bundle（JSON）に保存・復元する。`Screen` を追加したら `ScreenCodec` にも追加する
+- `navigateBackTo(screen)` は対象がスタックに無い場合スタックを変更せず false を返す。呼び出し側は false 時のフォールバック（1画面戻る等）を実装する
+
+### 読書画面（EpisodeViewScreen）
+- 読書位置は横書き・縦書きとも追跡済みの値をアプリ全体のスコープで保存し、ON_STOP（ホーム・画面オフ・構成変更）でも保存する
+- 設定の読み込みが終わるまで本文を描画しない（既定値の横書きで描画後に縦書きへ差し替わるのを防ぐ）
+- 本文内検索: 横書きは `WebView.findAllAsync/findNext`、縦書きは vjap の本文（青空文庫形式）を検索し該当ページへ移動する（ルビ記法をまたぐ語は検索対象外）
+- 進捗表示（`showReadingProgress`）: 縦書きは「ページ/総ページ（％）」、横書きは読了率（％）。ページ移動スライダーは縦書きが右端を先頭にしたページ番号、横書きが読了率
+- 行間（`readerLineHeight`、1.2〜2.8、既定1.8）: 横書きは CSS `line-height`、縦書きは行送り倍率として +0.2 して適用（ルビ領域の確保。vjap側で1.5〜3.0に丸める）
+- 既定背景はテーマに追従する（ダークテーマ時は背景・文字色ともテーマ色）
+- 本文の挿絵は https/http/data に加え、file:// はアプリ専用領域、content:// は SAF ストレージプロバイダのみ許可する
 
 ### Filter and Sort Settings Persistence
 **必須**: リスト画面のフィルター・ソート設定は永続化し、次回起動時に復元する

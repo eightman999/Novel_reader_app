@@ -6,9 +6,9 @@
 package com.shunlight_library.novel_reader.ui.components
 
 import android.app.Activity
+import com.shunlight_library.novel_reader.utils.AppLogger
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,7 +50,7 @@ fun ServerDirectorySelector(
                 try {
                     // 永続的な権限を付与
                     contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    Log.d("ServerDirectorySelector", "取得した永続的なアクセス権限: $path")
+                    AppLogger.d("ServerDirectorySelector", "取得した永続的なアクセス権限: $path")
 
                     // 成功メッセージをトーストで表示
                     Toast.makeText(context, "ディレクトリへのアクセス権限を取得しました", Toast.LENGTH_SHORT).show()
@@ -58,7 +58,7 @@ fun ServerDirectorySelector(
                     // 選択されたURIをコールバックで通知
                     onPathSelected(uri)
                 } catch (e: Exception) {
-                    Log.e("ServerDirectorySelector", "権限取得エラー: ${e.message}", e)
+                    AppLogger.e("ServerDirectorySelector", "権限取得エラー: ${e.message}", e)
                     Toast.makeText(context, "アクセス権限の取得に失敗しました", Toast.LENGTH_SHORT).show()
                 }
             }

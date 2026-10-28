@@ -1,0 +1,502 @@
+{
+  "Novel_reader/app/build.gradle.kts": {
+    "mtime": 1783210231.9057796,
+    "ast_hash": "f6569597a0a97c6908f48ea6e030ddf5",
+    "semantic_hash": "f6569597a0a97c6908f48ea6e030ddf5"
+  },
+  "Novel_reader/app/google-services.json": {
+    "mtime": 1767261866.603891,
+    "ast_hash": "b26fa1baff107bda08ac2b7b979ba2cc",
+    "semantic_hash": "b26fa1baff107bda08ac2b7b979ba2cc"
+  },
+  "Novel_reader/app/schemas/com.shunlight_library.novel_reader.data.database.NovelDatabase/16.json": {
+    "mtime": 1781452264.5432703,
+    "ast_hash": "f3ac99705c97cffe1ce6a567dcf2a057",
+    "semantic_hash": "f3ac99705c97cffe1ce6a567dcf2a057"
+  },
+  "Novel_reader/app/schemas/com.shunlight_library.novel_reader.data.database.NovelDatabase/17.json": {
+    "mtime": 1781440674.3337646,
+    "ast_hash": "fef81f5acc33f9901a2e7028ae9d090b",
+    "semantic_hash": "fef81f5acc33f9901a2e7028ae9d090b"
+  },
+  "Novel_reader/app/schemas/com.shunlight_library.novel_reader.data.database.NovelDatabase/18.json": {
+    "mtime": 1785597269.3273048,
+    "ast_hash": "e600470068ed5deb7ad059b4513e23d6",
+    "semantic_hash": "e600470068ed5deb7ad059b4513e23d6"
+  },
+  "Novel_reader/app/src/androidTest/java/com/shunlight_library/novel_reader/ExampleInstrumentedTest.kt": {
+    "mtime": 1752934177.1345308,
+    "ast_hash": "1104e9ad63cee7b9f8c52d419f94bc1f",
+    "semantic_hash": "1104e9ad63cee7b9f8c52d419f94bc1f"
+  },
+  "Novel_reader/app/src/androidTest/java/com/shunlight_library/novel_reader/data/dao/EpisodeDaoTest.kt": {
+    "mtime": 1765545283.734396,
+    "ast_hash": "0b98c1caeebfdc216bb37892cfccec77",
+    "semantic_hash": "0b98c1caeebfdc216bb37892cfccec77"
+  },
+  "Novel_reader/app/src/androidTest/java/com/shunlight_library/novel_reader/data/dao/NovelDescDaoTest.kt": {
+    "mtime": 1765545283.7349296,
+    "ast_hash": "f0761b30815de885f2f60a20bb28a2cf",
+    "semantic_hash": "f0761b30815de885f2f60a20bb28a2cf"
+  },
+  "Novel_reader/app/src/androidTest/java/com/shunlight_library/novel_reader/data/database/MigrationTest.kt": {
+    "mtime": 1785597275.810683,
+    "ast_hash": "9219c23b58b6fe44a044c41221c78c5d",
+    "semantic_hash": "9219c23b58b6fe44a044c41221c78c5d"
+  },
+  "Novel_reader/app/src/androidTest/java/com/shunlight_library/novel_reader/data/repository/NovelRepositoryTest.kt": {
+    "mtime": 1781268147.6300852,
+    "ast_hash": "1be9b9a3c7fe7638aad561761e1ffc9a",
+    "semantic_hash": "1be9b9a3c7fe7638aad561761e1ffc9a"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/AppInfo.kt": {
+    "mtime": 1763801783.981328,
+    "ast_hash": "97a3c9c32d5759b3b200326a2b5da9ac",
+    "semantic_hash": "97a3c9c32d5759b3b200326a2b5da9ac"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/EpisodeListScreen.kt": {
+    "mtime": 1783209673.4723687,
+    "ast_hash": "4b4bee35c9dd744e8131ffcf59d18235",
+    "semantic_hash": "4b4bee35c9dd744e8131ffcf59d18235"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/EpisodeViewScreen.kt": {
+    "mtime": 1783208854.6566603,
+    "ast_hash": "e90783e641806f05d0ba8992d18a516c",
+    "semantic_hash": "e90783e641806f05d0ba8992d18a516c"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/MainActivity.kt": {
+    "mtime": 1783209835.715403,
+    "ast_hash": "4ea0ed682d327b0cad698aa066bc7457",
+    "semantic_hash": "4ea0ed682d327b0cad698aa066bc7457"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/NovelListScreen.kt": {
+    "mtime": 1783209724.2282069,
+    "ast_hash": "498e6b4ab655e149db40acf136cc8864",
+    "semantic_hash": "498e6b4ab655e149db40acf136cc8864"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/NovelReaderApplication.kt": {
+    "mtime": 1781268147.6332395,
+    "ast_hash": "8ab1a583c5879760df8ad0ce33bf03df",
+    "semantic_hash": "8ab1a583c5879760df8ad0ce33bf03df"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/RecentlyReadNovelsScreen.kt": {
+    "mtime": 1783209674.7103815,
+    "ast_hash": "c27b8fa2711d3a7cb5ab9b1e437cb379",
+    "semantic_hash": "c27b8fa2711d3a7cb5ab9b1e437cb379"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/RecentlyUpdatedNovelsScreen.kt": {
+    "mtime": 1783209667.855042,
+    "ast_hash": "a3d4f213e4aae92d8c567a554e598396",
+    "semantic_hash": "a3d4f213e4aae92d8c567a554e598396"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/SettingsMenuScreen.kt": {
+    "mtime": 1777180247.7642138,
+    "ast_hash": "0f089dc65e1027bea1632e3cfe9b0e42",
+    "semantic_hash": "0f089dc65e1027bea1632e3cfe9b0e42"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/SettingsScreen.kt": {
+    "mtime": 1783208854.6580718,
+    "ast_hash": "08dc9ecbee358c9bfeccda3270e9cfd0",
+    "semantic_hash": "08dc9ecbee358c9bfeccda3270e9cfd0"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/SettingsStore.kt": {
+    "mtime": 1783208767.409549,
+    "ast_hash": "4f0bfb8ecbecf4e720ebd1f6b6a0fd9b",
+    "semantic_hash": "4f0bfb8ecbecf4e720ebd1f6b6a0fd9b"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/UpdateInfoScreen.kt": {
+    "mtime": 1783209668.9479876,
+    "ast_hash": "3d0383217b6a896f3a31b8e720fc684b",
+    "semantic_hash": "3d0383217b6a896f3a31b8e720fc684b"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/WebViewScreen.kt": {
+    "mtime": 1781440674.3388171,
+    "ast_hash": "2d9ea3804ff826cdf16cf3014d1500e0",
+    "semantic_hash": "2d9ea3804ff826cdf16cf3014d1500e0"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/api/NovelApiUtils.kt": {
+    "mtime": 1785597201.244866,
+    "ast_hash": "833c4dfc88b8eee8565cfe234c959349",
+    "semantic_hash": "833c4dfc88b8eee8565cfe234c959349"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/EmailUtils.kt": {
+    "mtime": 1768477933.827556,
+    "ast_hash": "3bc88d9b31a08faaa3916bdf34f574d7",
+    "semantic_hash": "3bc88d9b31a08faaa3916bdf34f574d7"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/ErrorLogStore.kt": {
+    "mtime": 1768479076.3096457,
+    "ast_hash": "f0ed70d44618f289a4d516e8478153bb",
+    "semantic_hash": "f0ed70d44618f289a4d516e8478153bb"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/NotificationData.kt": {
+    "mtime": 1768479178.7988384,
+    "ast_hash": "1766a9ab126ad9e53e51f4bd7e129aa2",
+    "semantic_hash": "1766a9ab126ad9e53e51f4bd7e129aa2"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/ProcessingState.kt": {
+    "mtime": 1769873489.69403,
+    "ast_hash": "ed19564577c51e508e22587819b3d2a1",
+    "semantic_hash": "ed19564577c51e508e22587819b3d2a1"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/adapter/KakuyomuAdapter.kt": {
+    "mtime": 1783208854.6608458,
+    "ast_hash": "b5cc1db76238eec1b0291545ede4a70e",
+    "semantic_hash": "b5cc1db76238eec1b0291545ede4a70e"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/adapter/NovelSiteAdapter.kt": {
+    "mtime": 1763136060.148048,
+    "ast_hash": "b6b2c0fa66238aeb78016e9fdaaa6d5f",
+    "semantic_hash": "b6b2c0fa66238aeb78016e9fdaaa6d5f"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/adapter/NovelSiteAdapterFactory.kt": {
+    "mtime": 1763136060.1482415,
+    "ast_hash": "c32449ae813bd442c9d7a221f1ec4495",
+    "semantic_hash": "c32449ae813bd442c9d7a221f1ec4495"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/adapter/SyosetuAdapter.kt": {
+    "mtime": 1764211990.9592354,
+    "ast_hash": "a5d7c0ac3546505fbede5c542fc466b8",
+    "semantic_hash": "a5d7c0ac3546505fbede5c542fc466b8"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/EpisodeDao.kt": {
+    "mtime": 1781268147.6400352,
+    "ast_hash": "11b1c8b4227681ac55478412f1b1b3f1",
+    "semantic_hash": "11b1c8b4227681ac55478412f1b1b3f1"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/EpisodeMappingDao.kt": {
+    "mtime": 1763219403.056064,
+    "ast_hash": "c899b2bc17ae34e03f694574857a8e36",
+    "semantic_hash": "c899b2bc17ae34e03f694574857a8e36"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/ImageCacheDao.kt": {
+    "mtime": 1757585563.2835922,
+    "ast_hash": "69b0aabb2594bf258534fe69eb6bc65c",
+    "semantic_hash": "69b0aabb2594bf258534fe69eb6bc65c"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/LastReadNovelDao.kt": {
+    "mtime": 1752934177.1405947,
+    "ast_hash": "33cd2e3eb2be60fad1c3a19ba7f9789b",
+    "semantic_hash": "33cd2e3eb2be60fad1c3a19ba7f9789b"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/NovelDescDao.kt": {
+    "mtime": 1785597166.995625,
+    "ast_hash": "e811593835975c30d86b9791037a4952",
+    "semantic_hash": "e811593835975c30d86b9791037a4952"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/RegistrationQueueDao.kt": {
+    "mtime": 1781268147.6408358,
+    "ast_hash": "b9037eb02d9cfce60fe0bb28ffe250b6",
+    "semantic_hash": "b9037eb02d9cfce60fe0bb28ffe250b6"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/TempEpisodeDao.kt": {
+    "mtime": 1769861545.7417247,
+    "ast_hash": "33a0cb100b438e7618db3c0ff1680874",
+    "semantic_hash": "33a0cb100b438e7618db3c0ff1680874"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/URLEntityDao.kt": {
+    "mtime": 1752934177.1409018,
+    "ast_hash": "53965dc418253d38f65b5cc0b162d9d8",
+    "semantic_hash": "53965dc418253d38f65b5cc0b162d9d8"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/dao/UpdateQueueDao.kt": {
+    "mtime": 1763742898.8620887,
+    "ast_hash": "2ca8b5ca81b102ac404a188c9bf781e0",
+    "semantic_hash": "2ca8b5ca81b102ac404a188c9bf781e0"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/database/NovelDatabase.kt": {
+    "mtime": 1785597185.3761837,
+    "ast_hash": "ea931237c670daff99cb500bdd30df8a",
+    "semantic_hash": "ea931237c670daff99cb500bdd30df8a"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/EpisodeEntity.kt": {
+    "mtime": 1765545283.7382867,
+    "ast_hash": "d3356e73ad689c7b9e3eb9fd4617ff7e",
+    "semantic_hash": "d3356e73ad689c7b9e3eb9fd4617ff7e"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/EpisodeMappingEntity.kt": {
+    "mtime": 1763219403.0568426,
+    "ast_hash": "306d316de4cdd780e4cc71d4399f68c8",
+    "semantic_hash": "306d316de4cdd780e4cc71d4399f68c8"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/EpisodeMeta.kt": {
+    "mtime": 1781268147.64211,
+    "ast_hash": "2365787f1d653bc04586674229933447",
+    "semantic_hash": "2365787f1d653bc04586674229933447"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/ImageCacheEntity.kt": {
+    "mtime": 1781452060.1985674,
+    "ast_hash": "271167f25f9e4a52b5d90ad35214fdcd",
+    "semantic_hash": "271167f25f9e4a52b5d90ad35214fdcd"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/LastReadNovelEntity.kt": {
+    "mtime": 1752934177.1416376,
+    "ast_hash": "73a57e2c96abb5ec0bb2678a45b08a51",
+    "semantic_hash": "73a57e2c96abb5ec0bb2678a45b08a51"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/NovelDescEntity.kt": {
+    "mtime": 1776347045.651182,
+    "ast_hash": "b35e5fc861bda22f3551f5be38405e60",
+    "semantic_hash": "b35e5fc861bda22f3551f5be38405e60"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/RegistrationQueueEntity.kt": {
+    "mtime": 1769873193.7076175,
+    "ast_hash": "6386fe7a88639a56311c1404744f8d73",
+    "semantic_hash": "6386fe7a88639a56311c1404744f8d73"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/TempEpisodeEntity.kt": {
+    "mtime": 1769861545.743143,
+    "ast_hash": "baa695e47f4ab0db3ea521d39c13f241",
+    "semantic_hash": "baa695e47f4ab0db3ea521d39c13f241"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/URLEntity.kt": {
+    "mtime": 1765545283.7390249,
+    "ast_hash": "9ed35437c736d8e740313ca709070484",
+    "semantic_hash": "9ed35437c736d8e740313ca709070484"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/entity/UpdateQueueEntity.kt": {
+    "mtime": 1763526212.2270055,
+    "ast_hash": "500917e714e163f3cfdcfdf385b9e1fe",
+    "semantic_hash": "500917e714e163f3cfdcfdf385b9e1fe"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/repository/NovelRepository.kt": {
+    "mtime": 1785597416.746782,
+    "ast_hash": "c82a9f53ecb29263571c284618b129e8",
+    "semantic_hash": "c82a9f53ecb29263571c284618b129e8"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/DatabaseExportManager.kt": {
+    "mtime": 1778813325.9812787,
+    "ast_hash": "258eddbb1d6902acfe48ec6d18011389",
+    "semantic_hash": "258eddbb1d6902acfe48ec6d18011389"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/DatabaseSchemaAnalyzer.kt": {
+    "mtime": 1752934177.1428173,
+    "ast_hash": "2151d5ed69b40d99ffb8eb4920649bea",
+    "semantic_hash": "2151d5ed69b40d99ffb8eb4920649bea"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/DatabaseSyncManager.kt": {
+    "mtime": 1785597205.919289,
+    "ast_hash": "2881b2e69031c51916e17b3c308a6735",
+    "semantic_hash": "2881b2e69031c51916e17b3c308a6735"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/DatabaseSyncUtils.kt": {
+    "mtime": 1757591024.4689274,
+    "ast_hash": "8e964ec325ea824c50cde33a5098fe71",
+    "semantic_hash": "8e964ec325ea824c50cde33a5098fe71"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/ExternalSQLiteHelper.kt": {
+    "mtime": 1752934177.143854,
+    "ast_hash": "c6d5d09904e2ee912b3f6120d2a67128",
+    "semantic_hash": "c6d5d09904e2ee912b3f6120d2a67128"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/ImprovedDatabaseSyncManager.kt": {
+    "mtime": 1785597191.6448326,
+    "ast_hash": "eaa028d1ca441b2ee1e1b5a2740b475e",
+    "semantic_hash": "eaa028d1ca441b2ee1e1b5a2740b475e"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/data/sync/WebNovelReaderImportManager.kt": {
+    "mtime": 1785597261.6162386,
+    "ast_hash": "51bf4eeae81ac86e19e790e29502f1bf",
+    "semantic_hash": "51bf4eeae81ac86e19e790e29502f1bf"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/manager/RegistrationQueueManager.kt": {
+    "mtime": 1783208854.6640372,
+    "ast_hash": "03301308c8068854379acd56289fb232",
+    "semantic_hash": "03301308c8068854379acd56289fb232"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/metadata/MetadataUpdateManager.kt": {
+    "mtime": 1763188526.774184,
+    "ast_hash": "692c3b7f1fcdc07815ac6acf4ea335e5",
+    "semantic_hash": "692c3b7f1fcdc07815ac6acf4ea335e5"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/navigation/NavigationManager.kt": {
+    "mtime": 1783208854.6647856,
+    "ast_hash": "2c7bf3cb2360ed1429761cb34be982f0",
+    "semantic_hash": "2c7bf3cb2360ed1429761cb34be982f0"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/receiver/DownloadAllReceiver.kt": {
+    "mtime": 1764211990.9606073,
+    "ast_hash": "dec278326c79c9a7541e5525dddcedab",
+    "semantic_hash": "dec278326c79c9a7541e5525dddcedab"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/service/MyFirebaseMessagingService.kt": {
+    "mtime": 1767264732.036402,
+    "ast_hash": "70272da3046ae51e320c20eba8327f3e",
+    "semantic_hash": "70272da3046ae51e320c20eba8327f3e"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/service/UpdateService.kt": {
+    "mtime": 1783208854.6657233,
+    "ast_hash": "280716ca8633c76773719a3556d4d900",
+    "semantic_hash": "280716ca8633c76773719a3556d4d900"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/DatabaseSyncActivity.kt": {
+    "mtime": 1785597201.246688,
+    "ast_hash": "e8548d71c19b63ff185677cc454b319a",
+    "semantic_hash": "e8548d71c19b63ff185677cc454b319a"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/components/DatabaseFileSelector.kt": {
+    "mtime": 1752934177.1451614,
+    "ast_hash": "8086e89a6a2053f69395ce0a6da754cf",
+    "semantic_hash": "8086e89a6a2053f69395ce0a6da754cf"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/components/IndicatorLamp.kt": {
+    "mtime": 1765535375.5914598,
+    "ast_hash": "12f26fd293b89289744a823b0e720698",
+    "semantic_hash": "12f26fd293b89289744a823b0e720698"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/components/NotificationDialog.kt": {
+    "mtime": 1783209672.226209,
+    "ast_hash": "c054df4fece226b117424298428910f1",
+    "semantic_hash": "c054df4fece226b117424298428910f1"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/components/ServerDirectorySelector.kt": {
+    "mtime": 1752934177.1457314,
+    "ast_hash": "1b5be41d3f190ca77f1ce70ff91bf1ea",
+    "semantic_hash": "1b5be41d3f190ca77f1ce70ff91bf1ea"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/components/VjapVerticalTextView.kt": {
+    "mtime": 1781440674.344591,
+    "ast_hash": "276c3130960314fa27b884d80f0c1d34",
+    "semantic_hash": "276c3130960314fa27b884d80f0c1d34"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/screens/DownloadQueueScreen.kt": {
+    "mtime": 1783209670.0282485,
+    "ast_hash": "7d51bd1175b9fa2df7f09e2b73cdb639",
+    "semantic_hash": "7d51bd1175b9fa2df7f09e2b73cdb639"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/theme/Color.kt": {
+    "mtime": 1752934177.145956,
+    "ast_hash": "b84f48ee9a99ce833b16fe5a8fb7d8cc",
+    "semantic_hash": "b84f48ee9a99ce833b16fe5a8fb7d8cc"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/theme/Theme.kt": {
+    "mtime": 1752934177.1461985,
+    "ast_hash": "db88f26d323a952f0ba8aef39a25e111",
+    "semantic_hash": "db88f26d323a952f0ba8aef39a25e111"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/theme/Type.kt": {
+    "mtime": 1752934177.1464322,
+    "ast_hash": "59a2d7e82aabbb80ae5a61260a5aa533",
+    "semantic_hash": "59a2d7e82aabbb80ae5a61260a5aa533"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/ui/viewmodel/DownloadQueueViewModel.kt": {
+    "mtime": 1776347979.3373437,
+    "ast_hash": "b3616a0889c34a85146119a8131322a3",
+    "semantic_hash": "b3616a0889c34a85146119a8131322a3"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/AppLogger.kt": {
+    "mtime": 1777179899.3393342,
+    "ast_hash": "2c517e4b237c3c61fea68c7a424c99d6",
+    "semantic_hash": "2c517e4b237c3c61fea68c7a424c99d6"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/Base62Converter.kt": {
+    "mtime": 1763184288.438254,
+    "ast_hash": "33af22aa02a1ab0d938e24be58ec7b09",
+    "semantic_hash": "33af22aa02a1ab0d938e24be58ec7b09"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/FontUtils.kt": {
+    "mtime": 1752934177.146713,
+    "ast_hash": "3f969d467d008770a26dad2fa94af93d",
+    "semantic_hash": "3f969d467d008770a26dad2fa94af93d"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/ImageCacheUtils.kt": {
+    "mtime": 1761974309.9433672,
+    "ast_hash": "cc4630bdd980812f12858080a4b4e9d2",
+    "semantic_hash": "cc4630bdd980812f12858080a4b4e9d2"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/NovelUpdateCoordinator.kt": {
+    "mtime": 1768488656.5306404,
+    "ast_hash": "e9f331b2e8c83ab59dd8fa341abf4111",
+    "semantic_hash": "e9f331b2e8c83ab59dd8fa341abf4111"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/PseudoNcodeGenerator.kt": {
+    "mtime": 1763184288.438587,
+    "ast_hash": "2c8665b092b3de2a69add36a781b87bd",
+    "semantic_hash": "2c8665b092b3de2a69add36a781b87bd"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/ReleaseUtils.kt": {
+    "mtime": 1764393698.4353657,
+    "ast_hash": "48a0faa22a48ff0f1749cb31184928fe",
+    "semantic_hash": "48a0faa22a48ff0f1749cb31184928fe"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/utils/VjapTextConverter.kt": {
+    "mtime": 1778769656.8264782,
+    "ast_hash": "787abfa2221f86e2f06a83a5399d539c",
+    "semantic_hash": "787abfa2221f86e2f06a83a5399d539c"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/worker/AutoUpdateScheduler.kt": {
+    "mtime": 1781268147.6477013,
+    "ast_hash": "a3c32726c903c2bb751d86a5bf3d28cc",
+    "semantic_hash": "a3c32726c903c2bb751d86a5bf3d28cc"
+  },
+  "Novel_reader/app/src/main/java/com/shunlight_library/novel_reader/worker/AutoUpdateWorker.kt": {
+    "mtime": 1783208854.6668715,
+    "ast_hash": "a288ca71284f827320756276429d6a27",
+    "semantic_hash": "a288ca71284f827320756276429d6a27"
+  },
+  "Novel_reader/app/src/main/java/jp/taizan/android/vjap/CharSetting.java": {
+    "mtime": 1778682581.0116544,
+    "ast_hash": "f84f975896310e84508800509573f597",
+    "semantic_hash": "f84f975896310e84508800509573f597"
+  },
+  "Novel_reader/app/src/main/java/jp/taizan/android/vjap/ReversedSeekBar.java": {
+    "mtime": 1778682586.665995,
+    "ast_hash": "ee5c7744dc3b6944001060860c2b1192",
+    "semantic_hash": "ee5c7744dc3b6944001060860c2b1192"
+  },
+  "Novel_reader/app/src/main/java/jp/taizan/android/vjap/ReversedViewPager.java": {
+    "mtime": 1778682598.6756446,
+    "ast_hash": "4f2615246d5075d166cf82ae58f0b70f",
+    "semantic_hash": "4f2615246d5075d166cf82ae58f0b70f"
+  },
+  "Novel_reader/app/src/main/java/jp/taizan/android/vjap/VTextLayout.java": {
+    "mtime": 1781440674.3467665,
+    "ast_hash": "71ed3d004d881e30853d48ff1144066b",
+    "semantic_hash": "71ed3d004d881e30853d48ff1144066b"
+  },
+  "Novel_reader/app/src/main/java/jp/taizan/android/vjap/VTextView.java": {
+    "mtime": 1781440674.3476152,
+    "ast_hash": "b392b15f32ef93d2d3468b3f54bd3b42",
+    "semantic_hash": "b392b15f32ef93d2d3468b3f54bd3b42"
+  },
+  "Novel_reader/app/src/test/java/com/shunlight_library/novel_reader/ExampleUnitTest.kt": {
+    "mtime": 1752934177.1479733,
+    "ast_hash": "78dadee64bbb94212dddf3f8316b8ee8",
+    "semantic_hash": "78dadee64bbb94212dddf3f8316b8ee8"
+  },
+  "Novel_reader/app/src/test/java/com/shunlight_library/novel_reader/data/adapter/KakuyomuTextCleanupTest.kt": {
+    "mtime": 1764220119.7847655,
+    "ast_hash": "5ea0d705c8a1e262f25973fead33ea52",
+    "semantic_hash": "5ea0d705c8a1e262f25973fead33ea52"
+  },
+  "Novel_reader/app/src/test/java/com/shunlight_library/novel_reader/utils/Base62ConverterTest.kt": {
+    "mtime": 1764220119.785043,
+    "ast_hash": "c254f6bd1c246f7a23f2be371172ac4d",
+    "semantic_hash": "c254f6bd1c246f7a23f2be371172ac4d"
+  },
+  "Novel_reader/app/src/test/java/com/shunlight_library/novel_reader/utils/PseudoNcodeGeneratorTest.kt": {
+    "mtime": 1764220119.7852807,
+    "ast_hash": "1af2575ba90285c59ea9fd0024adc77a",
+    "semantic_hash": "1af2575ba90285c59ea9fd0024adc77a"
+  },
+  "Novel_reader/build.gradle.kts": {
+    "mtime": 1767270720.1342995,
+    "ast_hash": "f61af5e14a124dadbed6f9120ae62384",
+    "semantic_hash": "f61af5e14a124dadbed6f9120ae62384"
+  },
+  "Novel_reader/gradlew": {
+    "mtime": 1765541693.1986504,
+    "ast_hash": "780b1d3e23a3b82154795f73df943a14",
+    "semantic_hash": "780b1d3e23a3b82154795f73df943a14"
+  },
+  "Novel_reader/settings.gradle.kts": {
+    "mtime": 1764393698.4364462,
+    "ast_hash": "7d528013aff75449ccf931457d969c79",
+    "semantic_hash": "7d528013aff75449ccf931457d969c79"
+  },
+  "scripts/ai-agent-check.sh": {
+    "mtime": 1783208854.6708882,
+    "ast_hash": "c2a5285f56b2bdfb0d8aac0743b40a03",
+    "semantic_hash": "c2a5285f56b2bdfb0d8aac0743b40a03"
+  }
+}
