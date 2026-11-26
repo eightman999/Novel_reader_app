@@ -44,6 +44,13 @@ Novel_reader_app/
 
 ## Key Files by Function
 
+### 暗号化バックアップ
+- `DatabaseSyncActivity` から Storage Access Framework の保存先・復元元を選ぶ。保存先に Google ドライブを選べる場合は Drive の文書プロバイダへ `.nrbackup` を書き出す。
+- `EncryptedBackupManager` は Room DB のスナップショットと `image_cache` に登録された画像実体を ZIP に収め、ZIP 全体を `EncryptedBackupCrypto` で AES-256-GCM 暗号化する。形式は `NRBAK001` + salt(16 bytes) + nonce(12 bytes) + ciphertext/tag。鍵は PBKDF2-HMAC-SHA1 (310,000回) でパスワードから導出する。ZIP 内のファイル名も暗号化対象。
+- 復元時は GCM 認証、エントリ名・件数・サイズ・画像 SHA-256 を確認してから既存の DB 同期処理へ渡し、画像をアプリ領域へ保存して `image_cache.local_path` を更新する。DB は既存データへマージする。設定 DataStore は対象外。復元には作成時のパスワードが必要。
+- 現在の上限は DB 16GiB、画像1件128MiB、展開後全体24GiB。大容量の DB では暗号化前のスナップショットを作るため、端末に十分な空き容量が必要。
+- 平文 DB と復号後 ZIP は処理中のみアプリ専用キャッシュに一時作成し、終了時に削除する。Drive へ渡すファイルは暗号文のみ。既存の `.db` 単体書き出しは従来どおり平文なので、画像を含む Drive 保存には暗号化バックアップ操作を使う。
+
 ### Application Core
 - `NovelReaderApplication.kt` - Application class, singleton repository/database access
 - `MainActivity.kt` - Single Activity with Compose, navigation, back handling

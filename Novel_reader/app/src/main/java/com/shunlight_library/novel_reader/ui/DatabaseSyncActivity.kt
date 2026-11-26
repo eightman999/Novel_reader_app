@@ -27,9 +27,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.shunlight_library.novel_reader.data.sync.DatabaseExportManager
+import com.shunlight_library.novel_reader.data.sync.EncryptedBackupManager
 import com.shunlight_library.novel_reader.data.sync.ImprovedDatabaseSyncManager
 import com.shunlight_library.novel_reader.data.sync.WebNovelReaderImportManager
 import com.shunlight_library.novel_reader.ui.theme.Novel_readerTheme
@@ -59,6 +61,8 @@ class DatabaseSyncActivity : ComponentActivity() {
     }
 }
 
+private enum class BackupAction { EXPORT, RESTORE }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DatabaseSyncScreen(
@@ -80,6 +84,12 @@ fun DatabaseSyncScreen(
     var totalCount by remember { mutableStateOf(0) }
     var isExporting by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<DatabaseExportManager.ExportResult?>(null) }
+    var backupBusy by remember { mutableStateOf(false) }
+    var backupResult by remember { mutableStateOf<EncryptedBackupManager.Result?>(null) }
+    var backupAction by remember { mutableStateOf<BackupAction?>(null) }
+    var backupPassword by remember { mutableStateOf("") }
+    var backupConfirm by remember { mutableStateOf("") }
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
 
     // ログメッセージに関する状態変数を修正
     val maxLogMessages = 20 // 最大ログ表示数
@@ -141,6 +151,38 @@ fun DatabaseSyncScreen(
             }
         } else {
             addLog("書き出しをキャンセルしました")
+        }
+    }
+
+    val encryptedExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val password = backupPassword.toCharArray()
+        backupPassword = ""
+        backupConfirm = ""
+        backupAction = null
+        if (uri != null) {
+            backupBusy = true
+            backupResult = null
+            addLog("暗号化バックアップを書き出しています")
+            scope.launch {
+                val result = EncryptedBackupManager(context).export(uri, password)
+                backupResult = result
+                backupBusy = false
+                addLog(if (result.success) "完了: 暗号化バックアップ (${result.imageCount}画像)" else "エラー: ${result.errorMessage}")
+            }
+        } else {
+            password.fill('\u0000')
+        }
+    }
+
+    val encryptedRestoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            pendingRestoreUri = uri
+            backupPassword = ""
+            backupAction = BackupAction.RESTORE
         }
     }
 
@@ -254,6 +296,7 @@ fun DatabaseSyncScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -404,7 +447,7 @@ fun DatabaseSyncScreen(
 
                         Button(
                             onClick = { startSync() },
-                            enabled = selectedUri != null && !isSyncing && !isExporting,
+                            enabled = selectedUri != null && !isSyncing && !isExporting && !backupBusy,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("同期を開始")
@@ -429,7 +472,7 @@ fun DatabaseSyncScreen(
                     )
 
                     Text(
-                        text = "現在の内部データベースをバックアップとして書き出します。", 
+                        text = "現在の内部データベースのみを平文で書き出します。画像は含まれません。Google ドライブへの保存には下の暗号化バックアップを使ってください。",
                         style = MaterialTheme.typography.bodySmall
                     )
 
@@ -465,11 +508,50 @@ fun DatabaseSyncScreen(
                             val defaultName = "novel_database_backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.db"
                             exportLauncher.launch(defaultName)
                         },
-                        enabled = !isSyncing && !isExporting,
+                        enabled = !isSyncing && !isExporting && !backupBusy,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("データベースを書き出す")
                     }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("暗号化バックアップ", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "小説DBと画像キャッシュをパスワードで暗号化して保存します。保存先で Google ドライブを選べます。復元は現在のDBへマージします。設定は対象外です。パスワードを忘れると復元できません。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (backupBusy) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Text("処理中...")
+                        }
+                    }
+                    backupResult?.let { result ->
+                        Text(
+                            if (result.success) "完了: 画像${result.imageCount}件" else "失敗: ${result.errorMessage ?: "不明なエラー"}",
+                            color = if (result.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            backupPassword = ""
+                            backupConfirm = ""
+                            backupAction = BackupAction.EXPORT
+                        },
+                        enabled = !isSyncing && !isExporting && !backupBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("暗号化バックアップを書き出す") }
+                    OutlinedButton(
+                        onClick = { encryptedRestoreLauncher.launch(arrayOf("application/octet-stream", "*/*")) },
+                        enabled = !isSyncing && !isExporting && !backupBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("暗号化バックアップを復元") }
                 }
             }
 
@@ -479,7 +561,7 @@ fun DatabaseSyncScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .heightIn(min = 160.dp, max = 260.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -539,5 +621,78 @@ fun DatabaseSyncScreen(
                 }
             }
         }
+    }
+
+    backupAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = {
+                backupAction = null
+                backupPassword = ""
+                backupConfirm = ""
+                pendingRestoreUri = null
+            },
+            title = { Text(if (action == BackupAction.EXPORT) "バックアップ用パスワード" else "復元用パスワード") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (action == BackupAction.EXPORT) "12文字以上のパスワードを設定してください。忘れると復元できません。"
+                        else "作成時のパスワードを入力してください。復元データは現在のDBへマージされます。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = backupPassword,
+                        onValueChange = { backupPassword = it },
+                        label = { Text("パスワード") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    if (action == BackupAction.EXPORT) {
+                        OutlinedTextField(
+                            value = backupConfirm,
+                            onValueChange = { backupConfirm = it },
+                            label = { Text("パスワードを再入力") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = if (action == BackupAction.EXPORT) backupPassword.length >= 12 && backupPassword == backupConfirm
+                        else backupPassword.isNotEmpty() && pendingRestoreUri != null,
+                    onClick = {
+                        if (action == BackupAction.EXPORT) {
+                            val name = "novel_reader_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.nrbackup"
+                            encryptedExportLauncher.launch(name)
+                        } else {
+                            val source = pendingRestoreUri ?: return@TextButton
+                            val password = backupPassword.toCharArray()
+                            backupAction = null
+                            backupPassword = ""
+                            backupConfirm = ""
+                            pendingRestoreUri = null
+                            backupBusy = true
+                            backupResult = null
+                            addLog("暗号化バックアップを復元しています")
+                            scope.launch {
+                                val result = EncryptedBackupManager(context).restore(source, password)
+                                backupResult = result
+                                backupBusy = false
+                                addLog(if (result.success) "完了: 暗号化バックアップ復元 (${result.imageCount}画像)" else "エラー: ${result.errorMessage}")
+                            }
+                        }
+                    }
+                ) { Text("続行") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    backupAction = null
+                    backupPassword = ""
+                    backupConfirm = ""
+                    pendingRestoreUri = null
+                }) { Text("キャンセル") }
+            }
+        )
     }
 }

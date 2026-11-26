@@ -1,5 +1,7 @@
 # Database Schema (Version 18)
 
+暗号化バックアップは既存の Room スキーマを変更しない。DB と `image_cache` が指す画像ファイルを一緒に保存し、復元時に画像の `local_path` を復元端末のアプリ領域へ差し替える。
+
 `NovelDatabase.kt` — Room database, 9 tables, `exportSchema=true`（room.schemaLocation でスキーマJSONを出力）。
 
 ## Migration History

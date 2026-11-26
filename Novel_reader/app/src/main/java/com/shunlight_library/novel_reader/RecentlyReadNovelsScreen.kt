@@ -142,16 +142,17 @@ fun RecentlyReadNovelsScreen(
                         Text("媒体フィルター", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                         TextButton(onClick = { tempFilter = tempFilter.copy(selectedSubSites = emptySet()) }) { Text("全選択", style = MaterialTheme.typography.bodySmall) }
                     }
+                    // 空集合は全選択を表すため、変更前に全媒体へ展開する。
                     SubSiteConst.labels.forEach { (siteId, label) ->
                         Row(modifier = Modifier.fillMaxWidth().clickable {
-                            val cur = tempFilter.selectedSubSites.toMutableSet()
+                            val cur = tempFilter.selectedSubSites.ifEmpty { SubSiteConst.ALL_SITES }.toMutableSet()
                             if (siteId in cur) cur.remove(siteId) else cur.add(siteId)
                             tempFilter = tempFilter.copy(selectedSubSites = cur)
                         }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = tempFilter.selectedSubSites.isEmpty() || siteId in tempFilter.selectedSubSites,
                                 onCheckedChange = { checked ->
-                                    val cur = tempFilter.selectedSubSites.toMutableSet()
+                                    val cur = tempFilter.selectedSubSites.ifEmpty { SubSiteConst.ALL_SITES }.toMutableSet()
                                     if (checked) cur.add(siteId) else cur.remove(siteId)
                                     tempFilter = tempFilter.copy(selectedSubSites = cur)
                                 }
